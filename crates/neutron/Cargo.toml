@@ -1,0 +1,12 @@
+[package]
+name = "neutron"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+base = { path = "../base" }
+db = { path = "../db" }
+layout = { path = "../layout" }
+
+masonry = "0.4"
+xilem = "0.4"

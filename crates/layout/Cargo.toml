@@ -1,0 +1,10 @@
+[package]
+name = "layout"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+base = { path = "../base" }
+
+[dev-dependencies]
+proptest = "1"

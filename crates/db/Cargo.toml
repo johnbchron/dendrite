@@ -1,0 +1,12 @@
+[package]
+name = "db"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+base = { path = "../base" }
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

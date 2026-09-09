@@ -1,0 +1,213 @@
+//! The global graph container and its structural mutations (PLAN §1, §2).
+//!
+//! The graph is a plain in-memory projection: maps of nodes, edges and
+//! quests plus cached adjacency indices. All derived state (readiness,
+//! cycles, quest scope) is computed on demand from this structure and never
+//! stored (PLAN §2 "Derived state").
+
+use std::collections::{HashMap, HashSet};
+
+use crate::{
+  ids::{EdgeId, NodeId, QuestId},
+  model::{Edge, Node, Quest},
+};
+
+/// The whole world: one flat, global, fully cross-linkable graph plus the
+/// quests that claim into it.
+#[derive(Clone, Debug, Default)]
+pub struct Graph {
+  nodes:  HashMap<NodeId, Node>,
+  edges:  HashMap<EdgeId, Edge>,
+  quests: HashMap<QuestId, Quest>,
+  /// `from` node -> edges leaving it (its requirements).
+  out:    HashMap<NodeId, Vec<EdgeId>>,
+  /// `to` node -> edges arriving at it (its dependents).
+  inc:    HashMap<NodeId, Vec<EdgeId>>,
+}
+
+/// Two graphs are equal when they hold the same nodes, edges and quests.
+/// Adjacency indices are derived and deliberately excluded, so a graph that
+/// reached a state by different mutation paths still compares equal.
+impl PartialEq for Graph {
+  fn eq(&self, other: &Self) -> bool {
+    self.nodes == other.nodes
+      && self.edges == other.edges
+      && self.quests == other.quests
+  }
+}
+
+impl Graph {
+  /// An empty graph.
+  pub fn new() -> Self { Self::default() }
+
+  // --- read access -------------------------------------------------------
+
+  /// Look a node up by id.
+  pub fn node(&self, id: NodeId) -> Option<&Node> { self.nodes.get(&id) }
+
+  /// Look an edge up by id.
+  pub fn edge(&self, id: EdgeId) -> Option<&Edge> { self.edges.get(&id) }
+
+  /// Look a quest up by id.
+  pub fn quest(&self, id: QuestId) -> Option<&Quest> { self.quests.get(&id) }
+
+  /// Iterate all nodes in arbitrary order.
+  pub fn nodes(&self) -> impl Iterator<Item = &Node> { self.nodes.values() }
+
+  /// Iterate all edges in arbitrary order.
+  pub fn edges(&self) -> impl Iterator<Item = &Edge> { self.edges.values() }
+
+  /// Iterate all quests in arbitrary order.
+  pub fn quests(&self) -> impl Iterator<Item = &Quest> { self.quests.values() }
+
+  /// Number of nodes.
+  pub fn node_count(&self) -> usize { self.nodes.len() }
+
+  /// The edges leaving `node` — the things it requires (`from == node`).
+  pub fn requirements_of(&self, node: NodeId) -> impl Iterator<Item = &Edge> {
+    self
+      .out
+      .get(&node)
+      .into_iter()
+      .flatten()
+      .filter_map(|e| self.edges.get(e))
+  }
+
+  /// The edges arriving at `node` — the things that depend on it
+  /// (`to == node`).
+  pub fn dependents_of(&self, node: NodeId) -> impl Iterator<Item = &Edge> {
+    self
+      .inc
+      .get(&node)
+      .into_iter()
+      .flatten()
+      .filter_map(|e| self.edges.get(e))
+  }
+
+  /// Whether `node` is satisfied (completed task / satisfied condition).
+  pub fn is_satisfied(&self, node: NodeId) -> bool {
+    self.nodes.get(&node).is_some_and(|n| n.kind.is_satisfied())
+  }
+
+  // --- structural mutations ---------------------------------------------
+  //
+  // These are the primitives the event reducer drives. They keep the
+  // adjacency indices consistent and never leave dangling references.
+
+  /// Insert or replace a node. Adjacency is unaffected (edges are separate).
+  pub fn insert_node(&mut self, node: Node) {
+    self.out.entry(node.id).or_default();
+    self.inc.entry(node.id).or_default();
+    self.nodes.insert(node.id, node);
+  }
+
+  /// Remove a node together with every incident edge and every quest claim
+  /// on it, so no dangling reference survives. Returns the removed node, the
+  /// removed edges, and the quests that had claimed it — enough to build a
+  /// complete inverse for undo.
+  pub fn remove_node(
+    &mut self,
+    id: NodeId,
+  ) -> Option<(Node, Vec<Edge>, Vec<QuestId>)> {
+    let node = self.nodes.remove(&id)?;
+
+    let incident: Vec<EdgeId> = self
+      .out
+      .get(&id)
+      .into_iter()
+      .chain(self.inc.get(&id))
+      .flatten()
+      .copied()
+      .collect();
+    let mut removed_edges = Vec::new();
+    for e in incident {
+      if let Some(edge) = self.remove_edge(e) {
+        removed_edges.push(edge);
+      }
+    }
+
+    let mut unclaimed = Vec::new();
+    for quest in self.quests.values_mut() {
+      if quest.claims.remove(&id) {
+        unclaimed.push(quest.id);
+      }
+    }
+
+    self.out.remove(&id);
+    self.inc.remove(&id);
+    Some((node, removed_edges, unclaimed))
+  }
+
+  /// Rename a node, returning the previous name.
+  pub fn rename_node(&mut self, id: NodeId, name: String) -> Option<String> {
+    self
+      .nodes
+      .get_mut(&id)
+      .map(|n| core::mem::replace(&mut n.name, name))
+  }
+
+  /// Set a node's order hint, returning the previous value.
+  pub fn set_order_hint(&mut self, id: NodeId, hint: f64) -> Option<f64> {
+    self
+      .nodes
+      .get_mut(&id)
+      .map(|n| core::mem::replace(&mut n.order_hint, hint))
+  }
+
+  /// Set a node's completion/satisfaction bit, returning the previous value.
+  pub fn set_satisfied(&mut self, id: NodeId, value: bool) -> Option<bool> {
+    self.nodes.get_mut(&id).map(|n| n.kind.set_satisfied(value))
+  }
+
+  /// Insert an edge, wiring it into both adjacency indices.
+  pub fn insert_edge(&mut self, edge: Edge) {
+    self.out.entry(edge.from).or_default().push(edge.id);
+    self.inc.entry(edge.to).or_default().push(edge.id);
+    self.edges.insert(edge.id, edge);
+  }
+
+  /// Remove an edge, returning it if it existed.
+  pub fn remove_edge(&mut self, id: EdgeId) -> Option<Edge> {
+    let edge = self.edges.remove(&id)?;
+    if let Some(v) = self.out.get_mut(&edge.from) {
+      v.retain(|e| *e != id);
+    }
+    if let Some(v) = self.inc.get_mut(&edge.to) {
+      v.retain(|e| *e != id);
+    }
+    Some(edge)
+  }
+
+  /// Insert or replace a quest.
+  pub fn insert_quest(&mut self, quest: Quest) {
+    self.quests.insert(quest.id, quest);
+  }
+
+  /// Remove a quest (its claimed nodes are untouched — quests own nothing),
+  /// returning it if it existed.
+  pub fn remove_quest(&mut self, id: QuestId) -> Option<Quest> {
+    self.quests.remove(&id)
+  }
+
+  /// Claim a node for a quest. Returns `true` if this added a new claim.
+  pub fn claim(&mut self, quest: QuestId, node: NodeId) -> bool {
+    self
+      .quests
+      .get_mut(&quest)
+      .is_some_and(|q| q.claims.insert(node))
+  }
+
+  /// Release a node's claim from a quest. Returns `true` if a claim existed.
+  pub fn unclaim(&mut self, quest: QuestId, node: NodeId) -> bool {
+    self
+      .quests
+      .get_mut(&quest)
+      .is_some_and(|q| q.claims.remove(&node))
+  }
+
+  /// The distinct requirement targets of `node` (deduplicated across
+  /// parallel/multi-kind edges).
+  pub(crate) fn requirement_targets(&self, node: NodeId) -> HashSet<NodeId> {
+    self.requirements_of(node).map(|e| e.to).collect()
+  }
+}

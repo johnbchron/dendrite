@@ -8,5 +8,6 @@ base = { path = "../base" }
 db = { path = "../db" }
 layout = { path = "../layout" }
 
+dirs = "7"
 masonry = "0.4"
 xilem = "0.4"

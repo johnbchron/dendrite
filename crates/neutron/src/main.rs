@@ -21,6 +21,11 @@ fn main() -> Result<(), EventLoopError> {
   // the working directory; override with $NEUTRON_DB.
   let path: PathBuf = std::env::var_os("NEUTRON_DB")
     .map(PathBuf::from)
+    .or(dirs::data_dir().map(|pb| {
+      let path = pb.join("neutron");
+      std::fs::create_dir_all(&path).expect("failed to create database dir");
+      path.join("neutron.db")
+    }))
     .unwrap_or_else(|| PathBuf::from("neutron.db"));
 
   let store = db::Store::open(&path)

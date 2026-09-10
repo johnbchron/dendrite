@@ -487,21 +487,43 @@ fn stroke(
   );
 }
 
+/// Distance from a node centre to its box border along the unit vector
+/// `dir`: the smaller of the two slab crossings.
+fn border_offset(dir: Vec2) -> f64 {
+  let tx = if dir.x.abs() > 1e-9 {
+    (NODE_W / 2.0) / dir.x.abs()
+  } else {
+    f64::INFINITY
+  };
+  let ty = if dir.y.abs() > 1e-9 {
+    (NODE_H / 2.0) / dir.y.abs()
+  } else {
+    f64::INFINITY
+  };
+  tx.min(ty)
+}
+
 /// Paint one edge as a line plus an arrowhead at the requirement end.
 fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
   let a0 = Point::new(edge.from.x, edge.from.y);
   let b0 = Point::new(edge.to.x, edge.to.y);
-  // Pull the endpoints back to roughly the node borders so the line and
-  // arrowhead are not hidden under the boxes.
-  let dir0 = (b0 - a0).normalize();
-  let (a, b) = if dir0.hypot() > 0.0 {
-    (
-      a0 + dir0 * (NODE_H / 2.0 + 2.0),
-      b0 - dir0 * (NODE_H / 2.0 + 2.0),
-    )
-  } else {
-    (a0, b0)
-  };
+  // Pull the endpoints back to the node borders so the line and arrowhead
+  // are not hidden under the boxes. The inset has to follow the box: nodes
+  // are far wider than they are tall, so a fixed radius left the arrowhead
+  // buried inside the node on anything but a near-vertical edge.
+  let delta = b0 - a0;
+  let len = delta.hypot();
+  if len <= 1e-9 {
+    return;
+  }
+  let dir = delta / len;
+  let inset = border_offset(dir) + 2.0;
+  if len <= 2.0 * inset {
+    // The boxes touch or overlap: the whole edge would sit under them.
+    return;
+  }
+  let a = a0 + dir * inset;
+  let b = b0 - dir * inset;
   let color = if edge.reversed {
     palette::CYCLE
   } else {
@@ -520,17 +542,14 @@ fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
   );
 
   // Arrowhead pointing at `b`.
-  let dir = (b - a).normalize();
-  if dir.hypot() > 0.0 {
-    let back = b - dir * 12.0;
-    let perp = Vec2::new(-dir.y, dir.x) * 5.0;
-    let mut head = BezPath::new();
-    head.move_to((b.x, b.y));
-    head.line_to((back.x + perp.x, back.y + perp.y));
-    head.line_to((back.x - perp.x, back.y - perp.y));
-    head.close_path();
-    scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
-  }
+  let back = b - dir * 12.0;
+  let perp = Vec2::new(-dir.y, dir.x) * 5.0;
+  let mut head = BezPath::new();
+  head.move_to((b.x, b.y));
+  head.line_to((back.x + perp.x, back.y + perp.y));
+  head.line_to((back.x - perp.x, back.y - perp.y));
+  head.close_path();
+  scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
 }
 
 /// Canvas colour palette, keyed off derived [`NodeState`] (PLAN §5).
@@ -672,6 +691,37 @@ where
     match message.take_message::<CanvasAction>() {
       Some(action) => (self.on_action)(app_state, *action),
       None => MessageResult::Stale,
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Edge endpoints must stop on the node box, not on a fixed radius: the
+  /// boxes are far wider than tall, so a radius that suited a vertical edge
+  /// left the arrowhead buried inside the node on a diagonal one.
+  #[test]
+  fn border_offset_lands_on_the_box_edge() {
+    let half_w = NODE_W / 2.0;
+    let half_h = NODE_H / 2.0;
+    for d in [
+      Vec2::new(1.0, 0.0),
+      Vec2::new(0.0, 1.0),
+      Vec2::new(1.0, 1.0),
+      Vec2::new(-3.0, 1.0),
+      Vec2::new(2.0, -5.0),
+    ] {
+      let dir = d.normalize();
+      let p = dir * border_offset(dir);
+      // Inside both slabs, and touching at least one of them.
+      assert!(p.x.abs() <= half_w + 1e-9, "{p:?} escapes the box");
+      assert!(p.y.abs() <= half_h + 1e-9, "{p:?} escapes the box");
+      assert!(
+        (p.x.abs() - half_w).abs() < 1e-9 || (p.y.abs() - half_h).abs() < 1e-9,
+        "{p:?} stops short of the box"
+      );
     }
   }
 }

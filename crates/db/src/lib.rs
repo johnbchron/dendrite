@@ -22,7 +22,7 @@ use std::path::Path;
 
 use base::{Event, Graph};
 pub use error::DbError;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension as _};
 
 /// The current schema version, bumped when the table layout changes.
 const SCHEMA_VERSION: i64 = 1;
@@ -194,6 +194,32 @@ impl Store {
     let inverse = base::apply_batch(&mut self.graph, &forward);
     self.persist(&forward)?;
     self.undo.push(inverse);
+    Ok(())
+  }
+
+  /// Read a UI preference from the `meta` table, or `None` if it was never
+  /// written.
+  ///
+  /// Preferences live outside the event log on purpose: they are not graph
+  /// data, so changing one must not appear on the undo stack or in the audit
+  /// trail.
+  pub fn setting(&self, key: &str) -> Result<Option<String>, DbError> {
+    let value = self
+      .conn
+      .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| {
+        r.get::<_, String>(0)
+      })
+      .optional()?;
+    Ok(value)
+  }
+
+  /// Write a UI preference, replacing any previous value.
+  pub fn set_setting(&self, key: &str, value: &str) -> Result<(), DbError> {
+    self.conn.execute(
+      "INSERT INTO meta (key, value) VALUES (?1, ?2)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      [key, value],
+    )?;
     Ok(())
   }
 

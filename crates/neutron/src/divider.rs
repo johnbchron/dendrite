@@ -20,7 +20,7 @@ use masonry::{
     QueryCtx, RegisterCtx, Update, UpdateCtx, Widget,
   },
   kurbo::{Affine, Point, Rect},
-  peniko::{Brush, Color, Fill},
+  peniko::{Brush, Fill},
   vello::Scene,
 };
 use xilem::{
@@ -28,14 +28,13 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
+use crate::theme::Theme;
+
 /// Total width of the divider. This is the grab area as well as the layout
 /// footprint, so it is deliberately wider than the hairline it draws.
 const WIDTH: f64 = 6.0;
 /// Width of the hairline drawn down the middle of the grab area.
 const LINE: f64 = 1.0;
-
-const IDLE: Color = Color::from_rgb8(46, 50, 60);
-const ACTIVE: Color = Color::from_rgb8(94, 168, 246);
 
 /// What the divider reports to the app.
 #[derive(Clone, Debug)]
@@ -53,15 +52,21 @@ pub enum DividerAction {
 pub struct DividerWidget {
   /// Window-space x of the press, or `None` when no drag is in progress.
   press_x: Option<f64>,
+  /// The palette its hairline is drawn from.
+  theme:   &'static Theme,
 }
 
 impl DividerWidget {
   /// A divider with no drag in progress.
-  pub fn new() -> Self { Self { press_x: None } }
-}
+  pub fn new(theme: &'static Theme) -> Self {
+    Self {
+      press_x: None,
+      theme,
+    }
+  }
 
-impl Default for DividerWidget {
-  fn default() -> Self { Self::new() }
+  /// Swap the palette; the colour is read at paint time.
+  fn set_theme(&mut self, theme: &'static Theme) { self.theme = theme; }
 }
 
 /// Pointer position of an event as a window-space x coordinate.
@@ -143,9 +148,9 @@ impl Widget for DividerWidget {
   ) {
     let size = ctx.size();
     let color = if self.press_x.is_some() || ctx.is_hovered() {
-      ACTIVE
+      self.theme.accent
     } else {
-      IDLE
+      self.theme.rule
     };
     let x = (size.width - LINE) / 2.0;
     scene.fill(
@@ -178,6 +183,8 @@ impl Widget for DividerWidget {
 
 /// A Xilem [`View`] hosting the [`DividerWidget`].
 pub struct Divider<F> {
+  /// The palette the widget paints with.
+  theme:     &'static Theme,
   on_action: F,
 }
 
@@ -185,12 +192,14 @@ pub struct Divider<F> {
 /// [`DividerAction`]; as with [`crate::canvas::canvas`], its return value is
 /// wrapped in [`MessageResult::Action`] so the driver re-runs `app_logic`.
 pub fn divider<State, Action, F>(
+  theme: &'static Theme,
   on_action: F,
 ) -> Divider<impl Fn(&mut State, DividerAction) -> MessageResult<Action>>
 where
   F: Fn(&mut State, DividerAction) -> Action + 'static,
 {
   Divider {
+    theme,
     on_action: move |state: &mut State, action| {
       MessageResult::Action(on_action(state, action))
     },
@@ -213,8 +222,8 @@ where
     ctx: &mut ViewCtx,
     _app_state: &mut State,
   ) -> (Self::Element, Self::ViewState) {
-    let pod =
-      ctx.with_action_widget(|ctx| ctx.create_pod(DividerWidget::new()));
+    let pod = ctx
+      .with_action_widget(|ctx| ctx.create_pod(DividerWidget::new(self.theme)));
     (pod, ())
   }
 
@@ -223,10 +232,12 @@ where
     _prev: &Self,
     (): &mut Self::ViewState,
     _ctx: &mut ViewCtx,
-    _element: Mut<'_, Self::Element>,
+    mut element: Mut<'_, Self::Element>,
     _app_state: &mut State,
   ) {
-    // Nothing to push: the widget owns its own drag state.
+    // The drag state is the widget's own; only the palette comes from here.
+    element.widget.set_theme(self.theme);
+    element.ctx.request_render();
   }
 
   fn teardown(

@@ -18,11 +18,10 @@ use base::NodeState;
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
   FontWeight, WidgetView,
-  core::MessageResult,
   style::Style as _,
   view::{
-    Axis, Button, CrossAxisAlignment, FlexExt as _, Label, PointerButton,
-    button, flex, flex_col, flex_row, label, portal, sized_box, text_input,
+    Axis, CrossAxisAlignment, FlexExt as _, button, flex, flex_col, flex_row,
+    label, portal, sized_box, text_input,
   },
 };
 
@@ -30,27 +29,8 @@ use crate::{
   canvas::{CanvasAction, canvas},
   divider::{DividerAction, divider},
   state::{AppState, EdgeRow},
+  theme::Theme,
 };
-
-/// Panel colour tokens (the canvas has its own palette in `canvas`).
-mod palette {
-  use masonry::peniko::Color;
-
-  /// Panel and toolbar grounds. The bar sits a step above the panel so the
-  /// pinned regions read as chrome rather than content.
-  pub const PANEL: Color = Color::from_rgb8(18, 20, 25);
-  pub const BAR: Color = Color::from_rgb8(26, 29, 36);
-  /// Ground for inset blocks, such as the armed link prompt.
-  pub const SUNKEN: Color = Color::from_rgb8(30, 33, 41);
-  pub const RULE: Color = Color::from_rgb8(46, 50, 60);
-  pub const MUTED: Color = Color::from_rgb8(122, 131, 146);
-  pub const ACCENT: Color = Color::from_rgb8(94, 168, 246);
-
-  pub const CHIP_READY: Color = Color::from_rgb8(40, 74, 118);
-  pub const CHIP_DONE: Color = Color::from_rgb8(40, 82, 56);
-  pub const CHIP_BLOCKED: Color = Color::from_rgb8(60, 64, 76);
-  pub const CHIP_CYCLIC: Color = Color::from_rgb8(120, 54, 50);
-}
 
 /// The panel's type scale, in logical pixels.
 ///
@@ -67,22 +47,49 @@ const SIZE_MUTED: f32 = 12.0;
 const SIZE_CHIP: f32 = 10.5;
 const SIZE_SECTION: f32 = 10.0;
 
-/// A button whose label follows the scale above. Returns the concrete
-/// [`Button`] rather than `impl WidgetView` so callers keep `.disabled()`.
+/// A button whose label follows the scale above, in the palette's colours.
+///
+/// Masonry's own button chrome is a fixed dark skin, so a light palette needs
+/// the ground and the label set together — colouring only one of them is how
+/// you get dark text on a dark button.
 fn btn<S, F>(
   text: S,
+  theme: &'static Theme,
   on_press: F,
-) -> Button<
-  impl for<'a> Fn(&'a mut AppState, Option<PointerButton>) -> MessageResult<()>
-  + Send
-  + 'static,
-  Label,
->
+) -> impl WidgetView<AppState> + use<S, F>
 where
   S: Into<String>,
-  F: Fn(&mut AppState) + Send + 'static,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
 {
-  button(label(text.into()).text_size(SIZE_BTN), on_press)
+  button(
+    label(text.into()).text_size(SIZE_BTN).color(theme.text),
+    on_press,
+  )
+  .background_color(theme.sunken)
+  .border_color(theme.rule)
+  .hovered_border_color(theme.accent)
+}
+
+/// A [`btn`] that can be greyed out. Undo and redo are the only commands with
+/// an availability of their own, so they are the only callers.
+fn btn_enabled<S, F>(
+  text: S,
+  theme: &'static Theme,
+  enabled: bool,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<S, F>
+where
+  S: Into<String>,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
+  button(
+    label(text.into()).text_size(SIZE_BTN).color(theme.text),
+    on_press,
+  )
+  .disabled(!enabled)
+  .background_color(theme.sunken)
+  .border_color(theme.rule)
+  .hovered_border_color(theme.accent)
 }
 
 /// Human-readable label for a derived node state.
@@ -97,54 +104,59 @@ fn state_str(state: NodeState) -> &'static str {
   }
 }
 
-/// Background colour for a state chip.
-fn state_chip_color(state: NodeState) -> masonry::peniko::Color {
-  match state {
-    NodeState::Completed | NodeState::Satisfied => palette::CHIP_DONE,
-    NodeState::Ready => palette::CHIP_READY,
-    NodeState::Cyclic => palette::CHIP_CYCLIC,
-    NodeState::Blocked | NodeState::Pending => palette::CHIP_BLOCKED,
-  }
-}
-
 // --- small building blocks ----------------------------------------------
 
 /// A 1px hairline that fills the width it is given.
-fn rule() -> impl WidgetView<AppState> + use<> {
+fn rule(theme: &'static Theme) -> impl WidgetView<AppState> + use<> {
   sized_box(flex_col(()))
     .height(1.0.px())
     .expand_width()
-    .background_color(palette::RULE)
+    .background_color(theme.rule)
+}
+
+/// Primary panel text. Masonry's default label colour is a fixed light grey,
+/// which only works on a dark ground — every palette carries its own text
+/// colour instead, and this is where it goes on.
+fn body<S: Into<String>>(
+  text: S,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<S> {
+  label(text.into()).text_size(SIZE_BODY).color(theme.text)
 }
 
 /// A section marker: a small uppercase label with a hairline running out to
 /// the right edge. This replaces the per-section cards, which cost 24px of
 /// horizontal room apiece without carrying any information.
-fn section<S: Into<String>>(text: S) -> impl WidgetView<AppState> + use<S> {
+fn section<S: Into<String>>(
+  text: S,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<S> {
   flex_row((
     label(text.into().to_uppercase())
       .text_size(SIZE_SECTION)
       .weight(FontWeight::BOLD)
-      .color(palette::MUTED),
-    rule().flex(1.0),
+      .color(theme.muted),
+    rule(theme).flex(1.0),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
   .gap(8.0.px())
 }
 
 /// Muted secondary text.
-fn muted<S: Into<String>>(text: S) -> impl WidgetView<AppState> + use<S> {
-  label(text.into())
-    .text_size(SIZE_MUTED)
-    .color(palette::MUTED)
+fn muted<S: Into<String>>(
+  text: S,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<S> {
+  label(text.into()).text_size(SIZE_MUTED).color(theme.muted)
 }
 
 /// A small coloured status chip.
 fn chip<S: Into<String>>(
   text: S,
   color: masonry::peniko::Color,
+  theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
-  sized_box(label(text.into()).text_size(SIZE_CHIP))
+  sized_box(label(text.into()).text_size(SIZE_CHIP).color(theme.text))
     .padding(Padding::from_vh(2.0, 8.0))
     .background_color(color)
     .corner_radius(8.0)
@@ -153,17 +165,18 @@ fn chip<S: Into<String>>(
 /// A list of edges incident to the selection — either direction — one row per
 /// edge with a button that removes it. The mark reflects whether the node at
 /// the far end is satisfied.
-fn edge_list(rows: &[EdgeRow]) -> impl WidgetView<AppState> + use<> {
+fn edge_list(
+  rows: &[EdgeRow],
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
   let mut items: Vec<_> = rows
     .iter()
     .map(|row| {
       let mark = if row.satisfied { "☑" } else { "☐" };
       let edge = row.edge;
       flex_row((
-        label(format!("{mark}  {}", row.name))
-          .text_size(SIZE_BODY)
-          .flex(1.0),
-        btn("×", move |s: &mut AppState| s.remove_edge(edge)),
+        body(format!("{mark}  {}", row.name), theme).flex(1.0),
+        btn("×", theme, move |s: &mut AppState| s.remove_edge(edge)),
       ))
       .cross_axis_alignment(CrossAxisAlignment::Center)
       .gap(6.0.px())
@@ -171,7 +184,7 @@ fn edge_list(rows: &[EdgeRow]) -> impl WidgetView<AppState> + use<> {
     })
     .collect();
   if items.is_empty() {
-    items.push(muted("(none)").into_any_flex());
+    items.push(muted("(none)", theme).into_any_flex());
   }
   flex(Axis::Vertical, items)
     .cross_axis_alignment(CrossAxisAlignment::Fill)
@@ -182,8 +195,10 @@ fn edge_list(rows: &[EdgeRow]) -> impl WidgetView<AppState> + use<> {
 
 /// Build the whole UI from the current state.
 pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   let canvas_view = canvas(
     data.scene(),
+    data.theme(),
     data.recenter_epoch(),
     |s: &mut AppState, action| match action {
       // While a link is armed this builds an edge instead of selecting.
@@ -191,7 +206,7 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     },
   );
 
-  let divider_view = divider(|s: &mut AppState, action| match action {
+  let divider_view = divider(theme, |s: &mut AppState, action| match action {
     DividerAction::Begin => s.begin_panel_resize(),
     DividerAction::Drag(dx) => s.resize_panel(dx),
   });
@@ -208,29 +223,61 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 /// The slim window-wide toolbar. These commands act on the document, not on
 /// the selection, so they belong above both panes rather than in the panel.
 fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
+  let open = data.palette_open();
+
+  let commands = flex_row((
+    label("Neutron")
+      .text_size(SIZE_TITLE)
+      .weight(FontWeight::BOLD)
+      .color(theme.text)
+      .flex(1.0),
+    btn_enabled("Undo", theme, data.can_undo(), |s: &mut AppState| s.undo()),
+    btn_enabled("Redo", theme, data.can_redo(), |s: &mut AppState| s.redo()),
+    btn("Recenter", theme, |s: &mut AppState| s.recenter()),
+    btn("+ Task", theme, |s: &mut AppState| s.add_task()),
+    btn("+ Condition", theme, |s: &mut AppState| s.add_condition()),
+    btn(
+      format!("Palette: {}", theme.name),
+      theme,
+      |s: &mut AppState| s.toggle_palette(),
+    ),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Center)
+  .gap(6.0.px());
+
+  // The palette row hangs off the toolbar rather than living in the panel:
+  // it re-colours both panes, so it belongs to the window, not the selection.
+  let picker = open.then(|| {
+    let mut rows: Vec<_> = vec![muted("Palette", theme).into_any_flex()];
+    for (id, name, active) in data.theme_list() {
+      let prefix = if active { "▸ " } else { "" };
+      rows.push(
+        btn(format!("{prefix}{name}"), theme, move |s: &mut AppState| {
+          s.set_theme(id)
+        })
+        .into_any_flex(),
+      );
+    }
+    flex(Axis::Horizontal, rows)
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(5.0.px())
+  });
+
   sized_box(
-    flex_row((
-      label("Neutron")
-        .text_size(SIZE_TITLE)
-        .weight(FontWeight::BOLD)
-        .flex(1.0),
-      btn("Undo", |s: &mut AppState| s.undo()).disabled(!data.can_undo()),
-      btn("Redo", |s: &mut AppState| s.redo()).disabled(!data.can_redo()),
-      btn("Recenter", |s: &mut AppState| s.recenter()),
-      btn("+ Task", |s: &mut AppState| s.add_task()),
-      btn("+ Condition", |s: &mut AppState| s.add_condition()),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(6.0.px()),
+    flex_col((commands, picker))
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(7.0.px()),
   )
   .expand_width()
   .padding(Padding::from_vh(7.0, 12.0))
-  .background_color(palette::BAR)
+  .background_color(theme.bar)
 }
 
 /// The side panel: lens pinned top, inspector scrolling in the middle,
 /// actionable frontier pinned bottom.
 fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   sized_box(
     flex_col((
       lens_bar(data),
@@ -250,7 +297,7 @@ fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   )
   .width(data.panel_width().px())
   .expand_height()
-  .background_color(palette::PANEL)
+  .background_color(theme.panel)
 }
 
 // --- region 1: the quest lens -------------------------------------------
@@ -259,6 +306,7 @@ fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 /// full switcher on demand. The lens is a mode, so it needs to be readable at
 /// a glance rather than inferred from an arrow in a scrollable list.
 fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   let summary = data.active_quest_summary();
   let scoped = summary.is_some();
   let (name, claims) = match summary {
@@ -268,15 +316,18 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let open = data.picker_open();
 
   let head = flex_row((
-    label(if scoped { "◆" } else { "○" }.to_string()).color(palette::ACCENT),
+    label(if scoped { "◆" } else { "○" }.to_string()).color(theme.accent),
     label(name)
       .text_size(SIZE_BODY)
       .weight(FontWeight::BOLD)
+      .color(theme.text)
       .flex(1.0),
-    claims.map(|c| muted(format!("{c} claimed"))),
-    btn(if open { "Close" } else { "Change" }, |s: &mut AppState| {
-      s.toggle_picker()
-    }),
+    claims.map(|c| muted(format!("{c} claimed"), theme)),
+    btn(
+      if open { "Close" } else { "Change" },
+      theme,
+      |s: &mut AppState| s.toggle_picker(),
+    ),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
   .gap(8.0.px());
@@ -291,25 +342,33 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
         text_input(data.quest_draft.clone(), |s: &mut AppState, v| {
           s.quest_draft = v;
         })
+        .text_color(theme.text)
         .on_enter(|s: &mut AppState, v| s.rename_active_quest_to(v))
+        .background_color(theme.sunken)
+        .border_color(theme.rule)
         .into_any_flex(),
       );
     }
     rows.push(
-      btn("All (global)", |s: &mut AppState| s.set_active_quest(None))
-        .into_any_flex(),
+      btn("All (global)", theme, |s: &mut AppState| {
+        s.set_active_quest(None)
+      })
+      .into_any_flex(),
     );
     for (id, quest_name, active) in data.quest_list() {
       let prefix = if active { "▸ " } else { "   " };
       rows.push(
-        btn(format!("{prefix}{quest_name}"), move |s: &mut AppState| {
-          s.set_active_quest(Some(id))
-        })
+        btn(
+          format!("{prefix}{quest_name}"),
+          theme,
+          move |s: &mut AppState| s.set_active_quest(Some(id)),
+        )
         .into_any_flex(),
       );
     }
     rows.push(
-      btn("+ New quest", |s: &mut AppState| s.new_quest()).into_any_flex(),
+      btn("+ New quest", theme, |s: &mut AppState| s.new_quest())
+        .into_any_flex(),
     );
     flex(Axis::Vertical, rows)
       .cross_axis_alignment(CrossAxisAlignment::Fill)
@@ -323,7 +382,7 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   )
   .expand_width()
   .padding(Padding::from_vh(9.0, 12.0))
-  .background_color(palette::BAR)
+  .background_color(theme.bar)
 }
 
 // --- region 2: the inspector --------------------------------------------
@@ -331,10 +390,11 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 /// Properties of the selected node, or a hint when nothing is selected. This
 /// is the only scrolling region.
 fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   let Some(info) = data.selected_info() else {
     return flex_col((
-      section("Nothing selected"),
-      muted("Click a node on the canvas to inspect it."),
+      section("Nothing selected", theme),
+      muted("Click a node on the canvas to inspect it.", theme),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(8.0.px())
@@ -370,7 +430,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     } else {
       "Claim for quest"
     };
-    btn(text, move |s: &mut AppState| {
+    btn(text, theme, move |s: &mut AppState| {
       if claimed {
         s.unclaim_selected();
       } else {
@@ -384,24 +444,31 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     text_input(data.name_draft.clone(), |s: &mut AppState, v| {
       s.name_draft = v;
     })
-    .on_enter(|s: &mut AppState, v| s.rename_selected_to(v)),
+    .text_color(theme.text)
+    .on_enter(|s: &mut AppState, v| s.rename_selected_to(v))
+    .background_color(theme.sunken)
+    .border_color(theme.rule),
     flex_row((
-      chip(state_str(info.state), state_chip_color(info.state)),
-      muted(meta),
+      chip(
+        state_str(info.state),
+        theme.chip_for_state(info.state),
+        theme,
+      ),
+      muted(meta, theme),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(8.0.px()),
     flex_row((
-      btn(toggle_label, |s: &mut AppState| s.toggle_selected()),
-      btn("Delete", |s: &mut AppState| s.delete_selected()),
+      btn(toggle_label, theme, |s: &mut AppState| s.toggle_selected()),
+      btn("Delete", theme, |s: &mut AppState| s.delete_selected()),
       claim_button,
     ))
     .gap(6.0.px()),
-    section(format!("Requires · {}", info.requirements.len())),
-    edge_list(&info.requirements),
+    section(format!("Requires · {}", info.requirements.len()), theme),
+    edge_list(&info.requirements, theme),
     link_block(data),
-    section(format!("Required by · {}", info.dependents.len())),
-    edge_list(&info.dependents),
+    section(format!("Required by · {}", info.dependents.len()), theme),
+    edge_list(&info.dependents, theme),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Fill)
   .gap(9.0.px())
@@ -416,8 +483,12 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 /// that are not on the canvas at all, which happens inside a quest lens, where
 /// out-of-scope nodes are not drawn.
 fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   if !data.is_linking() {
-    return btn("+ Add requirement", |s: &mut AppState| s.begin_link()).boxed();
+    return btn("+ Add requirement", theme, |s: &mut AppState| {
+      s.begin_link()
+    })
+    .boxed();
   }
 
   let (candidates, total) = data.candidate_requirements();
@@ -425,7 +496,7 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let mut rows: Vec<_> = candidates
     .into_iter()
     .map(|(id, name)| {
-      btn(format!("+ {name}"), move |s: &mut AppState| {
+      btn(format!("+ {name}"), theme, move |s: &mut AppState| {
         s.add_requirement(id);
         s.cancel_link();
       })
@@ -433,32 +504,35 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     })
     .collect();
   if rows.is_empty() {
-    rows.push(muted("No matches.").into_any_flex());
+    rows.push(muted("No matches.", theme).into_any_flex());
   }
 
   let overflow = (total > shown)
-    .then(|| muted(format!("{} more — type to narrow", total - shown)));
+    .then(|| muted(format!("{} more — type to narrow", total - shown), theme));
 
   sized_box(
     flex_col((
       label("Click a node on the canvas to link it.".to_string())
         .text_size(SIZE_MUTED)
-        .color(palette::ACCENT),
-      muted("…or search:"),
+        .color(theme.accent),
+      muted("…or search:", theme),
       text_input(data.link_filter.clone(), |s: &mut AppState, v| {
         s.link_filter = v;
-      }),
+      })
+      .text_color(theme.text)
+      .background_color(theme.sunken)
+      .border_color(theme.rule),
       flex(Axis::Vertical, rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
         .gap(3.0.px()),
       overflow,
-      btn("Cancel", |s: &mut AppState| s.cancel_link()),
+      btn("Cancel", theme, |s: &mut AppState| s.cancel_link()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(6.0.px()),
   )
   .padding(Padding::all(9.0))
-  .background_color(palette::SUNKEN)
+  .background_color(theme.sunken)
   .corner_radius(7.0)
   .boxed()
 }
@@ -468,27 +542,28 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 /// "What can I do right now?" (PLAN §2), pinned to the bottom so it is never
 /// scrolled away by whatever the inspector happens to be showing.
 fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
   let (list, total) = data.actionable_list();
   let shown = list.len();
   let mut rows: Vec<_> = list
     .into_iter()
     .map(|(id, name)| {
-      btn(format!("→ {name}"), move |s: &mut AppState| {
+      btn(format!("→ {name}"), theme, move |s: &mut AppState| {
         s.select(Some(id))
       })
       .into_any_flex()
     })
     .collect();
   if rows.is_empty() {
-    rows.push(muted("Nothing ready right now.").into_any_flex());
+    rows.push(muted("Nothing ready right now.", theme).into_any_flex());
   }
   if total > shown {
-    rows.push(muted(format!("+{} more", total - shown)).into_any_flex());
+    rows.push(muted(format!("+{} more", total - shown), theme).into_any_flex());
   }
 
   sized_box(
     flex_col((
-      section(format!("Actionable · {total}")),
+      section(format!("Actionable · {total}"), theme),
       flex(Axis::Vertical, rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
         .gap(3.0.px()),
@@ -498,5 +573,5 @@ fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   )
   .expand_width()
   .padding(Padding::from_vh(10.0, 12.0))
-  .background_color(palette::BAR)
+  .background_color(theme.bar)
 }

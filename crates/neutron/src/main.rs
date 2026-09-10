@@ -8,6 +8,7 @@
 mod canvas;
 mod divider;
 mod state;
+mod theme;
 mod ui;
 
 use std::path::PathBuf;

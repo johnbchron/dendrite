@@ -156,3 +156,43 @@ fn undo_of_node_removal_restores_edges_and_claims() {
   store.undo().unwrap();
   assert_eq!(store.graph(), &before, "removal fully restored by undo");
 }
+
+#[test]
+fn settings_round_trip_and_survive_reopen() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("settings.db");
+
+  {
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.setting("palette").unwrap(), None, "unset key is None");
+    store.set_setting("palette", "umber").unwrap();
+    // Writing again replaces rather than failing on the primary key.
+    store.set_setting("palette", "frost").unwrap();
+    assert_eq!(store.setting("palette").unwrap().as_deref(), Some("frost"));
+  }
+
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(
+    reopened.setting("palette").unwrap().as_deref(),
+    Some("frost"),
+    "preference outlived the connection"
+  );
+  // The migration's own meta row is untouched by preference writes.
+  assert_eq!(
+    reopened.setting("schema_version").unwrap().as_deref(),
+    Some("1")
+  );
+}
+
+#[test]
+fn settings_are_not_events() {
+  let store = Store::open_in_memory().unwrap();
+  let before = store.event_count().unwrap();
+  store.set_setting("palette", "graphite").unwrap();
+  assert_eq!(
+    store.event_count().unwrap(),
+    before,
+    "a preference must not touch the event log"
+  );
+  assert!(!store.can_undo(), "and must not be undoable");
+}

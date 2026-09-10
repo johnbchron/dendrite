@@ -19,7 +19,10 @@ use base::{
 use db::Store;
 use layout::LayoutConfig;
 
-use crate::canvas::{CanvasScene, RenderEdge, RenderNode};
+use crate::{
+  canvas::{CanvasScene, RenderEdge, RenderNode},
+  theme::{self, Theme},
+};
 
 /// The whole application's state.
 pub struct AppState {
@@ -47,7 +50,14 @@ pub struct AppState {
   pub link_filter:  String,
   /// Whether the quest switcher is expanded in the panel's lens bar.
   picker_open:      bool,
+  /// The palette every painted surface reads its colours from.
+  theme:            &'static Theme,
+  /// Whether the palette picker is expanded under the toolbar.
+  palette_open:     bool,
 }
+
+/// `meta` key the chosen palette is stored under.
+const THEME_KEY: &str = "palette";
 
 /// Default width of the side panel, in logical pixels.
 const PANEL_WIDTH: f64 = 380.0;
@@ -90,7 +100,7 @@ pub struct SelectedInfo {
 impl AppState {
   /// Open (or create) the store at `path` and seed demo data if empty.
   pub fn new(store: Store) -> Self {
-    Self {
+    let mut state = Self {
       store:            Mutex::new(store),
       selected:         None,
       active_quest:     None,
@@ -102,8 +112,52 @@ impl AppState {
       linking:          false,
       link_filter:      String::new(),
       picker_open:      false,
+      theme:            theme::DEFAULT,
+      palette_open:     false,
+    };
+    // A palette recorded by an older version that no longer ships falls back
+    // to the default rather than blocking startup.
+    let stored = match state.lock().setting(THEME_KEY) {
+      Ok(id) => id,
+      Err(e) => {
+        eprintln!("reading the stored palette failed: {e}");
+        None
+      }
+    };
+    state.theme = stored
+      .and_then(|id| theme::by_id(&id))
+      .unwrap_or(theme::DEFAULT);
+    state
+  }
+
+  /// The active palette. Every colour in the canvas and the panel comes from
+  /// here.
+  pub fn theme(&self) -> &'static Theme { self.theme }
+
+  /// Switch palettes and persist the choice. A failed write is reported and
+  /// the palette still changes for this session.
+  pub fn set_theme(&mut self, id: &str) {
+    let Some(next) = theme::by_id(id) else { return };
+    self.theme = next;
+    self.palette_open = false;
+    if let Err(e) = self.lock().set_setting(THEME_KEY, next.id) {
+      eprintln!("saving the palette failed: {e}");
     }
   }
+
+  /// Every palette as `(id, name, is_active)`, for the picker.
+  pub fn theme_list(&self) -> Vec<(&'static str, &'static str, bool)> {
+    theme::ALL
+      .iter()
+      .map(|t| (t.id, t.name, t.id == self.theme.id))
+      .collect()
+  }
+
+  /// Whether the palette picker is expanded.
+  pub fn palette_open(&self) -> bool { self.palette_open }
+
+  /// Expand or collapse the palette picker.
+  pub fn toggle_palette(&mut self) { self.palette_open = !self.palette_open; }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
     self.store.lock().expect("store mutex poisoned")
@@ -652,6 +706,50 @@ mod tests {
         .all(|(_, name, _)| name == "New quest"),
       "no quest was renamed from the global view"
     );
+  }
+
+  #[test]
+  fn palette_choice_defaults_persists_and_survives_a_bad_id() {
+    let store = Store::open_in_memory().unwrap();
+    let mut state = AppState::new(store);
+    assert_eq!(state.theme().id, theme::DEFAULT.id, "default when unset");
+
+    state.set_theme("umber");
+    assert_eq!(state.theme().id, "umber");
+    assert_eq!(
+      state.lock().setting("palette").unwrap().as_deref(),
+      Some("umber"),
+      "the choice was written to the meta table"
+    );
+
+    // Exactly one palette reads as active in the picker.
+    let active: Vec<&str> = state
+      .theme_list()
+      .iter()
+      .filter(|(_, _, is_active)| *is_active)
+      .map(|(id, ..)| *id)
+      .collect();
+    assert_eq!(active, vec!["umber"]);
+
+    // An id this build does not ship is ignored rather than blanking the UI.
+    state.set_theme("chartreuse");
+    assert_eq!(state.theme().id, "umber");
+  }
+
+  #[test]
+  fn a_stored_palette_is_restored_on_open() {
+    let store = Store::open_in_memory().unwrap();
+    store.set_setting("palette", "meridian").unwrap();
+    let state = AppState::new(store);
+    assert_eq!(state.theme().id, "meridian");
+  }
+
+  #[test]
+  fn an_unknown_stored_palette_falls_back_to_the_default() {
+    let store = Store::open_in_memory().unwrap();
+    store.set_setting("palette", "chartreuse").unwrap();
+    let state = AppState::new(store);
+    assert_eq!(state.theme().id, theme::DEFAULT.id);
   }
 
   /// Id of the seeded node with the given name.

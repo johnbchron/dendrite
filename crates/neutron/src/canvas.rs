@@ -32,6 +32,8 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
+use crate::theme::{self, Theme};
+
 // Node box size in world (graph) coordinates.
 const NODE_W: f64 = 150.0;
 const NODE_H: f64 = 46.0;
@@ -113,6 +115,9 @@ pub struct CanvasWidget {
   /// Viewport size from the previous layout pass, so a resize can request
   /// a refit (the existing fit is centred on the old viewport).
   last_size:    Option<Size>,
+  /// The palette every colour painted here comes from, pushed in from the
+  /// view on rebuild.
+  theme:        &'static Theme,
   /// Cached per-node text layouts, keyed by id, invalidated when the label
   /// text changes.
   text_cache:   HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
@@ -120,17 +125,18 @@ pub struct CanvasWidget {
 
 impl CanvasWidget {
   /// A fresh canvas with an identity transform and no scene.
-  pub fn new() -> Self {
+  pub fn new(theme: &'static Theme) -> Self {
     Self {
-      scene:        CanvasScene::default(),
-      pan:          Vec2::new(60.0, 60.0),
-      zoom:         1.0,
+      scene: CanvasScene::default(),
+      pan: Vec2::new(60.0, 60.0),
+      zoom: 1.0,
       press_origin: None,
       last_pointer: None,
-      panned:       false,
-      needs_fit:    true,
-      last_size:    None,
-      text_cache:   HashMap::new(),
+      panned: false,
+      needs_fit: true,
+      last_size: None,
+      theme,
+      text_cache: HashMap::new(),
     }
   }
 
@@ -142,6 +148,10 @@ impl CanvasWidget {
     self.text_cache.retain(|id, _| live.contains(id));
     self.scene = scene;
   }
+
+  /// Swap the palette. Colours are read at paint time, so storing it is the
+  /// whole job.
+  fn set_theme(&mut self, theme: &'static Theme) { self.theme = theme; }
 
   /// The current world→screen transform.
   fn transform(&self) -> Affine {
@@ -212,10 +222,6 @@ impl CanvasWidget {
     self.pan =
       Vec2::new(anchor.x, anchor.y) - self.zoom * Vec2::new(world.x, world.y);
   }
-}
-
-impl Default for CanvasWidget {
-  fn default() -> Self { Self::new() }
 }
 
 /// Pointer position of an event, in physical pixels, converted to
@@ -346,14 +352,14 @@ impl Widget for CanvasWidget {
     scene.fill(
       Fill::NonZero,
       Affine::IDENTITY,
-      &Brush::Solid(palette::BG),
+      &Brush::Solid(self.theme.bg),
       None,
       &Rect::from_origin_size((0.0, 0.0), (size.width, size.height)),
     );
 
     // Edges under nodes.
     for edge in &self.scene.edges {
-      paint_edge(scene, tf, edge);
+      paint_edge(scene, tf, edge, self.theme);
     }
 
     // Nodes on top. Split borrows: pull the caches out so `self` methods
@@ -387,23 +393,19 @@ impl CanvasWidget {
     node: &RenderNode,
   ) {
     let rect = Self::node_rect(node.center);
-    let (fill, border) = palette::for_state(node.state);
-    let fill = if node.dimmed {
-      palette::dim(fill)
-    } else {
-      fill
-    };
+    let (fill, border) = self.theme.for_state(node.state);
+    let fill = if node.dimmed { theme::dim(fill) } else { fill };
 
     match node.kind {
       NodeKind::Task { .. } => {
         let shape = RoundedRect::from_rect(rect, 8.0);
         scene.fill(Fill::NonZero, tf, &Brush::Solid(fill), None, &shape);
-        stroke(scene, tf, &shape, border, node.selected);
+        stroke(scene, tf, &shape, border, node.selected, self.theme);
       }
       NodeKind::Condition { .. } => {
         let shape = diamond(rect);
         scene.fill(Fill::NonZero, tf, &Brush::Solid(fill), None, &shape);
-        stroke(scene, tf, &shape, border, node.selected);
+        stroke(scene, tf, &shape, border, node.selected, self.theme);
       }
     }
 
@@ -449,7 +451,13 @@ impl CanvasWidget {
     let text_h = layout.height() as f64;
     let origin = Point::new(rect.x0 + 8.0, rect.center().y - text_h / 2.0);
     let text_tf = tf * Affine::translate((origin.x, origin.y));
-    render_text(scene, text_tf, layout, &[Brush::Solid(palette::TEXT)], true);
+    render_text(
+      scene,
+      text_tf,
+      layout,
+      &[Brush::Solid(self.theme.text)],
+      true,
+    );
   }
 }
 
@@ -472,9 +480,10 @@ fn stroke(
   shape: &impl masonry::kurbo::Shape,
   border: Color,
   selected: bool,
+  theme: &Theme,
 ) {
   let (color, width) = if selected {
-    (palette::ACCENT, 3.0)
+    (theme.accent, 3.0)
   } else {
     (border, 1.5)
   };
@@ -504,7 +513,7 @@ fn border_offset(dir: Vec2) -> f64 {
 }
 
 /// Paint one edge as a line plus an arrowhead at the requirement end.
-fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
+fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge, theme: &Theme) {
   let a0 = Point::new(edge.from.x, edge.from.y);
   let b0 = Point::new(edge.to.x, edge.to.y);
   // Pull the endpoints back to the node borders so the line and arrowhead
@@ -525,9 +534,9 @@ fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
   let a = a0 + dir * inset;
   let b = b0 - dir * inset;
   let color = if edge.reversed {
-    palette::CYCLE
+    theme.cycle
   } else {
-    palette::EDGE
+    theme.edge
   };
   let stroke_style = match edge.kind {
     EdgeKind::Dependency => masonry::kurbo::Stroke::new(1.5),
@@ -552,46 +561,6 @@ fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
   scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
 }
 
-/// Canvas colour palette, keyed off derived [`NodeState`] (PLAN §5).
-mod palette {
-  use base::NodeState;
-  use masonry::peniko::Color;
-
-  pub const BG: Color = Color::from_rgb8(24, 26, 32);
-  pub const EDGE: Color = Color::from_rgb8(96, 104, 120);
-  pub const CYCLE: Color = Color::from_rgb8(214, 105, 90);
-  pub const TEXT: Color = Color::from_rgb8(232, 236, 244);
-  pub const ACCENT: Color = Color::from_rgb8(94, 168, 246);
-
-  /// `(fill, border)` for a node in the given derived state.
-  pub fn for_state(state: NodeState) -> (Color, Color) {
-    match state {
-      NodeState::Completed => {
-        (Color::from_rgb8(40, 66, 48), Color::from_rgb8(96, 170, 116))
-      }
-      NodeState::Satisfied => {
-        (Color::from_rgb8(40, 66, 48), Color::from_rgb8(96, 170, 116))
-      }
-      NodeState::Ready => {
-        (Color::from_rgb8(40, 58, 82), Color::from_rgb8(94, 168, 246))
-      }
-      NodeState::Blocked => {
-        (Color::from_rgb8(48, 52, 62), Color::from_rgb8(96, 104, 120))
-      }
-      NodeState::Pending => (
-        Color::from_rgb8(48, 52, 62),
-        Color::from_rgb8(150, 156, 168),
-      ),
-      NodeState::Cyclic => {
-        (Color::from_rgb8(72, 44, 42), Color::from_rgb8(214, 105, 90))
-      }
-    }
-  }
-
-  /// Dim a fill for pulled-in (unclaimed) nodes in a quest scope.
-  pub fn dim(c: Color) -> Color { c.multiply_alpha(0.5) }
-}
-
 // --- the view -----------------------------------------------------------
 
 /// A Xilem [`View`] hosting the [`CanvasWidget`]. Rebuilds push the latest
@@ -599,6 +568,8 @@ mod palette {
 /// to `on_action`.
 pub struct Canvas<F> {
   scene:     CanvasScene,
+  /// The palette the widget paints with.
+  theme:     &'static Theme,
   /// A monotonically increasing token; whenever it changes, the widget
   /// refits the graph into the viewport (drives the "Recenter" button).
   fit_epoch: u64,
@@ -614,6 +585,7 @@ pub struct Canvas<F> {
 /// selection change made here would never reach the widgets.)
 pub fn canvas<State, Action, F>(
   scene: CanvasScene,
+  theme: &'static Theme,
   fit_epoch: u64,
   on_action: F,
 ) -> Canvas<impl Fn(&mut State, CanvasAction) -> MessageResult<Action>>
@@ -622,6 +594,7 @@ where
 {
   Canvas {
     scene,
+    theme,
     fit_epoch,
     on_action: move |state: &mut State, action| {
       MessageResult::Action(on_action(state, action))
@@ -647,7 +620,7 @@ where
     _app_state: &mut State,
   ) -> (Self::Element, Self::ViewState) {
     let pod = ctx.with_action_widget(|ctx| {
-      let mut w = CanvasWidget::new();
+      let mut w = CanvasWidget::new(self.theme);
       w.set_scene(self.scene.clone());
       ctx.create_pod(w)
     });
@@ -665,6 +638,7 @@ where
     // The scene is cheap to diff by clone-and-replace for v1; a later pass
     // can compare against `_prev.scene`.
     element.widget.set_scene(self.scene.clone());
+    element.widget.set_theme(self.theme);
     if *last_epoch != self.fit_epoch {
       element.widget.request_fit();
       *last_epoch = self.fit_epoch;

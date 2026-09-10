@@ -244,6 +244,37 @@ fn event_apply_then_inverse_round_trips() {
 }
 
 #[test]
+fn renaming_a_quest_inverts_to_the_previous_name() {
+  let mut g = Graph::new();
+  apply_batch(&mut g, &[Event::QuestCreated {
+    quest: qid(100),
+    name:  "epic".into(),
+  }]);
+
+  let rename = Event::QuestRenamed {
+    quest: qid(100),
+    name:  "Ship v1".into(),
+  };
+  let inverse = apply_batch(&mut g, std::slice::from_ref(&rename));
+  assert_eq!(g.quest(qid(100)).unwrap().name, "Ship v1");
+
+  for e in &inverse {
+    e.apply(&mut g);
+  }
+  assert_eq!(g.quest(qid(100)).unwrap().name, "epic", "undo restored it");
+
+  // Renaming a quest that is not there is a no-op with no inverse.
+  let missing = Event::QuestRenamed {
+    quest: qid(999),
+    name:  "ghost".into(),
+  };
+  let before = g.clone();
+  assert!(missing.inverse(&g).is_empty());
+  missing.apply(&mut g);
+  assert_eq!(g, before);
+}
+
+#[test]
 fn removing_a_node_and_undoing_restores_edges_and_claims() {
   let mut g = Graph::new();
   apply_batch(&mut g, &[

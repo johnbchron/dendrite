@@ -282,10 +282,23 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .gap(8.0.px());
 
   let picker = open.then(|| {
-    let mut rows: Vec<_> = vec![
+    let mut rows: Vec<_> = Vec::new();
+    // Renaming lives in the switcher, not in the head line: the head is a
+    // status line the user reads at a glance, and an always-live field there
+    // would invite stray edits to the mode they are currently working in.
+    if data.active_quest.is_some() {
+      rows.push(
+        text_input(data.quest_draft.clone(), |s: &mut AppState, v| {
+          s.quest_draft = v;
+        })
+        .on_enter(|s: &mut AppState, v| s.rename_active_quest_to(v))
+        .into_any_flex(),
+      );
+    }
+    rows.push(
       btn("All (global)", |s: &mut AppState| s.set_active_quest(None))
         .into_any_flex(),
-    ];
+    );
     for (id, quest_name, active) in data.quest_list() {
       let prefix = if active { "▸ " } else { "   " };
       rows.push(

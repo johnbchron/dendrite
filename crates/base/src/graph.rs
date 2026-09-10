@@ -189,6 +189,14 @@ impl Graph {
     self.quests.remove(&id)
   }
 
+  /// Rename a quest, returning the previous name.
+  pub fn rename_quest(&mut self, id: QuestId, name: String) -> Option<String> {
+    self
+      .quests
+      .get_mut(&id)
+      .map(|q| core::mem::replace(&mut q.name, name))
+  }
+
   /// Claim a node for a quest. Returns `true` if this added a new claim.
   pub fn claim(&mut self, quest: QuestId, node: NodeId) -> bool {
     self

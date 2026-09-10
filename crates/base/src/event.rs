@@ -93,6 +93,13 @@ pub enum Event {
     /// Quest to remove.
     quest: QuestId,
   },
+  /// Change a quest's display name.
+  QuestRenamed {
+    /// Target quest.
+    quest: QuestId,
+    /// New name.
+    name:  String,
+  },
   /// Claim a node for a quest.
   QuestClaimed {
     /// Quest gaining the claim.
@@ -160,6 +167,9 @@ impl Event {
       }
       Event::QuestRemoved { quest } => {
         graph.remove_quest(*quest);
+      }
+      Event::QuestRenamed { quest, name } => {
+        graph.rename_quest(*quest, name.clone());
       }
       Event::QuestClaimed { quest, node } => {
         graph.claim(*quest, *node);
@@ -281,6 +291,14 @@ impl Event {
         }
         inv
       }
+      Event::QuestRenamed { quest, .. } => graph
+        .quest(*quest)
+        .map(|q| Event::QuestRenamed {
+          quest: *quest,
+          name:  q.name.clone(),
+        })
+        .into_iter()
+        .collect(),
       Event::QuestClaimed { quest, node } => {
         vec![Event::QuestUnclaimed {
           quest: *quest,

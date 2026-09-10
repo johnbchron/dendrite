@@ -30,6 +30,8 @@ pub struct AppState {
   pub active_quest: Option<QuestId>,
   /// Editable name buffer for the selected node.
   pub name_draft:   String,
+  /// Editable name buffer for the active quest, shown in the switcher.
+  pub quest_draft:  String,
   /// Bumped to ask the canvas to refit/centre the graph.
   recenter_epoch:   u64,
   /// Current width of the side panel, in logical pixels.
@@ -93,6 +95,7 @@ impl AppState {
       selected:         None,
       active_quest:     None,
       name_draft:       String::new(),
+      quest_draft:      String::new(),
       recenter_epoch:   0,
       panel_width:      PANEL_WIDTH,
       panel_width_base: PANEL_WIDTH,
@@ -459,6 +462,9 @@ impl AppState {
   }
 
   /// Create a new quest and make it the active lens.
+  ///
+  /// The switcher stays open afterwards: a new quest is called "New quest"
+  /// until it is renamed, and the rename field lives in the switcher.
   pub fn new_quest(&mut self) {
     let id = QuestId::new();
     self.commit(vec![Event::QuestCreated {
@@ -466,6 +472,7 @@ impl AppState {
       name:  "New quest".into(),
     }]);
     self.set_active_quest(Some(id));
+    self.picker_open = true;
   }
 
   /// Switch the active quest lens (or clear it for the global view), and
@@ -473,6 +480,42 @@ impl AppState {
   pub fn set_active_quest(&mut self, quest: Option<QuestId>) {
     self.active_quest = quest;
     self.picker_open = false;
+    self.sync_quest_draft();
+  }
+
+  /// Refresh the quest rename buffer from the graph. Called whenever the
+  /// active quest changes and after undo/redo, so the field never shows a
+  /// name the graph no longer holds.
+  fn sync_quest_draft(&mut self) {
+    self.quest_draft = {
+      let store = self.lock();
+      self
+        .active_quest
+        .and_then(|id| store.graph().quest(id))
+        .map(|q| q.name.clone())
+        .unwrap_or_default()
+    };
+  }
+
+  /// Commit `name` as the active quest's name, from the switcher's rename
+  /// field. Mirrors [`AppState::rename_selected_to`]: Enter commits, blank
+  /// and unchanged input are no-ops so neither pushes an undo entry.
+  pub fn rename_active_quest_to(&mut self, name: String) {
+    let Some(id) = self.active_quest else { return };
+    let name = name.trim().to_string();
+    if name.is_empty() {
+      return;
+    }
+    let unchanged = self
+      .lock()
+      .graph()
+      .quest(id)
+      .is_some_and(|q| q.name == name);
+    if unchanged {
+      return;
+    }
+    self.quest_draft = name.clone();
+    self.commit(vec![Event::QuestRenamed { quest: id, name }]);
   }
 
   /// Claim the selected node for the active quest.
@@ -509,6 +552,7 @@ impl AppState {
       eprintln!("undo failed: {e}");
     }
     self.clamp_selection();
+    self.clamp_active_quest();
   }
 
   /// Redo the last undone group.
@@ -517,6 +561,7 @@ impl AppState {
       eprintln!("redo failed: {e}");
     }
     self.clamp_selection();
+    self.clamp_active_quest();
   }
 
   /// Drop a selection that no longer resolves (e.g. after undoing an add).
@@ -528,6 +573,16 @@ impl AppState {
     let Some(id) = self.selected else { return };
     let missing = self.lock().graph().node(id).is_none();
     self.select(if missing { None } else { Some(id) });
+  }
+
+  /// The same for the quest lens: drop an active quest that no longer
+  /// resolves, and otherwise refresh `quest_draft` against the graph.
+  fn clamp_active_quest(&mut self) {
+    let Some(id) = self.active_quest else { return };
+    if self.lock().graph().quest(id).is_none() {
+      self.active_quest = None;
+    }
+    self.sync_quest_draft();
   }
 }
 
@@ -549,6 +604,53 @@ mod tests {
         .nodes
         .iter()
         .any(|n| n.label == "Build backend" && n.state == NodeState::Ready)
+    );
+  }
+
+  #[test]
+  fn renaming_a_quest_commits_trims_and_undoes() {
+    let store = Store::open_in_memory().unwrap();
+    let mut state = AppState::new(store);
+    state.new_quest();
+    let id = state.active_quest.expect("new quest became the lens");
+    assert_eq!(
+      state.quest_draft, "New quest",
+      "draft seeded from the graph"
+    );
+
+    // Blank input is a no-op, so Enter on an empty field costs no undo entry.
+    state.rename_active_quest_to("   ".into());
+    assert_eq!(state.active_quest_summary().unwrap().0, "New quest");
+
+    state.rename_active_quest_to("  Ship v1  ".into());
+    assert_eq!(state.active_quest_summary().unwrap().0, "Ship v1");
+    assert_eq!(state.quest_draft, "Ship v1");
+
+    // Undo reverts the name and pulls the draft back with it.
+    state.undo();
+    assert_eq!(state.active_quest_summary().unwrap().0, "New quest");
+    assert_eq!(state.quest_draft, "New quest");
+
+    // Undoing the creation drops the lens rather than leaving it dangling.
+    state.undo();
+    assert_eq!(state.active_quest, None);
+    assert!(state.quest_draft.is_empty());
+    assert!(state.lock().graph().quest(id).is_none());
+  }
+
+  #[test]
+  fn renaming_a_quest_in_the_global_view_is_a_no_op() {
+    let store = Store::open_in_memory().unwrap();
+    let mut state = AppState::new(store);
+    state.new_quest();
+    state.set_active_quest(None);
+    state.rename_active_quest_to("Ship v1".into());
+    assert!(
+      state
+        .quest_list()
+        .iter()
+        .all(|(_, name, _)| name == "New quest"),
+      "no quest was renamed from the global view"
     );
   }
 

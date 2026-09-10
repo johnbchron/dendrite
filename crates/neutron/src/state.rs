@@ -88,8 +88,7 @@ pub struct SelectedInfo {
 impl AppState {
   /// Open (or create) the store at `path` and seed demo data if empty.
   pub fn new(store: Store) -> Self {
-    let empty = store.graph().node_count() == 0;
-    let mut state = Self {
+    Self {
       store:            Mutex::new(store),
       selected:         None,
       active_quest:     None,
@@ -100,11 +99,7 @@ impl AppState {
       linking:          false,
       link_filter:      String::new(),
       picker_open:      false,
-    };
-    if empty {
-      state.seed_demo();
     }
-    state
   }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
@@ -533,53 +528,6 @@ impl AppState {
     let Some(id) = self.selected else { return };
     let missing = self.lock().graph().node(id).is_none();
     self.select(if missing { None } else { Some(id) });
-  }
-
-  // --- demo seed --------------------------------------------------------
-
-  /// Seed a small illustrative graph so a fresh database is not empty.
-  fn seed_demo(&mut self) {
-    let ship = NodeId::new();
-    let backend = NodeId::new();
-    let frontend = NodeId::new();
-    let schema = NodeId::new();
-    let signoff = NodeId::new();
-    let quest = QuestId::new();
-
-    let e = |from, to, kind| Event::EdgeAdded {
-      edge: base::EdgeId::new(),
-      kind,
-      from,
-      to,
-    };
-    let task = |id, name: &str, done| Event::NodeAdded {
-      node:       id,
-      kind:       NodeKind::Task { completed: done },
-      name:       name.into(),
-      order_hint: 0.0,
-    };
-
-    self.commit(vec![
-      task(ship, "Ship v1", false),
-      task(backend, "Build backend", false),
-      task(frontend, "Build frontend", false),
-      task(schema, "Design schema", true),
-      Event::NodeAdded {
-        node:       signoff,
-        kind:       NodeKind::condition(),
-        name:       "Design signed off".into(),
-        order_hint: 0.0,
-      },
-      e(ship, backend, EdgeKind::Dependency),
-      e(ship, frontend, EdgeKind::Dependency),
-      e(backend, schema, EdgeKind::Dependency),
-      e(frontend, signoff, EdgeKind::Dependency),
-      Event::QuestCreated {
-        quest,
-        name: "v1 Launch".into(),
-      },
-      Event::QuestClaimed { quest, node: ship },
-    ]);
   }
 }
 

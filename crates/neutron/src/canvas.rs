@@ -22,7 +22,7 @@ use masonry::{
     PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
     RegisterCtx, StyleProperty, Widget, render_text,
   },
-  kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Vec2},
+  kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Size, Vec2},
   parley::{GenericFamily, Layout as TextLayout},
   peniko::{Brush, Color, Fill},
   vello::Scene,
@@ -110,6 +110,9 @@ pub struct CanvasWidget {
   /// construction (so the app opens centred) and whenever a recenter is
   /// requested (PLAN §5, §6.3).
   needs_fit:    bool,
+  /// Viewport size from the previous layout pass, so a resize can request
+  /// a refit (the existing fit is centred on the old viewport).
+  last_size:    Option<Size>,
   /// Cached per-node text layouts, keyed by id, invalidated when the label
   /// text changes.
   text_cache:   HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
@@ -126,6 +129,7 @@ impl CanvasWidget {
       last_pointer: None,
       panned:       false,
       needs_fit:    true,
+      last_size:    None,
       text_cache:   HashMap::new(),
     }
   }
@@ -315,7 +319,13 @@ impl Widget for CanvasWidget {
     } else {
       600.0
     };
-    bc.constrain((w, h))
+    let size = bc.constrain((w, h));
+    // A resize leaves the graph off-centre, so refit on the next paint.
+    if self.last_size.is_some_and(|prev| prev != size) {
+      self.request_fit();
+    }
+    self.last_size = Some(size);
+    size
   }
 
   fn paint(
@@ -499,9 +509,6 @@ fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge) {
   };
   let stroke_style = match edge.kind {
     EdgeKind::Dependency => masonry::kurbo::Stroke::new(1.5),
-    EdgeKind::Subtask => {
-      masonry::kurbo::Stroke::new(1.5).with_dashes(0.0, [6.0, 4.0])
-    }
     _ => masonry::kurbo::Stroke::new(1.5),
   };
   scene.stroke(

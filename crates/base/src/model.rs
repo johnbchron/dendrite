@@ -117,9 +117,6 @@ impl Node {
 pub enum EdgeKind {
   /// A plain dependency: the source needs the target.
   Dependency,
-  /// A subtask relationship: the parent needs its child. Gates like a
-  /// dependency; drawn differently.
-  Subtask,
 }
 
 /// A first-class directed edge. `from` requires `to` — always read in that

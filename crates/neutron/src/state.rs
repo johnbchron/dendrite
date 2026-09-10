@@ -570,8 +570,8 @@ impl AppState {
         name:       "Design signed off".into(),
         order_hint: 0.0,
       },
-      e(ship, backend, EdgeKind::Subtask),
-      e(ship, frontend, EdgeKind::Subtask),
+      e(ship, backend, EdgeKind::Dependency),
+      e(ship, frontend, EdgeKind::Dependency),
       e(backend, schema, EdgeKind::Dependency),
       e(frontend, signoff, EdgeKind::Dependency),
       Event::QuestCreated {

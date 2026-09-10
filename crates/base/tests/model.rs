@@ -106,23 +106,6 @@ fn task_is_blocked_until_all_requirements_satisfied() {
 }
 
 #[test]
-fn subtask_edges_gate_exactly_like_dependencies() {
-  let mut g = build(&[(1, false), (2, false)], &[], &[]);
-  g.insert_edge(Edge::new(
-    base::EdgeId::from_u128(10),
-    EdgeKind::Subtask,
-    nid(1),
-    nid(2),
-  ));
-  let d = Derived::compute(&g);
-  assert_eq!(d.state(nid(1)), Some(NodeState::Blocked));
-
-  g.set_satisfied(nid(2), true);
-  let d = Derived::compute(&g);
-  assert_eq!(d.state(nid(1)), Some(NodeState::Ready));
-}
-
-#[test]
 fn condition_states_are_pending_or_satisfied() {
   let g = build(&[], &[(1, false), (2, true)], &[]);
   let d = Derived::compute(&g);
@@ -278,7 +261,7 @@ fn removing_a_node_and_undoing_restores_edges_and_claims() {
     },
     Event::EdgeAdded {
       edge: base::EdgeId::from_u128(10),
-      kind: EdgeKind::Subtask,
+      kind: EdgeKind::Dependency,
       from: nid(2),
       to:   nid(1),
     },

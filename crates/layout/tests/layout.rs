@@ -109,6 +109,39 @@ fn order_hint_seeds_within_level_order() {
 }
 
 #[test]
+fn ranks_are_centred_on_a_shared_axis() {
+  // Rank 0: node 0 alone. Rank 1: nodes 1, 2, 3 (odd count).
+  let g = build(4, &[(10, 0, 1), (11, 0, 2), (12, 0, 3)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+
+  // Odd count: the middle node sits on the axis, its neighbours one spacing
+  // either side.
+  let mut row: Vec<f64> = [1, 2, 3]
+    .iter()
+    .map(|i| l.pos(nid(*i)).unwrap().x)
+    .collect();
+  row.sort_by(f64::total_cmp);
+  assert_eq!(row, vec![-cfg.x_spacing, 0.0, cfg.x_spacing]);
+
+  // A single-node rank is centred too, so the goal sits above the middle
+  // requirement rather than above the leftmost one.
+  assert_eq!(l.pos(nid(0)).unwrap().x, 0.0);
+}
+
+#[test]
+fn even_count_rank_straddles_the_axis() {
+  // Rank 1 holds nodes 1 and 2: no node on the axis, but the row's midpoint
+  // is on it.
+  let g = build(3, &[(10, 0, 1), (11, 0, 2)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+  let (x1, x2) = (l.pos(nid(1)).unwrap().x, l.pos(nid(2)).unwrap().x);
+  assert_eq!(x1 + x2, 0.0, "row straddles the axis");
+  assert_eq!((x2 - x1).abs(), cfg.x_spacing);
+}
+
+#[test]
 fn cyclic_graph_still_ranks_all_nodes() {
   // 2-cycle 0 <-> 1 plus a tail. Layout must not panic, must rank every
   // node, and must reverse at least one edge.

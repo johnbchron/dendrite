@@ -8,7 +8,8 @@
 //!    below, PLAN §7.3).
 //! 3. [`order`] — within-level ordering seeded by `order_hint`, refined by
 //!    barycenter crossing minimization (PLAN §5, risk §6.3).
-//! 4. x-coordinate assignment — even, stable spacing within each rank.
+//! 4. x-coordinate assignment — even, stable spacing within each rank, each
+//!    rank centred on a shared axis.
 //!
 //! The crate is pure: no I/O, no UI, no randomness. The same graph always
 //! yields the same [`Layout`].
@@ -93,9 +94,12 @@ pub fn layout(graph: &Graph, cfg: &LayoutConfig) -> Layout {
 
   let mut positions = HashMap::with_capacity(graph.node_count());
   for (rank, row) in ordering.by_rank.iter().enumerate() {
+    // Centre every rank on the shared x = 0 axis: an odd-count rank puts its
+    // middle node exactly on the axis, an even-count rank straddles it.
+    let mid = (row.len() as f64 - 1.0) / 2.0;
     for (col, node) in row.iter().enumerate() {
       positions.insert(*node, Pos {
-        x: col as f64 * cfg.x_spacing,
+        x: (col as f64 - mid) * cfg.x_spacing,
         y: rank as f64 * cfg.y_spacing,
       });
     }

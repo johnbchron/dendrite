@@ -67,7 +67,10 @@ The canvas fills the window; everything else floats over it.
 - **Inspector**: appears while a node is selected. It says why the node is
   in its state ("Waiting on…", "In a cycle with…", each a link), leads with
   one primary action (complete, reopen, satisfy), and lists requirements and
-  dependents; click one to go to it. The requirement search arms link mode:
+  dependents; click one to go to it. Its Quests section lists the quests
+  that claim the node: remove it from one, add it to another, or start a new
+  quest with it (the palette offers the same as "Add … to" / "Remove …
+  from"). The requirement search arms link mode:
   click nodes on the canvas (Shift+click for several) or pick a match.
 - **Now tray** (bottom left): everything actionable right now, grouped by
   quest in the global view.

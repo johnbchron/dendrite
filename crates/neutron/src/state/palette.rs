@@ -2,9 +2,10 @@
 //! choosing a row does.
 //!
 //! One list mixes three kinds of row: nodes (choose to go to one), commands
-//! (verb phrases, with their keys), and quests (switch the lens). With an
-//! empty query it shows recently selected nodes, then the commands; typing
-//! ranks everything by [`query::score`].
+//! (verb phrases, with their keys), and quests (switch the lens, or add the
+//! selection to one or take it out). With an empty query it shows recently
+//! selected nodes, then the commands; typing ranks everything by
+//! [`query::score`].
 
 use base::{NodeId, NodeState, QuestId};
 
@@ -55,6 +56,12 @@ pub enum PaletteAct {
   Rename,
   /// Delete the selection.
   Delete,
+  /// Add the selection to a quest.
+  Claim(QuestId),
+  /// Take the selection out of a quest.
+  Unclaim(QuestId),
+  /// Start a quest with the selection in it.
+  NewQuestWith,
 }
 
 /// What kind of thing a row is, for its icon and its place in the ranking.
@@ -123,6 +130,7 @@ impl AppState {
     if !self.palette_nodes_only {
       rows.extend(self.command_rows());
       rows.extend(self.quest_rows_for_palette());
+      rows.extend(self.membership_rows());
     }
     if text.is_empty() {
       // Recent nodes, then the commands (quests are one keystroke away).
@@ -317,6 +325,40 @@ impl AppState {
     rows
   }
 
+  /// Quest membership for the selection: add it to each quest that does not
+  /// claim it, take it out of each that does, or start a quest with it.
+  fn membership_rows(&self) -> Vec<PaletteRow> {
+    let Some(info) = self.selected_info() else {
+      return Vec::new();
+    };
+    let name = self.name_draft.trim().to_string();
+    let row = |act, label: String| PaletteRow {
+      act,
+      kind: RowKind::Quest,
+      label,
+      detail: Some("Quest".into()),
+      state: None,
+    };
+    let mut rows: Vec<PaletteRow> = self
+      .unclaimed_quests()
+      .into_iter()
+      .map(|(id, quest)| {
+        row(PaletteAct::Claim(id), format!("Add {name} to {quest}"))
+      })
+      .collect();
+    rows.extend(info.quests.into_iter().map(|(id, quest)| {
+      row(
+        PaletteAct::Unclaim(id),
+        format!("Remove {name} from {quest}"),
+      )
+    }));
+    rows.push(row(
+      PaletteAct::NewQuestWith,
+      format!("New quest with {name}"),
+    ));
+    rows
+  }
+
   /// Choose the highlighted row (Enter).
   pub fn accept_palette(&mut self) {
     let (rows, _) = self.palette_rows();
@@ -356,6 +398,9 @@ impl AppState {
       }
       PaletteAct::Rename => self.focus_requests.request(FieldKey::Title),
       PaletteAct::Delete => self.delete_selected(),
+      PaletteAct::Claim(quest) => self.claim_selected(quest),
+      PaletteAct::Unclaim(quest) => self.unclaim_selected(quest),
+      PaletteAct::NewQuestWith => self.new_quest_with_selected(),
     }
   }
 }

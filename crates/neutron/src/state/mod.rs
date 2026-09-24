@@ -70,6 +70,9 @@ pub struct AppState {
   now_open:             bool,
   /// Whether the inspector's "more actions" list is showing.
   more_open:            bool,
+  /// Whether the inspector's list of quests to add the selection to is
+  /// showing.
+  quests_open:          bool,
   /// The notice on screen, if any.
   toast:                Option<Toast>,
   /// Counter for [`Toast::id`].
@@ -295,6 +298,7 @@ impl AppState {
       settings_open:        false,
       now_open:             false,
       more_open:            false,
+      quests_open:          false,
       toast:                None,
       toast_serial:         0,
       palette_open:         false,
@@ -907,6 +911,31 @@ impl AppState {
   /// Show or hide the inspector's "more actions" list.
   pub fn toggle_more(&mut self) { self.more_open = !self.more_open; }
 
+  /// Whether the inspector's list of quests to add the selection to is
+  /// showing.
+  pub fn quests_open(&self) -> bool { self.quests_open }
+
+  /// Show or hide the inspector's list of quests to add the selection to.
+  pub fn toggle_quests(&mut self) { self.quests_open = !self.quests_open; }
+
+  /// The quests that do not claim the selected node, by name: the ones it
+  /// could be added to.
+  pub fn unclaimed_quests(&self) -> Vec<(QuestId, String)> {
+    let Some(node) = self.selected else {
+      return Vec::new();
+    };
+    let store = self.lock();
+    let graph = store.graph();
+    let claiming = base::claiming_quests(graph, node);
+    let mut quests: Vec<(QuestId, String)> = graph
+      .quests()
+      .filter(|q| !claiming.contains(&q.id))
+      .map(|q| (q.id, q.name.clone()))
+      .collect();
+    quests.sort_by(|a, b| a.1.cmp(&b.1));
+    quests
+  }
+
   /// Whether the Now tray is open.
   pub fn now_open(&self) -> bool { self.now_open }
 
@@ -1082,6 +1111,7 @@ impl AppState {
     self.cancel_link();
     self.live_edit = None;
     self.more_open = false;
+    self.quests_open = false;
     if let Some(node) = node {
       self.remember(node);
     }
@@ -1351,20 +1381,37 @@ impl AppState {
     self.sync_quest_draft();
   }
 
-  /// Claim the selected node for the active quest.
-  pub fn claim_selected(&mut self) {
-    let (Some(q), Some(n)) = (self.active_quest, self.selected) else {
-      return;
-    };
-    self.commit(vec![Event::QuestClaimed { quest: q, node: n }]);
+  /// Add the selected node to `quest` (claim it).
+  pub fn claim_selected(&mut self, quest: QuestId) {
+    let Some(node) = self.selected else { return };
+    self.quests_open = false;
+    self.commit(vec![Event::QuestClaimed { quest, node }]);
   }
 
-  /// Release the selected node's claim from the active quest.
-  pub fn unclaim_selected(&mut self) {
-    let (Some(q), Some(n)) = (self.active_quest, self.selected) else {
-      return;
-    };
-    self.commit(vec![Event::QuestUnclaimed { quest: q, node: n }]);
+  /// Take the selected node out of `quest` (release its claim). Under that
+  /// quest's lens the node may leave the view; it stays selected, so the
+  /// inspector can put it back.
+  pub fn unclaim_selected(&mut self, quest: QuestId) {
+    let Some(node) = self.selected else { return };
+    self.commit(vec![Event::QuestUnclaimed { quest, node }]);
+  }
+
+  /// Start a quest with the selected node in it, as one undo step: switch
+  /// to its lens and put the cursor in its name, as a new quest does.
+  pub fn new_quest_with_selected(&mut self) {
+    let Some(node) = self.selected else { return };
+    let quest = QuestId::new();
+    self.quests_open = false;
+    self.commit(vec![
+      Event::QuestCreated {
+        quest,
+        name: "New quest".into(),
+      },
+      Event::QuestClaimed { quest, node },
+    ]);
+    self.set_active_quest(Some(quest));
+    self.open_picker();
+    self.focus_requests.request(FieldKey::QuestName);
   }
 
   /// Undo the last committed group.
@@ -2036,6 +2083,71 @@ mod tests {
     assert_eq!(state.selected, Some(loose));
   }
 
+  /// The palette and the inspector change which quests claim the selection:
+  /// add it to one, take it out, or start a new one with it in one step.
+  #[test]
+  fn quest_membership_changes_from_the_palette_and_the_inspector() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    let quests = |state: &AppState| {
+      let names: Vec<String> = state
+        .selected_info()
+        .unwrap()
+        .quests
+        .into_iter()
+        .map(|q| q.1)
+        .collect();
+      names
+    };
+    state.select(Some(backend));
+    assert!(quests(&state).is_empty());
+    let (launch, _) = state.unclaimed_quests()[0].clone();
+
+    // Offered as "Add ... to", and only while something is selected.
+    state.open_palette(false);
+    state.set_palette_text("add build backend".into());
+    let (rows, _) = state.palette_rows();
+    let add = rows
+      .iter()
+      .find(|r| r.label == "Add Build backend to v1 Launch")
+      .expect("an add row");
+    assert_eq!(add.act, PaletteAct::Claim(launch));
+    state.run_palette(add.act);
+    assert_eq!(quests(&state), ["v1 Launch"]);
+    assert!(state.unclaimed_quests().is_empty());
+
+    // Now offered the other way round.
+    state.open_palette(false);
+    state.set_palette_text("remove build backend".into());
+    let (rows, _) = state.palette_rows();
+    assert!(rows.iter().any(|r| r.act == PaletteAct::Unclaim(launch)
+      && r.label == "Remove Build backend from v1 Launch"));
+    assert!(!rows.iter().any(|r| r.act == PaletteAct::Claim(launch)));
+    state.unclaim_selected(launch);
+    assert!(quests(&state).is_empty());
+
+    // A new quest with the node in it is one undo step, and opens on its
+    // name.
+    state.toggle_quests();
+    assert!(state.quests_open());
+    state.new_quest_with_selected();
+    assert!(!state.quests_open());
+    assert_eq!(quests(&state), ["New quest"]);
+    assert_eq!(
+      state.active_quest_summary().unwrap(),
+      ("New quest".into(), 1)
+    );
+    state.undo();
+    assert!(quests(&state).is_empty());
+    assert_eq!(state.unclaimed_quests().len(), 1, "the quest is gone too");
+
+    // Nothing selected, nothing offered.
+    state.select(None);
+    state.set_palette_text("add".into());
+    let (rows, _) = state.palette_rows();
+    assert!(!rows.iter().any(|r| matches!(r.act, PaletteAct::Claim(_))));
+  }
+
   #[test]
   fn the_slash_palette_lists_nodes_only() {
     let mut state = AppState::new(demo_store());
@@ -2224,8 +2336,9 @@ mod tests {
     let backend = node_named(&state, "Build backend");
     // A second quest that reaches Build backend too.
     state.new_quest_named("Backend".into());
+    let quest = state.active_quest.unwrap();
     state.select(Some(backend));
-    state.claim_selected();
+    state.claim_selected(quest);
     state.set_active_quest(None);
 
     let (groups, total) = state.now();

@@ -6,6 +6,7 @@
 //! the canvas is told the card's width instead, so fitting and revealing
 //! aim at the part still visible.
 
+use base::QuestId;
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
   WidgetView,
@@ -191,42 +192,9 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .cross_axis_alignment(CrossAxisAlignment::Center)
   .must_fill_major_axis(true);
 
-  let more = data.more_open().then(|| more_actions(data, info.claimed));
+  let more = data.more_open().then(|| more_actions(theme));
 
-  let quests = (!info.quests.is_empty()).then(|| {
-    let rows: Vec<_> = info
-      .quests
-      .iter()
-      .map(|(id, name)| {
-        let id = *id;
-        let current = data.active_quest == Some(id);
-        row_button(
-          theme,
-          false,
-          flex_row((
-            icon(
-              Icon::Flag,
-              size::ICON,
-              if current { theme.accent } else { theme.muted },
-            ),
-            fill(body(name.clone(), theme)),
-          ))
-          .cross_axis_alignment(CrossAxisAlignment::Center)
-          .gap(space::S.px()),
-          move |s: &mut AppState| s.set_active_quest(Some(id)),
-        )
-        .into_any_flex()
-      })
-      .collect();
-    flex_col((
-      section(format!("Quests · {}", info.quests.len()), theme),
-      flex_col(rows)
-        .cross_axis_alignment(CrossAxisAlignment::Fill)
-        .gap(space::HAIR.px()),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(space::S.px())
-  });
+  let quests = quest_list(data, &info.quests);
 
   flex_col((
     header,
@@ -330,37 +298,8 @@ fn reason_line(
   .gap(space::XS.px())
 }
 
-/// The actions behind "more": claiming for the active quest, and deleting.
-fn more_actions(
-  data: &mut AppState,
-  claimed: Option<bool>,
-) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
-  let quest = data.active_quest_summary().map(|(name, _)| name);
-  let claim = claimed.zip(quest).map(|(claimed, quest)| {
-    let text = if claimed {
-      format!("Unclaim from {quest}")
-    } else {
-      format!("Claim for {quest}")
-    };
-    row_button(
-      theme,
-      false,
-      flex_row((
-        icon(Icon::Flag, size::ICON, theme.muted),
-        fill(body(text, theme)),
-      ))
-      .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(space::S.px()),
-      move |s: &mut AppState| {
-        if claimed {
-          s.unclaim_selected();
-        } else {
-          s.claim_selected();
-        }
-      },
-    )
-  });
+/// The actions behind "more": deleting (quests have their own section).
+fn more_actions(theme: &'static Theme) -> impl WidgetView<AppState> + use<> {
   let delete = row_button(
     theme,
     false,
@@ -373,13 +312,125 @@ fn more_actions(
     |s: &mut AppState| s.delete_selected(),
   );
   sized_box(
-    flex_col((claim, delete))
+    flex_col((delete,))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
       .gap(space::HAIR.px()),
   )
   .padding(Padding::all(space::XS))
   .corner_radius(radius::CONTROL)
   .background_color(theme.sunken)
+}
+
+/// The quests the selection belongs to, and the way to change that. Each
+/// quest is a row that switches to its lens, with a remove button while
+/// hovered; "Add to a quest" opens the others, and a new quest, below it.
+fn quest_list(
+  data: &mut AppState,
+  claiming: &[(QuestId, String)],
+) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
+  let mut rows: Vec<_> = claiming
+    .iter()
+    .map(|(id, name)| {
+      let id = *id;
+      let current = data.active_quest == Some(id);
+      hover_row(
+        row_button(
+          theme,
+          false,
+          flex_row((
+            icon(
+              Icon::Flag,
+              size::ICON,
+              if current { theme.accent } else { theme.muted },
+            ),
+            fill(body(name.clone(), theme)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| s.set_active_quest(Some(id)),
+        ),
+        tooltip(
+          "Remove from this quest",
+          theme,
+          Anchor::End,
+          icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
+            s.unclaim_selected(id)
+          }),
+        ),
+      )
+      .into_any_flex()
+    })
+    .collect();
+
+  let open = data.quests_open();
+  rows.push(
+    row_button(
+      theme,
+      open,
+      flex_row((
+        icon(Icon::Plus, size::ICON, theme.muted),
+        fill(muted("Add to a quest\u{2026}", theme)),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(space::S.px()),
+      |s: &mut AppState| s.toggle_quests(),
+    )
+    .into_any_flex(),
+  );
+
+  let choices = open.then(|| {
+    let mut choices: Vec<_> = data
+      .unclaimed_quests()
+      .into_iter()
+      .map(|(id, name)| {
+        row_button(
+          theme,
+          false,
+          flex_row((
+            icon(Icon::Flag, size::ICON, theme.muted),
+            fill(body(name, theme)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| s.claim_selected(id),
+        )
+        .into_any_flex()
+      })
+      .collect();
+    choices.push(
+      row_button(
+        theme,
+        false,
+        flex_row((
+          icon(Icon::Plus, size::ICON, theme.muted),
+          fill(body("New quest with this node", theme)),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(space::S.px()),
+        |s: &mut AppState| s.new_quest_with_selected(),
+      )
+      .into_any_flex(),
+    );
+    sized_box(
+      flex_col(choices)
+        .cross_axis_alignment(CrossAxisAlignment::Fill)
+        .gap(space::HAIR.px()),
+    )
+    .padding(Padding::all(space::XS))
+    .corner_radius(radius::CONTROL)
+    .background_color(theme.sunken)
+  });
+
+  flex_col((
+    section(format!("Quests \u{b7} {}", claiming.len()), theme),
+    flex_col(rows)
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::HAIR.px()),
+    choices,
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Fill)
+  .gap(space::S.px())
 }
 
 /// The requirement search. Focusing it (click, or R) arms link mode, so

@@ -63,7 +63,7 @@ where
     .corner_radius(radius::CONTROL)
     .background_color(theme.sunken)
     .active_background_color(theme.rule)
-    .disabled_background_color(theme.bar)
+    .disabled_background_color(theme.surface)
     .border_color(theme.rule)
     .hovered_border_color(theme.accent)
 }

@@ -7,6 +7,7 @@
 
 mod canvas;
 mod divider;
+mod field;
 mod font;
 mod icons;
 mod state;

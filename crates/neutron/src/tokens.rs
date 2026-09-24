@@ -32,6 +32,8 @@ pub mod radius {
 
 /// The type scale, in logical pixels. Inter throughout.
 pub mod text {
+  /// The inspector's editable node name: the largest text in the chrome.
+  pub const TITLE: f32 = 18.0;
   /// Body text: list rows, reason lines, popover items.
   pub const BODY: f32 = 14.0;
   /// Button and field labels.

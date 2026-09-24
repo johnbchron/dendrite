@@ -25,13 +25,14 @@ use xilem::{
   style::Style as _,
   view::{
     Axis, CrossAxisAlignment, FlexExt as _, FlexSequence, Label, button, flex,
-    flex_col, flex_row, portal, sized_box, text_input,
+    flex_col, flex_row, portal, sized_box,
   },
 };
 
 use crate::{
   canvas::{CanvasAction, canvas},
   divider::{DividerAction, divider},
+  field::field,
   font,
   icons::{Icon, icon},
   state::{AppState, EdgeRow},
@@ -466,13 +467,10 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     if data.active_quest.is_some() {
       rows.push(
         // Commits as it is typed; Enter only tidies the draft.
-        text_input(data.quest_draft.clone(), |s: &mut AppState, v| {
+        field(data.quest_draft.clone(), theme, |s: &mut AppState, v| {
           s.rename_active_quest_to(v);
         })
-        .text_color(theme.text)
         .on_enter(|s: &mut AppState, _| s.finish_rename_quest())
-        .background_color(theme.sunken)
-        .border_color(theme.rule)
         .into_any_flex(),
       );
     }
@@ -568,13 +566,11 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   flex_col((
     // The name field *is* the title: one place, committed as it is typed so
     // the canvas follows along and nothing is lost by clicking away.
-    text_input(data.name_draft.clone(), |s: &mut AppState, v| {
+    field(data.name_draft.clone(), theme, |s: &mut AppState, v| {
       s.rename_selected_to(v);
     })
-    .text_color(theme.text)
-    .on_enter(|s: &mut AppState, _| s.finish_rename_selected())
-    .background_color(theme.sunken)
-    .border_color(theme.rule),
+    .size(text::TITLE)
+    .on_enter(|s: &mut AppState, _| s.finish_rename_selected()),
     flex_row((
       chip(
         state_str(info.state),
@@ -654,12 +650,11 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
         .text_size(text::SECONDARY)
         .color(theme.accent),
       muted("…or search:", theme),
-      text_input(data.link_filter.clone(), |s: &mut AppState, v| {
+      field(data.link_filter.clone(), theme, |s: &mut AppState, v| {
         s.link_filter = v;
       })
-      .text_color(theme.text)
-      .background_color(theme.sunken)
-      .border_color(theme.rule),
+      .size(text::CONTROL)
+      .placeholder("Search nodes"),
       flex(Axis::Vertical, rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
         .gap(space::XS.px()),

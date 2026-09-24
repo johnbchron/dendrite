@@ -9,14 +9,12 @@
 //! it everywhere text is shaped:
 //!
 //! - [`DATA`] is registered with the Xilem app at startup;
-//! - [`STACK`] goes on every label, and onto the canvas's hand-shaped text;
-//! - [`install`] remaps `SystemUi` to the bundled face, which is the only way
-//!   to reach `text_input`, since xilem 0.4 gives it no font setter.
+//! - [`STACK`] goes on every label, every text field (see [`crate::field`]) and
+//!   the canvas's hand-shaped text.
 
 use std::borrow::Cow;
 
 use masonry::parley::{
-  FontContext,
   fontique::GenericFamily,
   style::{FontFamily, FontStack},
 };
@@ -33,19 +31,3 @@ pub const STACK: FontStack<'static> = FontStack::List(Cow::Borrowed(&[
   FontFamily::Named(Cow::Borrowed(FAMILY)),
   FontFamily::Generic(GenericFamily::SystemUi),
 ]));
-
-/// Point the `SystemUi` generic family at the bundled face, so widgets that
-/// only ever ask for the default (text inputs) pick it up too.
-///
-/// Returns whether the face was found. It is registered by the Xilem driver
-/// when the event loop starts, so callers should retry until this succeeds.
-pub fn install(font_cx: &mut FontContext) -> bool {
-  let Some(family) = font_cx.collection.family_by_name(FAMILY) else {
-    return false;
-  };
-  font_cx.collection.set_generic_families(
-    GenericFamily::SystemUi,
-    std::iter::once(family.id()),
-  );
-  true
-}

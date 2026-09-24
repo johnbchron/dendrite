@@ -161,9 +161,6 @@ pub struct CanvasWidget {
   /// Where each of the scene's edges attaches, index-aligned with
   /// `scene.edges`; routed alongside `rects`.
   routes:       Vec<Option<Route>>,
-  /// Whether [`font::install`] has pointed the default family at the app
-  /// face yet.
-  font_ready:   bool,
 }
 
 impl CanvasWidget {
@@ -185,7 +182,6 @@ impl CanvasWidget {
       text_cache: HashMap::new(),
       rects: HashMap::new(),
       routes: Vec::new(),
-      font_ready: false,
     }
   }
 
@@ -438,14 +434,6 @@ impl Widget for CanvasWidget {
     if ctx.fonts_changed() {
       self.text_cache.clear();
       self.dirty = true;
-    }
-    // The canvas is the one widget of ours with a layout pass, so it is where
-    // the default family gets remapped. The bundled face only appears once
-    // the driver registers it, which flags `fonts_changed` for this same pass
-    // — so the text inputs laid out after us reshape in the right face.
-    if !self.font_ready {
-      let (font_cx, _) = ctx.text_contexts();
-      self.font_ready = font::install(font_cx);
     }
     if self.dirty {
       self.measure(ctx);

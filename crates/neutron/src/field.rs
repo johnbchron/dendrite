@@ -60,11 +60,13 @@ pub enum FieldAction {
 /// Paints the field's frame around a transparent Masonry `TextInput`, and
 /// reports focus changes.
 pub struct FieldWidget {
-  child:   WidgetPod<widgets::TextInput>,
-  colors:  Colors,
+  child:          WidgetPod<widgets::TextInput>,
+  colors:         Colors,
+  /// Whether Escape, after giving up focus, goes on to the key map too.
+  escape_bubbles: bool,
   /// Set between a press inside the field and the focus change it causes,
   /// so the view can tell a click from keyboard focus.
-  pressed: bool,
+  pressed:        bool,
 }
 
 /// The frame's colours, all taken from the theme.
@@ -90,6 +92,7 @@ impl FieldWidget {
     Self {
       child: child.to_pod(),
       colors,
+      escape_bubbles: false,
       pressed: false,
     }
   }
@@ -118,7 +121,9 @@ impl Widget for FieldWidget {
       && ctx.has_focus_target()
     {
       ctx.resign_focus();
-      ctx.set_handled();
+      if !self.escape_bubbles {
+        ctx.set_handled();
+      }
     }
   }
 
@@ -236,19 +241,23 @@ where
     on_changed: Box::new(on_changed),
     on_enter: None,
     focus_key: None,
+    on_focus: None,
+    escape_bubbles: false,
   }
 }
 
 /// The view created by [`field`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct Field<State, Action> {
-  contents:    String,
-  theme:       &'static Theme,
-  size:        f32,
-  placeholder: ArcStr,
-  on_changed:  Callback<State, Action, String>,
-  on_enter:    Option<Callback<State, Action, String>>,
-  focus_key:   Option<FieldKey>,
+  contents:       String,
+  theme:          &'static Theme,
+  size:           f32,
+  placeholder:    ArcStr,
+  on_changed:     Callback<State, Action, String>,
+  on_enter:       Option<Callback<State, Action, String>>,
+  focus_key:      Option<FieldKey>,
+  on_focus:       Option<Callback<State, Action, bool>>,
+  escape_bubbles: bool,
 }
 
 impl<State, Action> Field<State, Action> {
@@ -270,6 +279,23 @@ impl<State, Action> Field<State, Action> {
     F: Fn(&mut State, String) -> Action + Send + Sync + 'static,
   {
     self.on_enter = Some(Box::new(f));
+    self
+  }
+
+  /// Called with `true` when the field gains focus and `false` when it
+  /// loses it.
+  pub fn on_focus<F>(mut self, f: F) -> Self
+  where
+    F: Fn(&mut State, bool) -> Action + Send + Sync + 'static,
+  {
+    self.on_focus = Some(Box::new(f));
+    self
+  }
+
+  /// Let Escape go on to the key map after leaving the field, rather than
+  /// stopping there: for a field whose Escape should also end a mode.
+  pub fn escape_bubbles(mut self, bubbles: bool) -> Self {
+    self.escape_bubbles = bubbles;
     self
   }
 
@@ -321,7 +347,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     }
     let input = NewWidget::new_with_props(input, self.input_props());
     let pod = ctx.with_action_widget(|ctx| {
-      ctx.create_pod(FieldWidget::new(input, Colors::from_theme(self.theme)))
+      let mut widget = FieldWidget::new(input, Colors::from_theme(self.theme));
+      widget.escape_bubbles = self.escape_bubbles;
+      ctx.create_pod(widget)
     });
     (pod, ())
   }
@@ -334,6 +362,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     mut element: Mut<'_, Self::Element>,
     _: &mut State,
   ) {
+    element.widget.escape_bubbles = self.escape_bubbles;
     if !std::ptr::eq(self.theme, prev.theme) {
       element.widget.colors = Colors::from_theme(self.theme);
       element.ctx.request_paint_only();
@@ -402,22 +431,24 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         },
       };
     }
-    match message.take_message::<FieldAction>().map(|a| *a) {
-      // Focus from the keyboard selects the whole text, so typing replaces
-      // it, as a rename field should; a click keeps the caret where it
-      // landed.
-      Some(FieldAction::Focus {
-        focused: true,
-        by_pointer: false,
-      }) => {
-        let mut input = FieldWidget::child_mut(&mut element);
-        let mut area = widgets::TextInput::text_mut(&mut input);
-        let len: usize = area.widget.text().into_iter().map(str::len).sum();
-        widgets::TextArea::select_byte_range(&mut area, 0, len);
-        MessageResult::Nop
-      }
-      Some(_) => MessageResult::Nop,
-      None => MessageResult::Stale,
+    let Some(FieldAction::Focus {
+      focused,
+      by_pointer,
+    }) = message.take_message::<FieldAction>().map(|a| *a)
+    else {
+      return MessageResult::Stale;
+    };
+    // Focus from the keyboard selects the whole text, so typing replaces it,
+    // as a rename field should; a click keeps the caret where it landed.
+    if focused && !by_pointer {
+      let mut input = FieldWidget::child_mut(&mut element);
+      let mut area = widgets::TextInput::text_mut(&mut input);
+      let len: usize = area.widget.text().into_iter().map(str::len).sum();
+      widgets::TextArea::select_byte_range(&mut area, 0, len);
+    }
+    match &self.on_focus {
+      Some(f) => MessageResult::Action(f(app_state, focused)),
+      None => MessageResult::Nop,
     }
   }
 }

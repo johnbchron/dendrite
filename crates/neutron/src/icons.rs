@@ -66,6 +66,8 @@ icons! {
   Fit = 0xe257,
   /// The quest lens.
   Flag = 0xe0d1,
+  /// Link mode; a requirement to add.
+  Link = 0xe102,
   /// A condition (the nearest shape to its chamfered box).
   Octagon = 0xe126,
   /// Create something.

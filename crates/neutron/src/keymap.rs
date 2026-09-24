@@ -116,6 +116,11 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
     Key::Named(NamedKey::Enter | NamedKey::F2) if plain && flags.selection => {
       Some(Focus(FieldKey::Title))
     }
+    Key::Character(c)
+      if plain && flags.selection && c.eq_ignore_ascii_case("r") =>
+    {
+      Some(Focus(FieldKey::LinkSearch))
+    }
     _ if cmd => match letter(key) {
       Some('z') if m.shift() => Some(Run(Command::Redo)),
       Some('z') => Some(Run(Command::Undo)),
@@ -484,6 +489,21 @@ mod tests {
         Some(Binding::Focus(FieldKey::Title))
       );
     }
+  }
+
+  #[test]
+  fn r_opens_the_requirement_search_for_a_selection() {
+    let r = character("r", Modifiers::empty());
+    assert_eq!(resolve(&r, Flags::default()), None);
+    assert_eq!(
+      resolve(&r, SELECTED),
+      Some(Binding::Focus(FieldKey::LinkSearch))
+    );
+    // In an open query it is just a letter.
+    assert_eq!(
+      resolve(&r, QUERY),
+      Some(Binding::Run(Command::Query(QueryEdit::Insert("r".into()))))
+    );
   }
 
   #[test]

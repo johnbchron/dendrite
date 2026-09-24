@@ -11,7 +11,10 @@
 //! single-threaded, so the lock is uncontended; each read method takes it
 //! exactly once (the `std` mutex is not re-entrant).
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{
+  collections::HashSet,
+  sync::{Arc, Mutex, MutexGuard},
+};
 
 use base::{
   Derived, EdgeId, EdgeKind, Event, NodeId, NodeKind, NodeState, QuestId,
@@ -21,8 +24,8 @@ use layout::{LayoutConfig, Slot};
 
 use crate::{
   canvas::{
-    Camera, CameraRequest, CanvasScene, Insets, RenderEdge, RenderNode,
-    ZoomStep,
+    Camera, CameraRequest, CanvasScene, Insets, LinkMode, RenderEdge,
+    RenderNode, ZoomStep,
   },
   keymap::{self, Command},
   query::{self, Query},
@@ -581,11 +584,51 @@ impl AppState {
   /// Whether the canvas is armed to pick a requirement target.
   pub fn is_linking(&self) -> bool { self.linking }
 
-  /// Arm the canvas: the next node click adds a requirement to the selection
-  /// rather than moving the selection. No-op without a selection.
+  /// Arm the canvas: node clicks add requirements to the selection rather
+  /// than moving the selection. No-op without a selection, and a no-op if
+  /// already armed (so refocusing the search keeps what was typed).
   pub fn begin_link(&mut self) {
+    if self.linking {
+      return;
+    }
     self.linking = self.selected.is_some();
     self.link_filter.clear();
+  }
+
+  /// What the canvas needs to show link mode: the node gaining requirements,
+  /// the nodes a click cannot add (itself and those already required), and
+  /// those that would close a cycle (everything that already requires it,
+  /// directly or not). `None` when not linking.
+  pub fn link_mode(&self) -> Option<LinkMode> {
+    if !self.linking {
+      return None;
+    }
+    let source = self.selected?;
+    let store = self.lock();
+    let graph = store.graph();
+    let mut taken: HashSet<NodeId> =
+      graph.requirements_of(source).map(|e| e.to).collect();
+    taken.insert(source);
+    let mut closes_cycle = HashSet::new();
+    let mut stack = vec![source];
+    while let Some(n) = stack.pop() {
+      for e in graph.dependents_of(n) {
+        if closes_cycle.insert(e.from) {
+          stack.push(e.from);
+        }
+      }
+    }
+    closes_cycle.retain(|n| !taken.contains(n));
+    let name = graph
+      .node(source)
+      .map(|n| n.name.clone())
+      .unwrap_or_default();
+    Some(LinkMode {
+      source,
+      name,
+      taken,
+      closes_cycle,
+    })
   }
 
   /// Disarm without linking anything.
@@ -595,18 +638,32 @@ impl AppState {
   }
 
   /// A click on the canvas. While armed this consumes the click to build a
-  /// requirement edge, keeping the selection put so several can be added in a
-  /// row; otherwise it just moves the selection.
-  pub fn canvas_click(&mut self, node: Option<NodeId>) {
+  /// requirement edge and disarms, keeping the selection put; with `keep`
+  /// (Shift held) it stays armed so several can be added in a row. Clicking
+  /// empty space means "never mind". Unarmed, it moves the selection.
+  pub fn canvas_click(&mut self, node: Option<NodeId>, keep: bool) {
     if self.linking {
-      self.cancel_link();
-      // Clicking empty space means "never mind".
-      if let Some(target) = node {
-        self.add_requirement(target);
+      match node {
+        Some(target) => {
+          self.add_requirement(target);
+          if !keep {
+            self.cancel_link();
+          }
+        }
+        None => self.cancel_link(),
       }
       return;
     }
     self.select(node);
+  }
+
+  /// Enter in the requirement search: link the best match and disarm.
+  pub fn link_best_match(&mut self) {
+    if let Some((target, _)) = self.candidate_requirements().0.first() {
+      let target = *target;
+      self.add_requirement(target);
+      self.cancel_link();
+    }
   }
 
   /// Candidate requirement targets matching [`Self::link_filter`], capped at
@@ -620,16 +677,22 @@ impl AppState {
     let graph = store.graph();
     let existing: std::collections::HashSet<NodeId> =
       graph.requirements_of(id).map(|e| e.to).collect();
-    let needle = self.link_filter.trim().to_lowercase();
-    let mut v: Vec<(NodeId, String)> = graph
+    let mut scored: Vec<(u32, String, NodeId)> = graph
       .nodes()
       .filter(|n| n.id != id && !existing.contains(&n.id))
-      .filter(|n| needle.is_empty() || n.name.to_lowercase().contains(&needle))
-      .map(|n| (n.id, n.name.clone()))
+      .filter_map(|n| {
+        query::score(&self.link_filter, &n.name)
+          .map(|sc| (sc, n.name.clone(), n.id))
+      })
       .collect();
-    v.sort_by(|a, b| a.1.cmp(&b.1));
-    let total = v.len();
-    v.truncate(LINK_PICKER_MAX);
+    // Best match first; the name, then the id, keep the order stable.
+    scored.sort();
+    let total = scored.len();
+    let v = scored
+      .into_iter()
+      .take(LINK_PICKER_MAX)
+      .map(|(_, name, id)| (id, name))
+      .collect();
     (v, total)
   }
 
@@ -1368,7 +1431,7 @@ mod tests {
     // Unarmed, a click just moves the selection.
     state.select(Some(backend));
     assert!(!state.is_linking());
-    state.canvas_click(Some(frontend));
+    state.canvas_click(Some(frontend), false);
     assert_eq!(state.selected, Some(frontend));
 
     // Armed, it builds an edge and leaves the selection put, so several
@@ -1376,7 +1439,7 @@ mod tests {
     state.select(Some(backend));
     state.begin_link();
     assert!(state.is_linking());
-    state.canvas_click(Some(frontend));
+    state.canvas_click(Some(frontend), false);
     assert_eq!(state.selected, Some(backend));
     assert!(!state.is_linking());
     let names: Vec<String> = state
@@ -1390,7 +1453,7 @@ mod tests {
 
     // Armed, a click on empty space cancels without linking or deselecting.
     state.begin_link();
-    state.canvas_click(None);
+    state.canvas_click(None, false);
     assert!(!state.is_linking());
     assert_eq!(state.selected, Some(backend));
   }
@@ -1565,6 +1628,77 @@ mod tests {
     assert_eq!(info.primary, Primary::Complete { enabled: false });
   }
 
+  /// Shift+click adds a requirement and stays armed; a plain click adds
+  /// one and disarms; empty space disarms without adding.
+  #[test]
+  fn shift_click_keeps_link_mode_armed() {
+    let mut state = AppState::new(demo_store());
+    let ship = node_named(&state, "Ship v1");
+    let schema = node_named(&state, "Design schema");
+    let signoff = node_named(&state, "Design signed off");
+    state.select(Some(ship));
+    state.begin_link();
+    state.canvas_click(Some(schema), true);
+    assert!(state.is_linking());
+    state.canvas_click(Some(signoff), false);
+    assert!(!state.is_linking());
+    let names: Vec<_> = state
+      .selected_info()
+      .unwrap()
+      .requirements
+      .into_iter()
+      .map(|r| r.name)
+      .collect();
+    assert!(names.contains(&"Design schema".to_string()));
+    assert!(names.contains(&"Design signed off".to_string()));
+    assert_eq!(state.selected, Some(ship), "linking never moves selection");
+  }
+
+  /// Link mode tells the canvas what a click would do.
+  #[test]
+  fn link_mode_marks_taken_and_cycle_closing_nodes() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    let schema = node_named(&state, "Design schema");
+    let ship = node_named(&state, "Ship v1");
+    state.select(Some(backend));
+    assert!(state.link_mode().is_none(), "only while linking");
+    state.begin_link();
+    let mode = state.link_mode().unwrap();
+    assert_eq!(mode.source, backend);
+    assert_eq!(mode.name, "Build backend");
+    // Itself, and what it already requires.
+    assert!(mode.taken.contains(&backend) && mode.taken.contains(&schema));
+    // Ship v1 requires Build backend, so Build backend requiring Ship v1
+    // would close a cycle.
+    assert!(mode.closes_cycle.contains(&ship));
+    assert!(!mode.closes_cycle.contains(&schema));
+  }
+
+  #[test]
+  fn the_requirement_search_ranks_and_enter_takes_the_best() {
+    let mut state = AppState::new(demo_store());
+    let ship = node_named(&state, "Ship v1");
+    let schema = node_named(&state, "Design schema");
+    state.select(Some(ship));
+    state.begin_link();
+    state.link_filter = "sch".into();
+    assert_eq!(state.candidate_requirements().0[0].0, schema);
+    // Refocusing the search while armed keeps the query.
+    state.begin_link();
+    assert_eq!(state.link_filter, "sch");
+    state.link_best_match();
+    assert!(!state.is_linking());
+    assert!(
+      state
+        .selected_info()
+        .unwrap()
+        .requirements
+        .iter()
+        .any(|r| r.other == schema)
+    );
+  }
+
   #[test]
   fn linking_an_existing_requirement_adds_no_second_edge() {
     let mut state = AppState::new(demo_store());
@@ -1576,7 +1710,7 @@ mod tests {
 
     // The canvas path: arm, then click a node already required.
     state.begin_link();
-    state.canvas_click(Some(schema));
+    state.canvas_click(Some(schema), false);
     // And the direct path.
     state.add_edge(backend, schema, EdgeKind::Dependency);
 

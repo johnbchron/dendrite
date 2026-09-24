@@ -18,6 +18,8 @@ use masonry::core::WidgetId;
 pub enum FieldKey {
   /// The inspector's node name.
   Title,
+  /// The inspector's requirement search, which arms link mode.
+  LinkSearch,
 }
 
 static FIELDS: LazyLock<Mutex<HashMap<FieldKey, WidgetId>>> =

@@ -17,8 +17,8 @@ use xilem::{
 };
 
 use super::controls::{
-  body, btn, chip, fill, icon_btn, label, muted, primary_btn, row_btn,
-  row_button, section, spacer, state_dot, state_str,
+  body, chip, fill, icon_btn, label, muted, primary_btn, row_button, section,
+  spacer, state_dot, state_str,
 };
 use crate::{
   divider::{DividerAction, divider},
@@ -382,68 +382,75 @@ fn more_actions(
   .background_color(theme.sunken)
 }
 
-/// The requirement-adding control: a single button, which on arming expands
-/// into the canvas prompt plus a bounded, filterable picker.
-///
-/// Canvas clicking is the primary path — it scales to any graph size and reads
-/// off the picture in front of you. The picker is the fallback for targets
-/// that are not on the canvas at all, which happens inside a quest lens, where
-/// out-of-scope nodes are not drawn.
+/// The requirement search. Focusing it (click, or R) arms link mode, so
+/// the canvas and the search work together: click a node, or type and pick a
+/// match. The search is the fallback for targets that are not on the canvas,
+/// which happens inside a quest lens, where out-of-scope nodes are not drawn.
 fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
-  if !data.is_linking() {
-    return btn("+ Add requirement", theme, |s: &mut AppState| {
-      s.begin_link()
-    })
-    .boxed();
-  }
+  let search = field(data.link_filter.clone(), theme, |s: &mut AppState, v| {
+    // Typing after Enter linked a match re-arms the mode.
+    s.begin_link();
+    s.link_filter = v;
+  })
+  .size(text::CONTROL)
+  .placeholder("Require\u{2026}  (R)")
+  .focus_key(FieldKey::LinkSearch)
+  // Escape leaves the field *and* ends link mode.
+  .escape_bubbles(true)
+  .on_focus(|s: &mut AppState, focused| {
+    if focused {
+      s.begin_link();
+    }
+  })
+  .on_enter(|s: &mut AppState, _| s.link_best_match());
 
-  let (candidates, total) = data.candidate_requirements();
-  let shown = candidates.len();
-  let mut rows: Vec<_> = candidates
-    .into_iter()
-    .map(|(id, name)| {
-      row_btn(
-        format!("+ {name}"),
-        theme,
-        false,
-        move |s: &mut AppState| {
-          s.add_requirement(id);
-          s.cancel_link();
-        },
-      )
-      .into_any_flex()
-    })
-    .collect();
-  if rows.is_empty() {
-    rows.push(muted("No matches.", theme).into_any_flex());
-  }
-
-  let overflow = (total > shown)
-    .then(|| muted(format!("{} more — type to narrow", total - shown), theme));
-
-  sized_box(
-    flex_col((
-      label("Click a node on the canvas to link it.".to_string())
-        .text_size(text::SECONDARY)
-        .color(theme.accent),
-      muted("…or search:", theme),
-      field(data.link_filter.clone(), theme, |s: &mut AppState, v| {
-        s.link_filter = v;
+  let results = data.is_linking().then(|| {
+    let (candidates, total) = data.candidate_requirements();
+    let shown = candidates.len();
+    let mut rows: Vec<_> = candidates
+      .into_iter()
+      .enumerate()
+      .map(|(i, (id, name))| {
+        row_button(
+          theme,
+          // Enter takes the first row, so it is marked.
+          i == 0,
+          flex_row((
+            icon(Icon::Link, size::ICON, theme.muted),
+            fill(body(name, theme)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| {
+            s.add_requirement(id);
+            s.cancel_link();
+          },
+        )
+        .into_any_flex()
       })
-      .size(text::CONTROL)
-      .placeholder("Search nodes"),
-      flex(Axis::Vertical, rows)
+      .collect();
+    if rows.is_empty() {
+      rows.push(muted("No matches.", theme).into_any_flex());
+    }
+    let more = (total > shown)
+      .then(|| muted(format!("{} more: type to narrow", total - shown), theme));
+    flex_col((
+      flex_col(rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
-        .gap(space::XS.px()),
-      overflow,
-      btn("Cancel", theme, |s: &mut AppState| s.cancel_link()),
+        .gap(space::HAIR.px()),
+      more,
+      muted(
+        "Or click a node on the canvas. Shift+click adds several.",
+        theme,
+      ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(space::S.px()),
-  )
-  .padding(Padding::all(space::M))
-  .background_color(theme.sunken)
-  .corner_radius(radius::CARD)
-  .boxed()
+    .gap(space::XS.px())
+  });
+
+  flex_col((search, results))
+    .cross_axis_alignment(CrossAxisAlignment::Fill)
+    .gap(space::XS.px())
+    .boxed()
 }

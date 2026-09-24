@@ -45,29 +45,6 @@ pub(super) fn btn_label<S: Into<String>>(
     .disabled_color(theme.muted)
 }
 
-/// A standalone button, in the palette's colours.
-///
-/// Masonry's own button chrome is a fixed dark skin — its disabled ground is
-/// pure black — so every state's ground is set here alongside the label.
-pub(super) fn btn<S, F>(
-  text: S,
-  theme: &'static Theme,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<S, F>
-where
-  S: Into<String>,
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  button(btn_label(text, theme), on_press)
-    .padding(Padding::from_vh(space::XS, space::M))
-    .corner_radius(radius::CONTROL)
-    .background_color(theme.sunken)
-    .active_background_color(theme.rule)
-    .disabled_background_color(theme.surface)
-    .border_color(theme.rule)
-    .hovered_border_color(theme.accent)
-}
-
 /// The one filled button on a surface: the action it leads with. Disabled,
 /// it drops to the plain ground so it no longer reads as the thing to do.
 pub(super) fn primary_btn<S, F>(
@@ -187,21 +164,8 @@ where
 
 /// A list entry that acts on press — a quest to switch to, a node to jump
 /// to. Left-aligned and flat, so a stack of them reads as a list rather than
-/// a column of centred buttons; `active` marks the current one.
-pub(super) fn row_btn<S, F>(
-  text: S,
-  theme: &'static Theme,
-  active: bool,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<S, F>
-where
-  S: Into<String>,
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  row_button(theme, active, btn_label(text, theme), on_press)
-}
-
-/// A [`row_btn`] with arbitrary content (icons, swatches, a trailing mark).
+/// a column of centred buttons; `active` marks the current (or highlighted)
+/// one.
 pub(super) fn row_button<V, F>(
   theme: &'static Theme,
   active: bool,

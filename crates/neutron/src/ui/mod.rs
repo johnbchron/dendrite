@@ -19,20 +19,30 @@ mod toolbar;
 use masonry::{
   kurbo::Vec2,
   peniko::Color,
-  properties::{Padding, types::UnitPoint},
+  properties::{
+    Padding,
+    types::{AsUnit, UnitPoint},
+  },
 };
 use xilem::{
   AnyWidgetView, WidgetView,
   style::Style as _,
-  view::{button, flex_col, sized_box, zstack, zstack_item},
+  view::{
+    CrossAxisAlignment, button, flex_col, flex_row, sized_box, zstack,
+    zstack_item,
+  },
 };
 
 use crate::{
   appear::{Motion, appear},
-  canvas::{CanvasAction, canvas},
+  canvas::{CanvasAction, LinkMode, canvas},
+  font,
+  icons::{Icon, icon},
   keymap::keymap,
   state::AppState,
-  tokens::{motion, size, space},
+  surface::{Level, surface},
+  theme::Theme,
+  tokens::{motion, size, space, text},
 };
 
 /// How popovers arrive: dropping a few pixels from the bar they hang off.
@@ -41,16 +51,24 @@ const DROP: Motion = Motion {
   duration_ms: motion::POPOVER_MS,
 };
 
+/// A label in the app face (see [`crate::font`]).
+fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Label {
+  xilem::view::label(text).font(font::STACK)
+}
+
 /// Build the whole UI from the current state.
 pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+  let link = data.link_mode();
+  let banner = layer(link.as_ref().map(|link| link_banner(link, data.theme())));
   let canvas_view = canvas(
     data.scene(),
     data.theme(),
     data.camera(),
     data.canvas_insets(),
+    link,
     |s: &mut AppState, action| match action {
       // While a link is armed this builds an edge instead of selecting.
-      CanvasAction::Select(id) => s.canvas_click(id),
+      CanvasAction::Click { node, shift } => s.canvas_click(node, shift),
       CanvasAction::Zoomed(percent) => s.set_zoom_percent(percent),
     },
   );
@@ -96,6 +114,7 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     zstack_item(card, UnitPoint::TOP_RIGHT),
     zstack_item(tray, UnitPoint::BOTTOM_LEFT),
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
+    zstack_item(banner, UnitPoint::TOP),
     zstack_item(backdrop, UnitPoint::TOP_LEFT),
     zstack_item(settings, UnitPoint::TOP_RIGHT),
     zstack_item(quests, UnitPoint::TOP_LEFT),
@@ -106,6 +125,36 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   // that no focused field handles.
   keymap(data.key_flags(), window, |s: &mut AppState, command| {
     s.run(command)
+  })
+}
+
+/// The banner along the canvas's top edge while link mode is armed, so the
+/// mode is never invisible.
+fn link_banner(
+  link: &LinkMode,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  sized_box(surface(
+    theme,
+    Level::Popover,
+    space::S,
+    flex_row((
+      icon(Icon::Link, size::ICON, theme.accent),
+      label(format!("Pick a requirement for {}", link.name))
+        .text_size(text::BODY)
+        .color(theme.text),
+      label("Shift+click adds several \u{b7} Esc to cancel")
+        .text_size(text::SECONDARY)
+        .color(theme.muted),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px()),
+  ))
+  .padding(Padding {
+    top:    size::TOP_BAR + space::S,
+    right:  0.0,
+    bottom: 0.0,
+    left:   0.0,
   })
 }
 

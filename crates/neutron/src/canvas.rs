@@ -11,18 +11,22 @@
 //! global graph on every rebuild. All domain logic lives in `base`; all
 //! layout lives in `layout`.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::Arc,
+};
 
 use base::{EdgeId, NodeId, NodeKind, NodeState};
 use layout::{Arrangement, Channel, LayoutConfig};
 use masonry::{
   accesskit::{Node as AccessNode, Role},
   core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, StyleProperty, UpdateCtx, Widget, render_text,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, CursorIcon, EventCtx,
+    LayoutCtx, PaintCtx, PointerButton, PointerEvent, PropertiesMut,
+    PropertiesRef, QueryCtx, RegisterCtx, StyleProperty, UpdateCtx, Widget,
+    render_text,
   },
-  kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Size, Vec2},
+  kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Size, Stroke, Vec2},
   parley::{Layout as TextLayout, LineHeight},
   peniko::{Brush, Color, Fill},
   vello::Scene,
@@ -73,7 +77,7 @@ const CULL_MARGIN: f64 = 16.0;
 /// One node as the canvas needs to draw and hit-test it.
 #[derive(Clone, Debug)]
 pub struct RenderNode {
-  /// Which node this is (returned in [`CanvasAction::Select`]).
+  /// Which node this is (returned in [`CanvasAction::Click`]).
   pub id:       NodeId,
   /// Display text.
   pub label:    String,
@@ -163,11 +167,32 @@ pub struct Camera {
   pub request: CameraRequest,
 }
 
+/// Link mode, as the canvas shows it: which node is gaining requirements,
+/// which nodes a click cannot add, and which would close a cycle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkMode {
+  /// The node gaining requirements (the selection).
+  pub source:       NodeId,
+  /// Its name, for the banner.
+  pub name:         String,
+  /// The source itself and the nodes it already requires: dimmed, and a
+  /// click on them adds nothing.
+  pub taken:        HashSet<NodeId>,
+  /// Nodes that already require the source, so requiring them would close a
+  /// cycle: allowed, but outlined as a warning.
+  pub closes_cycle: HashSet<NodeId>,
+}
+
 /// Something the user did on the canvas that the app must react to.
 #[derive(Clone, Debug)]
 pub enum CanvasAction {
-  /// Selection changed (a node, or `None` when the user clicked empty space).
-  Select(Option<NodeId>),
+  /// A click on a node, or on empty space (`None`), with Shift held or not.
+  Click {
+    /// The node clicked, if any.
+    node:  Option<NodeId>,
+    /// Whether Shift was held.
+    shift: bool,
+  },
   /// The zoom level, as a whole percentage, changed.
   Zoomed(u32),
 }
@@ -198,6 +223,10 @@ pub struct CanvasWidget {
   reveal:        Option<NodeId>,
   /// How much of the canvas the chrome covers.
   insets:        Insets,
+  /// Link mode, while it is armed.
+  link:          Option<LinkMode>,
+  /// The node under the pointer, tracked while no button is held.
+  hover:         Option<NodeId>,
   /// The zoom percentage last reported to the app, so it hears of changes
   /// only.
   reported_zoom: u32,
@@ -242,6 +271,8 @@ impl CanvasWidget {
       reveal: None,
       insets: Insets::default(),
       reported_zoom: 100,
+      link: None,
+      hover: None,
       press_origin: None,
       last_pointer: None,
       panned: false,
@@ -458,6 +489,21 @@ impl Widget for CanvasWidget {
             ctx.request_render();
           }
           self.last_pointer = Some(p);
+        } else {
+          // Hovering: in link mode, the node under the pointer gets a
+          // preview of the edge a click would add.
+          let hover = self.hit_test(self.to_world(p));
+          if hover != self.hover {
+            self.hover = hover;
+            if self.link.is_some() {
+              ctx.request_render();
+            }
+          }
+        }
+      }
+      PointerEvent::Leave(_) => {
+        if self.hover.take().is_some() && self.link.is_some() {
+          ctx.request_render();
         }
       }
       PointerEvent::Up(e) => {
@@ -469,7 +515,10 @@ impl Widget for CanvasWidget {
           let p = local_pos(ctx, e.state.position);
           if !self.panned && e.button == Some(PointerButton::Primary) {
             let hit = self.hit_test(self.to_world(p));
-            ctx.submit_action::<CanvasAction>(CanvasAction::Select(hit));
+            ctx.submit_action::<CanvasAction>(CanvasAction::Click {
+              node:  hit,
+              shift: e.state.modifiers.shift(),
+            });
           }
         }
         self.last_pointer = None;
@@ -599,6 +648,21 @@ impl Widget for CanvasWidget {
       }
     }
 
+    // In link mode, the edge a click on the hovered node would add.
+    if let Some(link) = &self.link
+      && let Some(target) = self.hover
+      && !link.taken.contains(&target)
+      && let (Some(&from), Some(&to)) =
+        (self.rects.get(&link.source), self.rects.get(&target))
+    {
+      let color = if link.closes_cycle.contains(&target) {
+        self.theme.cycle
+      } else {
+        self.theme.accent
+      };
+      paint_preview(scene, tf, from, to, color);
+    }
+
     // Nodes on top.
     for node in &self.scene.nodes {
       if let Some(&rect) = self.rects.get(&node.id)
@@ -606,6 +670,14 @@ impl Widget for CanvasWidget {
       {
         self.paint_node(scene, tf, node, rect);
       }
+    }
+  }
+
+  fn get_cursor(&self, _ctx: &QueryCtx<'_>, _pos: Point) -> CursorIcon {
+    if self.link.is_some() {
+      CursorIcon::Crosshair
+    } else {
+      CursorIcon::Default
     }
   }
 
@@ -632,7 +704,17 @@ impl CanvasWidget {
     rect: Rect,
   ) {
     let (fill, border) = self.theme.for_state(node.state);
-    let fill = if node.dimmed { theme::dim(fill) } else { fill };
+    // In link mode, nodes a click cannot add fade back.
+    let taken = self
+      .link
+      .as_ref()
+      .is_some_and(|l| l.taken.contains(&node.id));
+    let fill = if node.dimmed || taken {
+      theme::dim(fill)
+    } else {
+      fill
+    };
+    let border = if taken { theme::dim(border) } else { border };
 
     match node.kind {
       NodeKind::Task { .. } => {
@@ -645,6 +727,23 @@ impl CanvasWidget {
         scene.fill(Fill::NonZero, tf, &Brush::Solid(fill), None, &shape);
         stroke(scene, tf, &shape, border, node.selected, self.theme);
       }
+    }
+
+    // In link mode, a dashed warning ring round nodes that would close a
+    // cycle if required.
+    if self
+      .link
+      .as_ref()
+      .is_some_and(|l| l.closes_cycle.contains(&node.id))
+    {
+      let ring = RoundedRect::from_rect(rect.inflate(4.0, 4.0), 11.0);
+      scene.stroke(
+        &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
+        tf,
+        &Brush::Solid(self.theme.cycle),
+        None,
+        &ring,
+      );
     }
 
     // Labels are shaped in the layout pass; one is only missing if this
@@ -924,6 +1023,47 @@ fn edge_curve(route: &Route) -> (BezPath, Point) {
   (path, tip)
 }
 
+/// Paint the edge link mode would add from `from` to `to`: dashed, in
+/// `color`, routed like a real edge (without channels, since it does not
+/// exist yet).
+fn paint_preview(
+  scene: &mut Scene,
+  tf: Affine,
+  from: Rect,
+  to: Rect,
+  color: Color,
+) {
+  let (a, b) = (NodeId::from_u128(0), NodeId::from_u128(1));
+  let edge = RenderEdge {
+    id:       EdgeId::from_u128(0),
+    from:     a,
+    to:       b,
+    reversed: false,
+  };
+  let rects = HashMap::from([(a, from), (b, to)]);
+  let Some(route) = route_edges(&[edge], &rects, &HashMap::new()).remove(0)
+  else {
+    return;
+  };
+  let (curve, tip) = edge_curve(&route);
+  scene.stroke(
+    &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
+    tf,
+    &Brush::Solid(color),
+    None,
+    &curve,
+  );
+  let axis = route.axis;
+  let base = tip - axis * HEAD_LEN;
+  let perp = Vec2::new(-axis.y, axis.x) * HEAD_HALF_W;
+  let mut head = BezPath::new();
+  head.move_to(tip);
+  head.line_to(base + perp);
+  head.line_to(base - perp);
+  head.close_path();
+  scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
+}
+
 /// Paint one edge as a curve plus an arrowhead at the requirement end.
 fn paint_edge(
   scene: &mut Scene,
@@ -1037,6 +1177,8 @@ pub struct Canvas<F> {
   camera:    Camera,
   /// How much of the canvas the chrome covers.
   insets:    Insets,
+  /// Link mode, while it is armed.
+  link:      Option<LinkMode>,
   on_action: F,
 }
 
@@ -1052,6 +1194,7 @@ pub fn canvas<State, Action, F>(
   theme: &'static Theme,
   camera: Camera,
   insets: Insets,
+  link: Option<LinkMode>,
   on_action: F,
 ) -> Canvas<impl Fn(&mut State, CanvasAction) -> MessageResult<Action>>
 where
@@ -1062,6 +1205,7 @@ where
     theme,
     camera,
     insets,
+    link,
     on_action: move |state: &mut State, action| {
       MessageResult::Action(on_action(state, action))
     },
@@ -1089,6 +1233,7 @@ where
       let mut w = CanvasWidget::new(self.theme);
       w.set_scene(self.scene.clone());
       w.insets = self.insets;
+      w.link = self.link.clone();
       ctx.create_pod(w)
     });
     // The canvas fits itself on first paint, whatever the request says.
@@ -1118,6 +1263,10 @@ where
     }
     if self.insets != prev.insets {
       element.widget.insets = self.insets;
+    }
+    if self.link != prev.link {
+      element.widget.link = self.link.clone();
+      element.ctx.request_render();
     }
     if *last_epoch != self.camera.epoch {
       *last_epoch = self.camera.epoch;

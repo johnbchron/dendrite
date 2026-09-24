@@ -1,8 +1,4 @@
-//! The Xilem view tree: a window-wide toolbar over the canvas and the side
-//! panel (PLAN §5).
-//!
-//! `app_logic` is re-run whenever state changes; it derives the whole UI from
-//! [`AppState`].
+//! The side panel (PLAN §5).
 //!
 //! The panel is three fixed regions rather than one scrolling stack, because
 //! the three things it shows change on completely different rhythms: the quest
@@ -10,253 +6,30 @@
 //! the only part that scrolls, and the actionable frontier is pinned at the
 //! bottom where it can never be pushed out of sight. Both list regions are
 //! capped, so the panel's height never grows with the graph.
-//!
-//! Commands that act on the document rather than the selection — undo, redo,
-//! recenter, node creation — live in the toolbar above both panes.
 
 use base::NodeState;
-use masonry::{
-  core::ArcStr,
-  peniko::Color,
-  properties::{Padding, types::AsUnit},
-};
+use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
   FontWeight, WidgetView,
   style::Style as _,
   view::{
-    Axis, CrossAxisAlignment, FlexExt as _, FlexSequence, Label, button, flex,
-    flex_col, flex_row, portal, sized_box,
+    Axis, CrossAxisAlignment, FlexExt as _, flex, flex_col, flex_row, portal,
+    sized_box,
   },
 };
 
+use super::controls::{
+  body, btn, chip, group, icon_seg, label, muted, row_btn, section, seg,
+  state_str,
+};
 use crate::{
-  canvas::{CanvasAction, Insets, canvas},
-  divider::{DividerAction, divider},
   field::field,
   focus::FieldKey,
-  font,
   icons::{Icon, icon},
-  keymap::keymap,
   state::{AppState, EdgeRow},
   theme::Theme,
   tokens::{radius, space, text},
 };
-
-/// Every label in the panel, in the app's typeface. This shadows xilem's
-/// `label` on purpose: that one sets an empty font stack, which throws away
-/// even Masonry's default family (see [`font`]).
-fn label(text: impl Into<ArcStr>) -> Label {
-  xilem::view::label(text).font(font::STACK)
-}
-
-/// A button's label: the button scale, the palette's text colour, and muted
-/// when the button is disabled (Masonry's default disabled text is a fixed
-/// grey, which vanishes on a light palette).
-fn btn_label<S: Into<String>>(
-  text: S,
-  theme: &'static Theme,
-) -> impl WidgetView<AppState> + use<S> {
-  label(text.into())
-    .text_size(text::CONTROL)
-    .color(theme.text)
-    .disabled_color(theme.muted)
-}
-
-/// A standalone button, in the palette's colours.
-///
-/// Masonry's own button chrome is a fixed dark skin — its disabled ground is
-/// pure black — so every state's ground is set here alongside the label.
-fn btn<S, F>(
-  text: S,
-  theme: &'static Theme,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<S, F>
-where
-  S: Into<String>,
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  button(btn_label(text, theme), on_press)
-    .padding(Padding::from_vh(space::XS, space::M))
-    .corner_radius(radius::CONTROL)
-    .background_color(theme.sunken)
-    .active_background_color(theme.rule)
-    .disabled_background_color(theme.bar)
-    .border_color(theme.rule)
-    .hovered_border_color(theme.accent)
-}
-
-/// One segment of a [`group`]: flat, so the group's frame carries the shape
-/// and the segments read as one control. `active` marks the current choice
-/// in a picker; `enabled` greys out a command that has nothing to do.
-fn seg<S, F>(
-  text: S,
-  theme: &'static Theme,
-  active: bool,
-  enabled: bool,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<S, F>
-where
-  S: Into<String>,
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  let ground = if active {
-    theme.rule
-  } else {
-    Color::TRANSPARENT
-  };
-  button(btn_label(text, theme), on_press)
-    .disabled(!enabled)
-    .padding(Padding::from_vh(space::XS, space::S))
-    .corner_radius(radius::CONTROL)
-    .background_color(ground)
-    .active_background_color(theme.rule)
-    .disabled_background_color(Color::TRANSPARENT)
-    // A transparent border that lights up on hover, so hovering does not
-    // shift the label by a pixel.
-    .border_color(Color::TRANSPARENT)
-    .hovered_border_color(theme.accent)
-}
-
-/// A flat icon-only button, sized like a [`seg`].
-fn icon_seg<F>(
-  glyph: Icon,
-  theme: &'static Theme,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<F>
-where
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  button(icon(glyph, text::CONTROL, theme.muted), on_press)
-    .padding(Padding::from_vh(space::XS, space::S))
-    .corner_radius(radius::CONTROL)
-    .background_color(Color::TRANSPARENT)
-    .active_background_color(theme.rule)
-    .border_color(Color::TRANSPARENT)
-    .hovered_border_color(theme.accent)
-}
-
-/// A row of [`seg`]s framed as one segmented control: related commands sit
-/// together, and the toolbar reads as a few groups rather than a run of
-/// identical boxes.
-fn group<Seq>(
-  theme: &'static Theme,
-  segments: Seq,
-) -> impl WidgetView<AppState> + use<Seq>
-where
-  Seq: FlexSequence<AppState> + Send + Sync,
-{
-  sized_box(
-    flex_row(segments)
-      .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(space::HAIR.px()),
-  )
-  .padding(Padding::all(space::HAIR))
-  .corner_radius(radius::CONTROL + space::HAIR)
-  .background_color(theme.sunken)
-  .border_color(theme.rule)
-  .border_width(1.0)
-}
-
-/// A list entry that acts on press — a quest to switch to, a node to jump
-/// to. Left-aligned and flat, so a stack of them reads as a list rather than
-/// a column of centred buttons; `active` marks the current one.
-fn row_btn<S, F>(
-  text: S,
-  theme: &'static Theme,
-  active: bool,
-  on_press: F,
-) -> impl WidgetView<AppState> + use<S, F>
-where
-  S: Into<String>,
-  F: Fn(&mut AppState) + Send + Sync + 'static,
-{
-  let ground = if active {
-    theme.sunken
-  } else {
-    Color::TRANSPARENT
-  };
-  // Filling the width inside the button is what pins the label left: the
-  // button centres its child, and a full-width child has nowhere to go.
-  button(sized_box(btn_label(text, theme)).expand_width(), on_press)
-    .padding(Padding::from_vh(space::XS, space::S))
-    .corner_radius(radius::CONTROL)
-    .background_color(ground)
-    .active_background_color(theme.rule)
-    .border_color(Color::TRANSPARENT)
-    .hovered_border_color(theme.accent)
-}
-
-/// Human-readable label for a derived node state.
-fn state_str(state: NodeState) -> &'static str {
-  match state {
-    NodeState::Completed => "Completed",
-    NodeState::Ready => "Ready",
-    NodeState::Blocked => "Blocked",
-    NodeState::Cyclic => "Cyclic",
-    NodeState::Satisfied => "Satisfied",
-    NodeState::Pending => "Pending",
-  }
-}
-
-// --- small building blocks ----------------------------------------------
-
-/// A 1px hairline that fills the width it is given.
-fn rule(theme: &'static Theme) -> impl WidgetView<AppState> + use<> {
-  sized_box(flex_col(()))
-    .height(1.0.px())
-    .expand_width()
-    .background_color(theme.rule)
-}
-
-/// Primary panel text. Masonry's default label colour is a fixed light grey,
-/// which only works on a dark ground — every palette carries its own text
-/// colour instead, and this is where it goes on.
-fn body<S: Into<String>>(
-  text: S,
-  theme: &'static Theme,
-) -> impl WidgetView<AppState> + use<S> {
-  label(text.into()).text_size(text::BODY).color(theme.text)
-}
-
-/// A section marker: a small uppercase label with a hairline running out to
-/// the right edge. This replaces the per-section cards, which cost 24px of
-/// horizontal room apiece without carrying any information.
-fn section<S: Into<String>>(
-  text: S,
-  theme: &'static Theme,
-) -> impl WidgetView<AppState> + use<S> {
-  flex_row((
-    label(text.into().to_uppercase())
-      .text_size(text::LABEL)
-      .weight(FontWeight::BOLD)
-      .color(theme.muted),
-    rule(theme).flex(1.0),
-  ))
-  .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(space::S.px())
-}
-
-/// Muted secondary text.
-fn muted<S: Into<String>>(
-  text: S,
-  theme: &'static Theme,
-) -> impl WidgetView<AppState> + use<S> {
-  label(text.into())
-    .text_size(text::SECONDARY)
-    .color(theme.muted)
-}
-
-/// A small coloured status chip.
-fn chip<S: Into<String>>(
-  text: S,
-  color: masonry::peniko::Color,
-  theme: &'static Theme,
-) -> impl WidgetView<AppState> + use<S> {
-  sized_box(label(text.into()).text_size(text::LABEL).color(theme.text))
-    .padding(Padding::from_vh(space::HAIR, space::S))
-    .background_color(color)
-    .corner_radius(radius::PILL)
-}
 
 /// A list of edges incident to the selection — either direction — one row per
 /// edge with a button that removes it. The mark reflects whether the node at
@@ -292,122 +65,11 @@ fn edge_list(
     .gap(space::XS.px())
 }
 
-// --- the whole window ---------------------------------------------------
-
-/// Build the whole UI from the current state.
-pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
-  let canvas_view = canvas(
-    data.scene(),
-    data.theme(),
-    data.camera(),
-    Insets::default(),
-    |s: &mut AppState, action| match action {
-      // While a link is armed this builds an edge instead of selecting.
-      CanvasAction::Select(id) => s.canvas_click(id),
-    },
-  );
-
-  let divider_view = divider(theme, |s: &mut AppState, action| match action {
-    DividerAction::Begin => s.begin_panel_resize(),
-    DividerAction::Drag(dx) => s.resize_panel(dx),
-  });
-
-  let body = flex_row((canvas_view.flex(1.0), divider_view, side_panel(data)))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(0.0.px());
-
-  let window = flex_col((toolbar(data), body.flex(1.0)))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(0.0.px());
-  // Outermost, so it is the window's root widget and receives every key
-  // that no focused field handles.
-  keymap(data.key_flags(), window, |s: &mut AppState, command| {
-    s.run(command)
-  })
-}
-
-/// The slim window-wide toolbar. These commands act on the document, not on
-/// the selection, so they belong above both panes rather than in the panel.
-fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
-  let open = data.palette_open();
-
-  let commands = flex_row((
-    label("Neutron")
-      .text_size(text::BODY)
-      .weight(FontWeight::BOLD)
-      .color(theme.text)
-      .flex(1.0),
-    group(
-      theme,
-      (
-        seg("+ Task", theme, false, true, |s: &mut AppState| {
-          s.add_task()
-        }),
-        seg("+ Condition", theme, false, true, |s: &mut AppState| {
-          s.add_condition()
-        }),
-      ),
-    ),
-    group(
-      theme,
-      (
-        seg("Undo", theme, false, data.can_undo(), |s: &mut AppState| {
-          s.undo()
-        }),
-        seg("Redo", theme, false, data.can_redo(), |s: &mut AppState| {
-          s.redo()
-        }),
-      ),
-    ),
-    group(
-      theme,
-      seg("Recenter", theme, false, true, |s: &mut AppState| {
-        s.recenter()
-      }),
-    ),
-    group(
-      theme,
-      seg(format!("Palette: {}", theme.name), theme, open, true, {
-        |s: &mut AppState| s.toggle_palette()
-      }),
-    ),
-  ))
-  .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(space::S.px());
-
-  // The palette row hangs off the toolbar rather than living in the panel:
-  // it re-colours both panes, so it belongs to the window, not the selection.
-  let picker = open.then(|| {
-    let choices: Vec<_> = data
-      .theme_list()
-      .into_iter()
-      .map(|(id, name, active)| {
-        seg(name, theme, active, true, move |s: &mut AppState| {
-          s.set_theme(id)
-        })
-        .into_any_flex()
-      })
-      .collect();
-    flex_row((muted("Palette", theme), group(theme, choices)))
-      .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(space::S.px())
-  });
-
-  sized_box(
-    flex_col((commands, picker))
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::S.px()),
-  )
-  .expand_width()
-  .padding(Padding::from_vh(space::S, space::M))
-  .background_color(theme.bar)
-}
-
 /// The side panel: lens pinned top, inspector scrolling in the middle,
 /// actionable frontier pinned bottom.
-fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
+pub(super) fn side_panel(
+  data: &mut AppState,
+) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
   sized_box(
     flex_col((
@@ -430,8 +92,6 @@ fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .expand_height()
   .background_color(theme.panel)
 }
-
-// --- region 1: the quest lens -------------------------------------------
 
 /// The active quest lens as a single always-visible line, expanding into the
 /// full switcher on demand. The lens is a mode, so it needs to be readable at
@@ -516,8 +176,6 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .padding(Padding::from_vh(space::S, space::M))
   .background_color(theme.bar)
 }
-
-// --- region 2: the inspector --------------------------------------------
 
 /// Properties of the selected node, or a hint when nothing is selected. This
 /// is the only scrolling region.
@@ -678,8 +336,6 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .corner_radius(radius::CARD)
   .boxed()
 }
-
-// --- region 3: the actionable frontier ----------------------------------
 
 /// "What can I do right now?" (PLAN §2), pinned to the bottom so it is never
 /// scrolled away by whatever the inspector happens to be showing.

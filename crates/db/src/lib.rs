@@ -58,11 +58,11 @@ struct StoredEvent {
 pub struct Store {
   conn:         Connection,
   graph:        Graph,
-  /// Inverse batches, newest last. Popping one and applying it undoes the
-  /// most recent group.
-  undo:         Vec<Vec<Event>>,
-  /// Batches that re-apply undone groups, newest last.
-  redo:         Vec<Vec<Event>>,
+  /// Inverse batches, newest last, each with the label of the group it
+  /// undoes. Popping one and applying it undoes the most recent group.
+  undo:         Vec<(Vec<Event>, &'static str)>,
+  /// Batches that re-apply undone groups, newest last, with their labels.
+  redo:         Vec<(Vec<Event>, &'static str)>,
   /// `seq` of the newest event in the log (0 for an empty log).
   last_seq:     i64,
   /// Bumped every time the graph changes, so callers can cache anything
@@ -338,6 +338,18 @@ impl Store {
   /// Whether there is a group available to [`redo`](Store::redo).
   pub fn can_redo(&self) -> bool { !self.redo.is_empty() }
 
+  /// What [`undo`](Store::undo) would reverse, as a short verb phrase
+  /// ("rename"), or `None` when there is nothing to undo.
+  pub fn undo_label(&self) -> Option<&'static str> {
+    self.undo.last().map(|(_, label)| *label)
+  }
+
+  /// What [`redo`](Store::redo) would re-apply, as for
+  /// [`undo_label`](Store::undo_label).
+  pub fn redo_label(&self) -> Option<&'static str> {
+    self.redo.last().map(|(_, label)| *label)
+  }
+
   /// Apply and persist a batch of events as one undoable group.
   ///
   /// The batch is folded into the in-memory graph (yielding its inverse),
@@ -351,7 +363,7 @@ impl Store {
     let inverse = base::apply_batch(&mut self.graph, &events);
     self.revision += 1;
     self.persist(&events)?;
-    self.undo.push(inverse);
+    self.undo.push((inverse, events[0].describe()));
     self.redo.clear();
     self.tail = events.last().map(|e| (self.last_seq, e.clone()));
     Ok(())
@@ -374,19 +386,19 @@ impl Store {
     {
       return self.replace_tail(*seq, event.clone());
     }
-    let Some(prev) = self.undo.pop() else {
+    let Some((prev, label)) = self.undo.pop() else {
       return self.commit(events);
     };
     let mut inverse = base::apply_batch(&mut self.graph, &events);
     self.revision += 1;
     if let Err(e) = self.persist(&events) {
-      self.undo.push(prev);
+      self.undo.push((prev, label));
       return Err(e);
     }
     // Undo runs the batch in order: first back out the amendment, then the
-    // group it was folded into.
+    // group it was folded into. The group keeps the name it started with.
     inverse.extend(prev);
-    self.undo.push(inverse);
+    self.undo.push((inverse, label));
     self.redo.clear();
     self.tail = events.last().map(|e| (self.last_seq, e.clone()));
     Ok(())
@@ -426,27 +438,27 @@ impl Store {
   /// The inverse batch is applied to the graph and *also appended* to the
   /// log, so history stays monotonic — nothing is ever deleted.
   pub fn undo(&mut self) -> Result<(), DbError> {
-    let Some(inverse) = self.undo.pop() else {
+    let Some((inverse, label)) = self.undo.pop() else {
       return Ok(());
     };
     self.tail = None;
     let redo = base::apply_batch(&mut self.graph, &inverse);
     self.revision += 1;
     self.persist(&inverse)?;
-    self.redo.push(redo);
+    self.redo.push((redo, label));
     Ok(())
   }
 
   /// Re-apply the most recently undone group.
   pub fn redo(&mut self) -> Result<(), DbError> {
-    let Some(forward) = self.redo.pop() else {
+    let Some((forward, label)) = self.redo.pop() else {
       return Ok(());
     };
     self.tail = None;
     let inverse = base::apply_batch(&mut self.graph, &forward);
     self.revision += 1;
     self.persist(&forward)?;
-    self.undo.push(inverse);
+    self.undo.push((inverse, label));
     Ok(())
   }
 

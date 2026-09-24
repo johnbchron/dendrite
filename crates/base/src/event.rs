@@ -117,6 +117,39 @@ pub enum Event {
 }
 
 impl Event {
+  /// A short lower-case verb phrase for what this event does, for naming an
+  /// undo step ("Undo rename").
+  pub fn describe(&self) -> &'static str {
+    match self {
+      Event::NodeAdded {
+        kind: NodeKind::Task { .. },
+        ..
+      } => "add task",
+      Event::NodeAdded {
+        kind: NodeKind::Condition { .. },
+        ..
+      } => "add condition",
+      Event::NodeRemoved { .. } => "delete",
+      Event::NodeRenamed { .. } => "rename",
+      Event::OrderHintChanged { .. } => "reorder",
+      Event::TaskCompleted {
+        completed: true, ..
+      } => "complete",
+      Event::TaskCompleted { .. } => "reopen",
+      Event::ConditionSet {
+        satisfied: true, ..
+      } => "satisfy",
+      Event::ConditionSet { .. } => "unsatisfy",
+      Event::EdgeAdded { .. } => "add requirement",
+      Event::EdgeRemoved { .. } => "remove requirement",
+      Event::QuestCreated { .. } => "new quest",
+      Event::QuestRemoved { .. } => "delete quest",
+      Event::QuestRenamed { .. } => "rename quest",
+      Event::QuestClaimed { .. } => "claim",
+      Event::QuestUnclaimed { .. } => "unclaim",
+    }
+  }
+
   /// Whether applying `self` right after `earlier` leaves the graph exactly
   /// as applying `self` alone would: both overwrite the same single field of
   /// the same target, so `earlier` has no lasting effect.

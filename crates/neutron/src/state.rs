@@ -536,6 +536,12 @@ impl AppState {
   /// Whether a redo is available.
   pub fn can_redo(&self) -> bool { self.lock().can_redo() }
 
+  /// What undo would reverse ("rename"), if anything.
+  pub fn undo_label(&self) -> Option<&'static str> { self.lock().undo_label() }
+
+  /// What redo would re-apply, if anything.
+  pub fn redo_label(&self) -> Option<&'static str> { self.lock().redo_label() }
+
   // --- commands ---------------------------------------------------------
 
   /// What the key map needs to know to resolve a key.

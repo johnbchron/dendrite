@@ -61,6 +61,17 @@ pub struct Flags {
   pub selection: bool,
 }
 
+/// How the command modifier is written on this platform, for hints.
+const COMMAND_KEY: &str = if cfg!(target_os = "macos") {
+  "Cmd"
+} else {
+  "Ctrl"
+};
+
+/// A shortcut hint for tooltips: `key` with the command modifier, such as
+/// "Ctrl+Z".
+pub fn chord(key: &str) -> String { format!("{COMMAND_KEY}+{key}") }
+
 /// What `key` means given `flags`, if anything. Key releases never mean
 /// anything.
 pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {

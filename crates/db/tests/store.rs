@@ -523,3 +523,26 @@ fn rewriting_a_snapshotted_row_refreshes_the_snapshot() {
   let reopened = Store::open(&path).unwrap();
   assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "final");
 }
+
+#[test]
+fn undo_and_redo_name_the_step_they_would_take() {
+  let mut store = Store::open_in_memory().unwrap();
+  assert_eq!(store.undo_label(), None);
+  store.commit(sample_batch()).unwrap();
+  assert_eq!(store.undo_label(), Some("add task"));
+  let rename = |name: &str| Event::NodeRenamed {
+    node: nid(1),
+    name: name.into(),
+  };
+  store.commit(vec![rename("a")]).unwrap();
+  // Amending keeps the group's name.
+  store.commit_amend(vec![rename("ab")]).unwrap();
+  assert_eq!(store.undo_label(), Some("rename"));
+
+  store.undo().unwrap();
+  assert_eq!(store.undo_label(), Some("add task"));
+  assert_eq!(store.redo_label(), Some("rename"));
+  store.redo().unwrap();
+  assert_eq!(store.undo_label(), Some("rename"));
+  assert_eq!(store.redo_label(), None);
+}

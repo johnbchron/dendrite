@@ -16,6 +16,7 @@ mod state;
 mod surface;
 mod theme;
 mod tokens;
+mod tooltip;
 mod ui;
 
 use std::path::PathBuf;

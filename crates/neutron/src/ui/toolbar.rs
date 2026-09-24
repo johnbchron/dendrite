@@ -17,10 +17,12 @@ use super::controls::{
 use crate::{
   canvas::ZoomStep,
   icons::{Icon, icon},
+  keymap::chord,
   state::AppState,
   surface::{Level, surface},
   theme,
   tokens::{size, space, text},
+  tooltip::{Anchor, tooltip},
 };
 
 /// The bar along the top of the window.
@@ -41,22 +43,41 @@ pub(super) fn top_bar(
     ),
   );
 
+  // The tooltips name the step, so it is clear what will be undone.
+  let undo_tip = match data.undo_label() {
+    Some(step) => format!("Undo {step} · {}", chord("Z")),
+    None => "Nothing to undo".to_string(),
+  };
+  let redo_tip = match data.redo_label() {
+    Some(step) => format!("Redo {step} · {}", chord("Shift+Z")),
+    None => "Nothing to redo".to_string(),
+  };
   let history = group(
     theme,
     (
-      icon_btn(
-        Icon::Undo,
+      tooltip(
+        undo_tip,
         theme,
-        false,
-        data.can_undo(),
-        |s: &mut AppState| s.undo(),
+        Anchor::Center,
+        icon_btn(
+          Icon::Undo,
+          theme,
+          false,
+          data.can_undo(),
+          |s: &mut AppState| s.undo(),
+        ),
       ),
-      icon_btn(
-        Icon::Redo,
+      tooltip(
+        redo_tip,
         theme,
-        false,
-        data.can_redo(),
-        |s: &mut AppState| s.redo(),
+        Anchor::Center,
+        icon_btn(
+          Icon::Redo,
+          theme,
+          false,
+          data.can_redo(),
+          |s: &mut AppState| s.redo(),
+        ),
       ),
     ),
   );
@@ -64,32 +85,57 @@ pub(super) fn top_bar(
   let camera = group(
     theme,
     (
-      icon_btn(Icon::ZoomOut, theme, false, true, |s: &mut AppState| {
-        s.zoom(ZoomStep::Out)
-      }),
-      // The level doubles as the reset button.
-      seg(
-        format!("{}%", data.zoom_percent()),
+      tooltip(
+        "Zoom out",
         theme,
-        false,
-        true,
-        |s: &mut AppState| s.zoom(ZoomStep::Reset),
+        Anchor::Center,
+        icon_btn(Icon::ZoomOut, theme, false, true, |s: &mut AppState| {
+          s.zoom(ZoomStep::Out)
+        }),
       ),
-      icon_btn(Icon::ZoomIn, theme, false, true, |s: &mut AppState| {
-        s.zoom(ZoomStep::In)
-      }),
-      icon_btn(Icon::Fit, theme, false, true, |s: &mut AppState| {
-        s.recenter()
-      }),
+      // The level doubles as the reset button.
+      tooltip(
+        "Reset to 100%",
+        theme,
+        Anchor::Center,
+        seg(
+          format!("{}%", data.zoom_percent()),
+          theme,
+          false,
+          true,
+          |s: &mut AppState| s.zoom(ZoomStep::Reset),
+        ),
+      ),
+      tooltip(
+        "Zoom in",
+        theme,
+        Anchor::Center,
+        icon_btn(Icon::ZoomIn, theme, false, true, |s: &mut AppState| {
+          s.zoom(ZoomStep::In)
+        }),
+      ),
+      tooltip(
+        "Fit the graph",
+        theme,
+        Anchor::Center,
+        icon_btn(Icon::Fit, theme, false, true, |s: &mut AppState| {
+          s.recenter()
+        }),
+      ),
     ),
   );
 
-  let settings = icon_btn(
-    Icon::Settings,
+  let settings = tooltip(
+    "Settings",
     theme,
-    data.settings_open(),
-    true,
-    |s: &mut AppState| s.toggle_settings(),
+    Anchor::End,
+    icon_btn(
+      Icon::Settings,
+      theme,
+      data.settings_open(),
+      true,
+      |s: &mut AppState| s.toggle_settings(),
+    ),
   );
 
   let row = flex_row((

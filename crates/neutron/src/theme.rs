@@ -4,8 +4,10 @@
 //! their colours from one [`Theme`], so a palette is a single value the app
 //! carries rather than two sets of constants that can drift apart. Every
 //! theme fills the same slots, and the meanings are fixed across all of
-//! them: `accent` is selection and Ready, green is satisfied, red is a
-//! cycle, grey is waiting.
+//! them: `accent` is selection, green is satisfied, red is a cycle, grey is
+//! waiting. The accent is always a different hue from the Ready border, so a
+//! selected Ready node is told apart from its unselected neighbours by colour
+//! and not just stroke width.
 //!
 //! The chosen theme is a *preference*, not graph data: it is stored in the
 //! `meta` table rather than the event log, so switching palettes never lands
@@ -93,8 +95,8 @@ impl Theme {
 /// than a fixed colour, so every palette dims toward its own ground.
 pub fn dim(c: Color) -> Color { c.multiply_alpha(0.5) }
 
-/// The original palette: cool blue-grey ground, one bright blue carrying both
-/// selection and the Ready state.
+/// The original palette: cool blue-grey ground, bright blue for Ready and a
+/// warm gold for selection.
 pub const SLATE: Theme = Theme {
   id:   "slate",
   name: "Slate",
@@ -103,7 +105,7 @@ pub const SLATE: Theme = Theme {
   edge:   Color::from_rgb8(96, 104, 120),
   cycle:  Color::from_rgb8(214, 105, 90),
   text:   Color::from_rgb8(232, 236, 244),
-  accent: Color::from_rgb8(94, 168, 246),
+  accent: Color::from_rgb8(236, 186, 92),
 
   done:    (Color::from_rgb8(40, 66, 48), Color::from_rgb8(96, 170, 116)),
   ready:   (Color::from_rgb8(40, 58, 82), Color::from_rgb8(94, 168, 246)),
@@ -126,8 +128,7 @@ pub const SLATE: Theme = Theme {
   chip_cyclic:  Color::from_rgb8(120, 54, 50),
 };
 
-/// Near-black ground with a teal accent, so selection and Ready stop sharing a
-/// hue with nothing left to distinguish them.
+/// Near-black ground: teal marks Ready, violet marks the selection.
 pub const GRAPHITE: Theme = Theme {
   id:   "graphite",
   name: "Graphite",
@@ -136,7 +137,7 @@ pub const GRAPHITE: Theme = Theme {
   edge:   Color::from_rgb8(86, 95, 107),
   cycle:  Color::from_rgb8(224, 112, 90),
   text:   Color::from_rgb8(234, 238, 243),
-  accent: Color::from_rgb8(69, 184, 194),
+  accent: Color::from_rgb8(178, 140, 240),
 
   done:    (Color::from_rgb8(16, 50, 42), Color::from_rgb8(79, 176, 138)),
   ready:   (Color::from_rgb8(15, 50, 58), Color::from_rgb8(69, 184, 194)),
@@ -160,7 +161,8 @@ pub const GRAPHITE: Theme = Theme {
 };
 
 /// A warm, low-glare ground for long sessions: amber marks Ready, sage marks
-/// done, and the red cycle edges read as an alarm against the brown.
+/// done, a cool teal marks the selection, and the red cycle edges read as an
+/// alarm against the brown.
 pub const UMBER: Theme = Theme {
   id:   "umber",
   name: "Umber",
@@ -169,7 +171,7 @@ pub const UMBER: Theme = Theme {
   edge:   Color::from_rgb8(110, 98, 85),
   cycle:  Color::from_rgb8(210, 112, 90),
   text:   Color::from_rgb8(241, 234, 224),
-  accent: Color::from_rgb8(224, 167, 94),
+  accent: Color::from_rgb8(112, 190, 192),
 
   done:    (
     Color::from_rgb8(41, 50, 30),
@@ -196,7 +198,8 @@ pub const UMBER: Theme = Theme {
 };
 
 /// Every ground a step lighter and less saturated, so a graph that is mostly
-/// Blocked stops reading as a wall of black.
+/// Blocked stops reading as a wall of black. Soft blue marks Ready, soft gold
+/// the selection.
 pub const FROST: Theme = Theme {
   id:   "frost",
   name: "Frost",
@@ -205,7 +208,7 @@ pub const FROST: Theme = Theme {
   edge:   Color::from_rgb8(107, 118, 136),
   cycle:  Color::from_rgb8(206, 138, 133),
   text:   Color::from_rgb8(228, 233, 240),
-  accent: Color::from_rgb8(134, 169, 214),
+  accent: Color::from_rgb8(226, 190, 128),
 
   done:    (
     Color::from_rgb8(46, 64, 56),
@@ -241,7 +244,7 @@ pub const FROST: Theme = Theme {
 };
 
 /// The daylight inverse: paper ground, ink text, saturated borders doing the
-/// state work.
+/// state work — blue for Ready, purple for the selection.
 pub const MERIDIAN: Theme = Theme {
   id:   "meridian",
   name: "Meridian",
@@ -250,7 +253,7 @@ pub const MERIDIAN: Theme = Theme {
   edge:   Color::from_rgb8(139, 150, 164),
   cycle:  Color::from_rgb8(192, 71, 58),
   text:   Color::from_rgb8(27, 32, 41),
-  accent: Color::from_rgb8(47, 111, 208),
+  accent: Color::from_rgb8(126, 70, 196),
 
   done:    (
     Color::from_rgb8(219, 238, 226),
@@ -295,4 +298,23 @@ pub const DEFAULT: &Theme = &SLATE;
 /// Look a palette up by its persisted [`Theme::id`].
 pub fn by_id(id: &str) -> Option<&'static Theme> {
   ALL.iter().copied().find(|t| t.id == id)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Selection is drawn in `accent` over a node's state border, so if the two
+  /// match, a selected Ready node differs from its neighbours only in stroke
+  /// width.
+  #[test]
+  fn selection_never_matches_the_ready_border() {
+    for theme in ALL {
+      assert_ne!(
+        theme.accent, theme.ready.1,
+        "{} selects in its Ready colour",
+        theme.name
+      );
+    }
+  }
 }

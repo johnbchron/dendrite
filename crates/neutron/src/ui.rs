@@ -17,14 +17,15 @@
 use base::NodeState;
 use masonry::{
   core::ArcStr,
+  peniko::Color,
   properties::{Padding, types::AsUnit},
 };
 use xilem::{
   FontWeight, WidgetView,
   style::Style as _,
   view::{
-    Axis, CrossAxisAlignment, FlexExt as _, Label, button, flex, flex_col,
-    flex_row, portal, sized_box, text_input,
+    Axis, CrossAxisAlignment, FlexExt as _, FlexSequence, Label, button, flex,
+    flex_col, flex_row, portal, sized_box, text_input,
   },
 };
 
@@ -58,11 +59,23 @@ fn label(text: impl Into<ArcStr>) -> Label {
   xilem::view::label(text).font(font::STACK)
 }
 
-/// A button whose label follows the scale above, in the palette's colours.
+/// A button's label: the button scale, the palette's text colour, and muted
+/// when the button is disabled (Masonry's default disabled text is a fixed
+/// grey, which vanishes on a light palette).
+fn btn_label<S: Into<String>>(
+  text: S,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<S> {
+  label(text.into())
+    .text_size(SIZE_BTN)
+    .color(theme.text)
+    .disabled_color(theme.muted)
+}
+
+/// A standalone button, in the palette's colours.
 ///
-/// Masonry's own button chrome is a fixed dark skin, so a light palette needs
-/// the ground and the label set together — colouring only one of them is how
-/// you get dark text on a dark button.
+/// Masonry's own button chrome is a fixed dark skin — its disabled ground is
+/// pure black — so every state's ground is set here alongside the label.
 fn btn<S, F>(
   text: S,
   theme: &'static Theme,
@@ -72,20 +85,23 @@ where
   S: Into<String>,
   F: Fn(&mut AppState) + Send + Sync + 'static,
 {
-  button(
-    label(text.into()).text_size(SIZE_BTN).color(theme.text),
-    on_press,
-  )
-  .background_color(theme.sunken)
-  .border_color(theme.rule)
-  .hovered_border_color(theme.accent)
+  button(btn_label(text, theme), on_press)
+    .padding(Padding::from_vh(5.0, 12.0))
+    .corner_radius(6.0)
+    .background_color(theme.sunken)
+    .active_background_color(theme.rule)
+    .disabled_background_color(theme.bar)
+    .border_color(theme.rule)
+    .hovered_border_color(theme.accent)
 }
 
-/// A [`btn`] that can be greyed out. Undo and redo are the only commands with
-/// an availability of their own, so they are the only callers.
-fn btn_enabled<S, F>(
+/// One segment of a [`group`]: flat, so the group's frame carries the shape
+/// and the segments read as one control. `active` marks the current choice
+/// in a picker; `enabled` greys out a command that has nothing to do.
+fn seg<S, F>(
   text: S,
   theme: &'static Theme,
+  active: bool,
   enabled: bool,
   on_press: F,
 ) -> impl WidgetView<AppState> + use<S, F>
@@ -93,14 +109,73 @@ where
   S: Into<String>,
   F: Fn(&mut AppState) + Send + Sync + 'static,
 {
-  button(
-    label(text.into()).text_size(SIZE_BTN).color(theme.text),
-    on_press,
+  let ground = if active {
+    theme.rule
+  } else {
+    Color::TRANSPARENT
+  };
+  button(btn_label(text, theme), on_press)
+    .disabled(!enabled)
+    .padding(Padding::from_vh(4.0, 10.0))
+    .corner_radius(5.0)
+    .background_color(ground)
+    .active_background_color(theme.rule)
+    .disabled_background_color(Color::TRANSPARENT)
+    // A transparent border that lights up on hover, so hovering does not
+    // shift the label by a pixel.
+    .border_color(Color::TRANSPARENT)
+    .hovered_border_color(theme.accent)
+}
+
+/// A row of [`seg`]s framed as one segmented control: related commands sit
+/// together, and the toolbar reads as a few groups rather than a run of
+/// identical boxes.
+fn group<Seq>(
+  theme: &'static Theme,
+  segments: Seq,
+) -> impl WidgetView<AppState> + use<Seq>
+where
+  Seq: FlexSequence<AppState> + Send + Sync,
+{
+  sized_box(
+    flex_row(segments)
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(2.0.px()),
   )
-  .disabled(!enabled)
+  .padding(Padding::all(2.0))
+  .corner_radius(7.0)
   .background_color(theme.sunken)
   .border_color(theme.rule)
-  .hovered_border_color(theme.accent)
+  .border_width(1.0)
+}
+
+/// A list entry that acts on press — a quest to switch to, a node to jump
+/// to. Left-aligned and flat, so a stack of them reads as a list rather than
+/// a column of centred buttons; `active` marks the current one.
+fn row_btn<S, F>(
+  text: S,
+  theme: &'static Theme,
+  active: bool,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<S, F>
+where
+  S: Into<String>,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
+  let ground = if active {
+    theme.sunken
+  } else {
+    Color::TRANSPARENT
+  };
+  // Filling the width inside the button is what pins the label left: the
+  // button centres its child, and a full-width child has nowhere to go.
+  button(sized_box(btn_label(text, theme)).expand_width(), on_press)
+    .padding(Padding::from_vh(4.0, 8.0))
+    .corner_radius(5.0)
+    .background_color(ground)
+    .active_background_color(theme.rule)
+    .border_color(Color::TRANSPARENT)
+    .hovered_border_color(theme.accent)
 }
 
 /// Human-readable label for a derived node state.
@@ -187,7 +262,9 @@ fn edge_list(
       let edge = row.edge;
       flex_row((
         body(format!("{mark}  {}", row.name), theme).flex(1.0),
-        btn("×", theme, move |s: &mut AppState| s.remove_edge(edge)),
+        seg("×", theme, false, true, move |s: &mut AppState| {
+          s.remove_edge(edge)
+        }),
       ))
       .cross_axis_alignment(CrossAxisAlignment::Center)
       .gap(6.0.px())
@@ -243,36 +320,60 @@ fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       .weight(FontWeight::BOLD)
       .color(theme.text)
       .flex(1.0),
-    btn_enabled("Undo", theme, data.can_undo(), |s: &mut AppState| s.undo()),
-    btn_enabled("Redo", theme, data.can_redo(), |s: &mut AppState| s.redo()),
-    btn("Recenter", theme, |s: &mut AppState| s.recenter()),
-    btn("+ Task", theme, |s: &mut AppState| s.add_task()),
-    btn("+ Condition", theme, |s: &mut AppState| s.add_condition()),
-    btn(
-      format!("Palette: {}", theme.name),
+    group(
       theme,
-      |s: &mut AppState| s.toggle_palette(),
+      (
+        seg("+ Task", theme, false, true, |s: &mut AppState| {
+          s.add_task()
+        }),
+        seg("+ Condition", theme, false, true, |s: &mut AppState| {
+          s.add_condition()
+        }),
+      ),
+    ),
+    group(
+      theme,
+      (
+        seg("Undo", theme, false, data.can_undo(), |s: &mut AppState| {
+          s.undo()
+        }),
+        seg("Redo", theme, false, data.can_redo(), |s: &mut AppState| {
+          s.redo()
+        }),
+      ),
+    ),
+    group(
+      theme,
+      seg("Recenter", theme, false, true, |s: &mut AppState| {
+        s.recenter()
+      }),
+    ),
+    group(
+      theme,
+      seg(format!("Palette: {}", theme.name), theme, open, true, {
+        |s: &mut AppState| s.toggle_palette()
+      }),
     ),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(6.0.px());
+  .gap(8.0.px());
 
   // The palette row hangs off the toolbar rather than living in the panel:
   // it re-colours both panes, so it belongs to the window, not the selection.
   let picker = open.then(|| {
-    let mut rows: Vec<_> = vec![muted("Palette", theme).into_any_flex()];
-    for (id, name, active) in data.theme_list() {
-      let prefix = if active { "▸ " } else { "" };
-      rows.push(
-        btn(format!("{prefix}{name}"), theme, move |s: &mut AppState| {
+    let choices: Vec<_> = data
+      .theme_list()
+      .into_iter()
+      .map(|(id, name, active)| {
+        seg(name, theme, active, true, move |s: &mut AppState| {
           s.set_theme(id)
         })
-        .into_any_flex(),
-      );
-    }
-    flex(Axis::Horizontal, rows)
+        .into_any_flex()
+      })
+      .collect();
+    flex_row((muted("Palette", theme), group(theme, choices)))
       .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(5.0.px())
+      .gap(8.0.px())
   });
 
   sized_box(
@@ -362,29 +463,28 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       );
     }
     rows.push(
-      btn("All (global)", theme, |s: &mut AppState| {
+      row_btn("All (global)", theme, !scoped, |s: &mut AppState| {
         s.set_active_quest(None)
       })
       .into_any_flex(),
     );
     for (id, quest_name, active) in data.quest_list() {
-      let prefix = if active { "▸ " } else { "   " };
       rows.push(
-        btn(
-          format!("{prefix}{quest_name}"),
-          theme,
-          move |s: &mut AppState| s.set_active_quest(Some(id)),
-        )
+        row_btn(quest_name, theme, active, move |s: &mut AppState| {
+          s.set_active_quest(Some(id))
+        })
         .into_any_flex(),
       );
     }
     rows.push(
-      btn("+ New quest", theme, |s: &mut AppState| s.new_quest())
-        .into_any_flex(),
+      row_btn("+ New quest", theme, false, |s: &mut AppState| {
+        s.new_quest()
+      })
+      .into_any_flex(),
     );
     flex(Axis::Vertical, rows)
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(3.0.px())
+      .gap(1.0.px())
   });
 
   sized_box(
@@ -442,7 +542,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     } else {
       "Claim for quest"
     };
-    btn(text, theme, move |s: &mut AppState| {
+    seg(text, theme, false, true, move |s: &mut AppState| {
       if claimed {
         s.unclaim_selected();
       } else {
@@ -471,12 +571,18 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(8.0.px()),
-    flex_row((
-      btn(toggle_label, theme, |s: &mut AppState| s.toggle_selected()),
-      btn("Delete", theme, |s: &mut AppState| s.delete_selected()),
-      claim_button,
-    ))
-    .gap(6.0.px()),
+    flex_row(group(
+      theme,
+      (
+        seg(toggle_label, theme, false, true, |s: &mut AppState| {
+          s.toggle_selected()
+        }),
+        seg("Delete", theme, false, true, |s: &mut AppState| {
+          s.delete_selected()
+        }),
+        claim_button,
+      ),
+    )),
     section(format!("Requires · {}", info.requirements.len()), theme),
     edge_list(&info.requirements, theme),
     link_block(data),
@@ -509,10 +615,15 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let mut rows: Vec<_> = candidates
     .into_iter()
     .map(|(id, name)| {
-      btn(format!("+ {name}"), theme, move |s: &mut AppState| {
-        s.add_requirement(id);
-        s.cancel_link();
-      })
+      row_btn(
+        format!("+ {name}"),
+        theme,
+        false,
+        move |s: &mut AppState| {
+          s.add_requirement(id);
+          s.cancel_link();
+        },
+      )
       .into_any_flex()
     })
     .collect();
@@ -561,9 +672,12 @@ fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let mut rows: Vec<_> = list
     .into_iter()
     .map(|(id, name)| {
-      btn(format!("→ {name}"), theme, move |s: &mut AppState| {
-        s.select(Some(id))
-      })
+      row_btn(
+        format!("→ {name}"),
+        theme,
+        false,
+        move |s: &mut AppState| s.select(Some(id)),
+      )
       .into_any_flex()
     })
     .collect();

@@ -460,7 +460,7 @@ impl CanvasWidget {
         stroke(scene, tf, &shape, border, node.selected, self.theme);
       }
       NodeKind::Condition { .. } => {
-        let shape = diamond(rect);
+        let shape = chamfered(rect);
         scene.fill(Fill::NonZero, tf, &Brush::Solid(fill), None, &shape);
         stroke(scene, tf, &shape, border, node.selected, self.theme);
       }
@@ -518,14 +518,25 @@ impl CanvasWidget {
   }
 }
 
-/// Build a diamond (condition) path inscribed in `rect`.
-fn diamond(rect: Rect) -> BezPath {
-  let c = rect.center();
+/// How far a condition's corners are cut back, in world units.
+const CHAMFER: f64 = 10.0;
+
+/// Build a condition's outline: `rect` with its corners cut off at 45°.
+///
+/// A diamond said "condition" clearly but wasted half its area, so a label
+/// had to fit in the middle third; the chamfer keeps the cue while leaving
+/// the text the same room a task gets.
+fn chamfered(rect: Rect) -> BezPath {
+  let c = CHAMFER.min(rect.width() / 2.0).min(rect.height() / 2.0);
   let mut p = BezPath::new();
-  p.move_to((c.x, rect.y0));
-  p.line_to((rect.x1, c.y));
-  p.line_to((c.x, rect.y1));
-  p.line_to((rect.x0, c.y));
+  p.move_to((rect.x0 + c, rect.y0));
+  p.line_to((rect.x1 - c, rect.y0));
+  p.line_to((rect.x1, rect.y0 + c));
+  p.line_to((rect.x1, rect.y1 - c));
+  p.line_to((rect.x1 - c, rect.y1));
+  p.line_to((rect.x0 + c, rect.y1));
+  p.line_to((rect.x0, rect.y1 - c));
+  p.line_to((rect.x0, rect.y0 + c));
   p.close_path();
   p
 }

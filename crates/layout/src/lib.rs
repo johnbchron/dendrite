@@ -12,9 +12,10 @@
 //!    in every row it crosses instead of being drawn over a node.
 //! 4. coordinate assignment — each rank a row as tall as its tallest node.
 //!    Every independent tree (weakly connected component) gets a column of its
-//!    own, as wide as its widest row, with a wider gap between trees than
-//!    between siblings, so separate trees never interleave; within its column
-//!    each row is centred.
+//!    own, with a wider gap between trees than between siblings, so separate
+//!    trees never interleave. Within its column, [`coord`] (Brandes–Köpf) lines
+//!    each node up with the median of its neighbours, so nodes sit over what
+//!    they depend on and long edges run straight.
 //!
 //! Steps 1–3 depend only on the graph and produce an [`Arrangement`]; step 4
 //! ([`Arrangement::place`]) also needs every node's size. They are separate
@@ -24,6 +25,7 @@
 //! The crate is pure: no I/O, no UI, no randomness. The same graph (and the
 //! same sizes) always yields the same [`Layout`].
 
+mod coord;
 mod cycle;
 mod order;
 mod rank;
@@ -126,10 +128,13 @@ pub struct Placement {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Arrangement {
   /// Slots per rank, top row first, each in left-to-right order.
-  pub rows: Vec<Vec<Slot>>,
+  pub rows:  Vec<Vec<Slot>>,
   /// The independent tree (weakly connected component) of every slot, as an
   /// opaque label: slots share a label exactly when edges connect them.
-  pub tree: HashMap<Slot, usize>,
+  pub tree:  HashMap<Slot, usize>,
+  /// Every unit-length segment between slots in adjacent ranks, upper slot
+  /// first, which coordinate assignment lines slots up along.
+  pub links: Vec<(Slot, Slot)>,
 }
 
 impl Arrangement {
@@ -145,9 +150,16 @@ impl Arrangement {
       .map(|row| row.iter().copied().filter(|s| keep(*s)).collect::<Vec<_>>())
       .filter(|row| row.iter().any(|s| matches!(s, Slot::Node(_))))
       .collect();
+    let links = self
+      .links
+      .iter()
+      .copied()
+      .filter(|&(a, b)| keep(a) && keep(b))
+      .collect();
     Arrangement {
       rows,
       tree: self.tree.clone(),
+      links,
     }
   }
 
@@ -156,11 +168,11 @@ impl Arrangement {
   ///
   /// Each row is as tall as its tallest node, with nodes centred on the
   /// row's midline, and rows are `y_gap` apart; rows line up across trees.
-  /// Each tree takes a column as wide as its widest row, trees are
-  /// `tree_gap` apart (left to right in order of first appearance, reading
-  /// the rows top-down), and the whole is centred on x = 0. Within a column,
-  /// slots are `x_gap` apart and every row is centred; a bend is
-  /// `bend_width` wide.
+  /// Each tree takes a column of its own, trees are `tree_gap` apart (left
+  /// to right in order of first appearance, reading the rows top-down), and
+  /// the whole is centred on x = 0. Within a column, slots keep their order
+  /// at least `x_gap` apart, lined up with their neighbours in the rows
+  /// either side by [`coord::assign`]; a bend is `bend_width` wide.
   pub fn place(
     &self,
     cfg: &LayoutConfig,
@@ -198,13 +210,24 @@ impl Arrangement {
           .collect()
       })
       .collect();
-    let row_width = |row: &[Slot]| {
-      row.iter().map(|s| width_of(*s)).sum::<f64>()
-        + cfg.x_gap * row.len().saturating_sub(1) as f64
-    };
-    let widths: Vec<f64> = slices
+    // Each tree's x coordinates, and its left and right edges.
+    let columns: Vec<(HashMap<Slot, f64>, f64, f64)> = slices
       .iter()
-      .map(|rows| rows.iter().map(|r| row_width(r)).fold(0.0, f64::max))
+      .map(|rows| {
+        let xs = coord::assign(rows, &self.links, width_of, cfg.x_gap);
+        let (lo, hi) = xs.iter().fold(
+          (f64::INFINITY, f64::NEG_INFINITY),
+          |(lo, hi), (s, x)| {
+            let w = width_of(*s);
+            (lo.min(x - w / 2.0), hi.max(x + w / 2.0))
+          },
+        );
+        (xs, lo, hi)
+      })
+      .collect();
+    let widths: Vec<f64> = columns
+      .iter()
+      .map(|(_, lo, hi)| (hi - lo).max(0.0))
       .collect();
     let total = widths.iter().sum::<f64>()
       + cfg.tree_gap * trees.len().saturating_sub(1) as f64;
@@ -227,13 +250,11 @@ impl Arrangement {
 
     let mut placement = Placement::default();
     let mut column_left = -total / 2.0;
-    for (rows, width) in slices.iter().zip(&widths) {
-      let centre = column_left + width / 2.0;
+    for ((rows, (xs, lo, _)), width) in slices.iter().zip(&columns).zip(&widths)
+    {
       for (row, &(top, height)) in rows.iter().zip(&bands) {
-        let mut left = centre - row_width(row) / 2.0;
         for slot in row {
-          let w = width_of(*slot);
-          let x = left + w / 2.0;
+          let x = column_left + xs[slot] - lo;
           match *slot {
             Slot::Node(n) => {
               placement.nodes.insert(n, Pos {
@@ -251,7 +272,6 @@ impl Arrangement {
               });
             }
           }
-          left += w + cfg.x_gap;
         }
       }
       column_left += width + cfg.tree_gap;
@@ -328,6 +348,7 @@ pub fn layout(graph: &Graph, cfg: &LayoutConfig) -> Layout {
   let arrangement = Arrangement {
     tree,
     rows: ordering.by_rank,
+    links: ordering.links,
   };
   let positions = arrangement.place(cfg, |_| cfg.node_size).nodes;
 

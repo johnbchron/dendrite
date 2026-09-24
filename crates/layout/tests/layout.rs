@@ -223,6 +223,32 @@ fn a_lone_tree_is_centred_in_its_own_column() {
 }
 
 #[test]
+fn a_node_sits_over_its_median_requirement() {
+  // 0 requires 1 and 2; 1 requires 3, 4 and 5, and 5 requires 6.
+  // Centring each row on its own left 1 off the middle of 3..5; lined up,
+  // it sits right over the middle one, and 6 right under 5.
+  let g = build(7, &[
+    (10, 0, 1),
+    (11, 0, 2),
+    (12, 1, 3),
+    (13, 1, 4),
+    (14, 1, 5),
+    (15, 5, 6),
+  ]);
+  let l = layout(&g, &LayoutConfig::default());
+  let x = |i| l.pos(nid(i)).unwrap().x;
+  let mut below = [x(3), x(4), x(5)];
+  below.sort_by(f64::total_cmp);
+  assert!(
+    (x(1) - below[1]).abs() < 1e-9,
+    "1 over its middle requirement"
+  );
+  assert!((x(5) - x(6)).abs() < 1e-9, "6 under 5");
+  // The goal sits between its two requirements.
+  assert!(x(1) < x(0) && x(0) < x(2));
+}
+
+#[test]
 fn long_edges_pass_through_their_own_gap() {
   // 0 -> 1 -> 2 -> 3 is a chain, and 0 -> 3 skips ranks 1 and 2. The skip
   // must not be drawn through nodes 1 and 2.
@@ -243,8 +269,9 @@ fn long_edges_pass_through_their_own_gap() {
     let clearance = (channel.x - p.x).abs() - half - cfg.bend_width / 2.0;
     assert!(clearance >= cfg.x_gap - 1e-9, "clearance {clearance}");
   }
-  // Channels run top row first.
+  // Channels run top row first, and straight down.
   assert!(skip[0].bottom < skip[1].top);
+  assert_eq!(skip[0].x, skip[1].x, "a long edge runs straight");
 
   // Edges between adjacent ranks need no channels.
   for e in [10, 11, 12] {
@@ -359,6 +386,41 @@ mod props {
           if same_row {
             prop_assert!((channel.x - p.x).abs() > hw);
           }
+        }
+      }
+    }
+
+    /// However the nodes line up, every row keeps its order with at least
+    /// a gap between neighbouring boxes, whatever their widths.
+    #[test]
+    fn rows_keep_their_order_and_gaps((n, edges) in arb_graph()) {
+      let g = build_props(n, &edges);
+      let cfg = LayoutConfig::default();
+      let l = layout(&g, &cfg);
+      let width = |id: NodeId| {
+        let i = (0..n).find(|i| nid(*i) == id).unwrap();
+        60.0 + 37.0 * (i % 5) as f64
+      };
+      let size = |id| Size { w: width(id), h: 40.0 };
+      let placed = l.arrangement.place(&cfg, size);
+      for row in &l.arrangement.rows {
+        let nodes: Vec<NodeId> = row
+          .iter()
+          .filter_map(|s| match s {
+            Slot::Node(n) => Some(*n),
+            Slot::Bend { .. } => None,
+          })
+          .collect();
+        for pair in nodes.windows(2) {
+          let (a, b) = (pair[0], pair[1]);
+          // Trees take columns of their own, in order of first appearance.
+          let tree = |n| l.arrangement.tree[&Slot::Node(n)];
+          if tree(a) != tree(b) {
+            continue;
+          }
+          let need = (width(a) + width(b)) / 2.0 + cfg.x_gap;
+          let got = placed.nodes[&b].x - placed.nodes[&a].x;
+          prop_assert!(got >= need - 1e-9, "{got} < {need}");
         }
       }
     }

@@ -23,6 +23,10 @@ use crate::{Slot, rank::Layering};
 pub struct Ordering {
   /// Ordered slots per rank.
   pub by_rank: Vec<Vec<Slot>>,
+  /// Every unit-length segment, upper slot first: each edge between
+  /// adjacent ranks, and each piece of a long edge chained through its
+  /// bends.
+  pub links:   Vec<(Slot, Slot)>,
 }
 
 /// Order every rank, seeding from `order_hint` then applying `sweeps`
@@ -42,7 +46,9 @@ pub fn order(graph: &Graph, layering: &Layering, sweeps: u32) -> Ordering {
   // chained through one bend per rank it skips.
   let mut upper: HashMap<Slot, Vec<Slot>> = HashMap::new();
   let mut lower: HashMap<Slot, Vec<Slot>> = HashMap::new();
+  let mut links = Vec::new();
   let mut link = |u: Slot, v: Slot| {
+    links.push((u, v));
     lower.entry(u).or_default().push(v);
     upper.entry(v).or_default().push(u);
   };
@@ -85,7 +91,7 @@ pub fn order(graph: &Graph, layering: &Layering, sweeps: u32) -> Ordering {
     }
   }
 
-  Ordering { by_rank }
+  Ordering { by_rank, links }
 }
 
 /// Map each slot to its current within-rank index.

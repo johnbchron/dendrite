@@ -11,7 +11,7 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 |-------|---------|--------|
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
 | `db` | SQLite event log (append-only source of truth) + materialized projections + undo/redo via inverse events. One database for the whole global graph. | ✅ complete, round-trip tested |
-| `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → coordinate assignment. | ✅ complete, tested |
+| `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → Brandes–Köpf coordinate assignment. | ✅ complete, tested |
 | `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), a root key map, and the command layer wiring gestures to events. | 🚧 editing done, text sync to come |
 
 ## Milestone status (PLAN §8)
@@ -44,7 +44,7 @@ fontconfig, wayland/xkb, …):
 
 ```sh
 nix develop        # or: direnv allow
-cargo test         # 114 tests across the workspace
+cargo test         # 118 tests across the workspace
 cargo run -p neutron
 ```
 

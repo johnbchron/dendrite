@@ -273,6 +273,54 @@ pub const FROST: Theme = Theme {
   chip_cyclic:  Color::from_rgb8(90, 59, 57),
 };
 
+/// After [Evergarden](https://evergarden.moe): pastels on a green-grey
+/// forest floor. Its green marks done, its blue Ready and its cherry pink the
+/// selection; fills are the same pastels washed thinly over the ground.
+pub const EVERGARDEN: Theme = Theme {
+  id:   "evergarden",
+  name: "Evergarden",
+
+  bg:     Color::from_rgb8(30, 37, 40),
+  edge:   Color::from_rgb8(88, 104, 109),
+  cycle:  Color::from_rgb8(245, 127, 130),
+  text:   Color::from_rgb8(248, 249, 232),
+  accent: Color::from_rgb8(243, 192, 229),
+
+  done:    (
+    Color::from_rgb8(65, 75, 68),
+    Color::from_rgb8(203, 227, 179),
+  ),
+  ready:   (
+    Color::from_rgb8(60, 70, 79),
+    Color::from_rgb8(178, 202, 237),
+  ),
+  blocked: (Color::from_rgb8(38, 47, 51), Color::from_rgb8(88, 104, 109)),
+  pending: (
+    Color::from_rgb8(38, 47, 51),
+    Color::from_rgb8(150, 180, 170),
+  ),
+  cyclic:  (
+    Color::from_rgb8(73, 55, 58),
+    Color::from_rgb8(245, 127, 130),
+  ),
+
+  sunken: Color::from_rgb8(30, 37, 40),
+  rule:   Color::from_rgb8(55, 65, 69),
+  muted:  Color::from_rgb8(131, 158, 154),
+
+  surface:        Color::from_rgb8(38, 47, 51),
+  surface_raised: Color::from_rgb8(46, 56, 60),
+  scrim:          Color::from_rgba8(13, 16, 18, 140),
+  focus:          Color::from_rgb8(243, 192, 229),
+  shadow:         Color::from_rgba8(0, 0, 0, 128),
+  on_accent:      Color::from_rgb8(23, 28, 31),
+
+  chip_ready:   Color::from_rgb8(77, 90, 103),
+  chip_done:    Color::from_rgb8(85, 98, 84),
+  chip_blocked: Color::from_rgb8(55, 65, 69),
+  chip_cyclic:  Color::from_rgb8(99, 66, 69),
+};
+
 /// The daylight inverse: paper ground, ink text, tinted fills and saturated
 /// borders doing the state work — blue for Ready, purple for the selection.
 /// Blocked sits a shade below the ground, Pending a shade above it, so the
@@ -326,7 +374,8 @@ pub const MERIDIAN: Theme = Theme {
 };
 
 /// Every palette the picker offers, in the order it shows them.
-pub const ALL: &[&Theme] = &[&SLATE, &GRAPHITE, &UMBER, &FROST, &MERIDIAN];
+pub const ALL: &[&Theme] =
+  &[&SLATE, &GRAPHITE, &UMBER, &FROST, &EVERGARDEN, &MERIDIAN];
 
 /// The palette used when nothing has been chosen (or a stored choice no
 /// longer exists).

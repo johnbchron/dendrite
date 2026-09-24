@@ -17,6 +17,7 @@ mod now;
 mod toolbar;
 
 use masonry::{
+  kurbo::Vec2,
   peniko::Color,
   properties::{Padding, types::UnitPoint},
 };
@@ -27,10 +28,17 @@ use xilem::{
 };
 
 use crate::{
+  appear::{Motion, appear},
   canvas::{CanvasAction, canvas},
   keymap::keymap,
   state::AppState,
-  tokens::{size, space},
+  tokens::{motion, size, space},
+};
+
+/// How popovers arrive: dropping a few pixels from the bar they hang off.
+const DROP: Motion = Motion {
+  from:        Vec2::new(0.0, -6.0),
+  duration_ms: motion::POPOVER_MS,
 };
 
 /// Build the whole UI from the current state.
@@ -50,7 +58,15 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   // Every layer is always present, showing nothing when it has nothing to
   // show: xilem 0.4's zstack appends a child it is asked to insert, so a
   // layer appearing mid-sequence would be paired with the wrong widget.
-  let card = layer(data.selected.is_some().then(|| inspector::card(data)));
+  let card = layer(data.selected.is_some().then(|| {
+    appear(
+      Motion {
+        from:        Vec2::new(space::L, 0.0),
+        duration_ms: motion::CARD_MS,
+      },
+      inspector::card(data),
+    )
+  }));
   let tray = sized_box(now::tray(data)).padding(Padding {
     top:    0.0,
     right:  0.0,
@@ -59,7 +75,7 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   });
   let backdrop = layer(data.popover_open().then(backdrop));
   let settings = layer(data.settings_open().then(|| {
-    sized_box(toolbar::settings_popover(data)).padding(Padding {
+    sized_box(appear(DROP, toolbar::settings_popover(data))).padding(Padding {
       top:    size::TOP_BAR + space::XS,
       right:  space::M,
       bottom: 0.0,
@@ -67,7 +83,7 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     })
   }));
   let quests = layer(data.picker_open().then(|| {
-    sized_box(lens::switcher(data)).padding(Padding {
+    sized_box(appear(DROP, lens::switcher(data))).padding(Padding {
       top:    size::TOP_BAR + space::XS,
       right:  0.0,
       bottom: 0.0,

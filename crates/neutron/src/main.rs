@@ -5,6 +5,7 @@
 //! the graph out, and the custom canvas widget in [`canvas`] paints it
 //! (PLAN §4).
 
+mod appear;
 mod canvas;
 mod divider;
 mod field;

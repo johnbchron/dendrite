@@ -53,3 +53,11 @@ pub mod size {
   /// Icon size inside a control.
   pub const ICON: f32 = 16.0;
 }
+
+/// Animation timing, in milliseconds.
+pub mod motion {
+  /// A popover dropping into place.
+  pub const POPOVER_MS: f64 = 120.0;
+  /// The inspector card sliding in.
+  pub const CARD_MS: f64 = 160.0;
+}

@@ -54,6 +54,19 @@ pub struct AppState {
   theme:            &'static Theme,
   /// Whether the palette picker is expanded under the toolbar.
   palette_open:     bool,
+  /// The field whose keystrokes are currently being committed, if the last
+  /// commit came from one. The next keystroke in the same field amends that
+  /// undo group rather than opening a new one.
+  live_edit:        Option<LiveEdit>,
+}
+
+/// A text field that commits as it is typed in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LiveEdit {
+  /// The inspector's name field, for this node.
+  NodeName(NodeId),
+  /// The quest switcher's rename field, for this quest.
+  QuestName(QuestId),
 }
 
 /// `meta` key the chosen palette is stored under.
@@ -114,6 +127,7 @@ impl AppState {
       picker_open:      false,
       theme:            theme::DEFAULT,
       palette_open:     false,
+      live_edit:        None,
     };
     // A palette recorded by an older version that no longer ships falls back
     // to the default rather than blocking startup.
@@ -400,6 +414,7 @@ impl AppState {
   // --- commands ---------------------------------------------------------
 
   fn commit(&mut self, events: Vec<Event>) {
+    self.live_edit = None;
     if let Err(e) = self.lock().commit(events) {
       // A local single-user tool: surface to the log and keep running rather
       // than crash mid-edit.
@@ -407,10 +422,28 @@ impl AppState {
     }
   }
 
+  /// Commit a keystroke's worth of change from the field `edit`. Successive
+  /// keystrokes in one field fold into a single undo group, so typing a name
+  /// costs one undo step, not one per character; any other commit, a change
+  /// of selection, or Enter closes the group.
+  fn commit_live(&mut self, edit: LiveEdit, events: Vec<Event>) {
+    let amend = self.live_edit == Some(edit);
+    let result = if amend {
+      self.lock().commit_amend(events)
+    } else {
+      self.lock().commit(events)
+    };
+    if let Err(e) = result {
+      eprintln!("commit failed: {e}");
+    }
+    self.live_edit = Some(edit);
+  }
+
   /// Select (or clear) the current node; resets the rename draft and disarms
   /// any pending requirement link.
   pub fn select(&mut self, node: Option<NodeId>) {
     self.cancel_link();
+    self.live_edit = None;
     self.selected = node;
     self.name_draft = {
       let store = self.lock();
@@ -469,22 +502,39 @@ impl AppState {
     self.commit(vec![event]);
   }
 
-  /// Commit `name` as the selected node's name. Called from the name field's
-  /// Enter handler, so there is no separate confirm button to forget.
-  pub fn rename_selected_to(&mut self, name: String) {
+  /// The name field changed: keep the draft exactly as typed and commit its
+  /// trimmed form as the selected node's name, so the canvas follows along
+  /// and there is no confirm step to forget.
+  ///
+  /// Blank text is held in the draft but not committed (the field is
+  /// mid-retype), and text that trims to the current name commits nothing.
+  pub fn rename_selected_to(&mut self, text: String) {
+    self.name_draft = text;
     let Some(id) = self.selected else { return };
-    let name = name.trim().to_string();
+    let name = self.name_draft.trim().to_string();
     if name.is_empty() {
       return;
     }
-    // Enter on an unchanged field should not push an undo entry.
     let unchanged =
       self.lock().graph().node(id).is_some_and(|n| n.name == name);
     if unchanged {
       return;
     }
-    self.name_draft = name.clone();
-    self.commit(vec![Event::NodeRenamed { node: id, name }]);
+    self.commit_live(LiveEdit::NodeName(id), vec![Event::NodeRenamed {
+      node: id,
+      name,
+    }]);
+  }
+
+  /// Enter in the name field: close the live edit, so further typing is a
+  /// new undo step, and tidy the draft to the name the graph holds.
+  pub fn finish_rename_selected(&mut self) {
+    self.live_edit = None;
+    let Some(id) = self.selected else { return };
+    let name = self.lock().graph().node(id).map(|n| n.name.clone());
+    if let Some(name) = name {
+      self.name_draft = name;
+    }
   }
 
   /// Delete the selected node (its incident edges and claims cascade; a
@@ -532,6 +582,7 @@ impl AppState {
   /// Switch the active quest lens (or clear it for the global view), and
   /// collapse the switcher now that the choice is made.
   pub fn set_active_quest(&mut self, quest: Option<QuestId>) {
+    self.live_edit = None;
     self.active_quest = quest;
     self.picker_open = false;
     self.sync_quest_draft();
@@ -551,12 +602,14 @@ impl AppState {
     };
   }
 
-  /// Commit `name` as the active quest's name, from the switcher's rename
-  /// field. Mirrors [`AppState::rename_selected_to`]: Enter commits, blank
-  /// and unchanged input are no-ops so neither pushes an undo entry.
-  pub fn rename_active_quest_to(&mut self, name: String) {
+  /// The switcher's rename field changed. Mirrors
+  /// [`AppState::rename_selected_to`]: the draft follows every keystroke, the
+  /// trimmed text is committed live, and blank or unchanged text commits
+  /// nothing.
+  pub fn rename_active_quest_to(&mut self, text: String) {
+    self.quest_draft = text;
     let Some(id) = self.active_quest else { return };
-    let name = name.trim().to_string();
+    let name = self.quest_draft.trim().to_string();
     if name.is_empty() {
       return;
     }
@@ -568,8 +621,17 @@ impl AppState {
     if unchanged {
       return;
     }
-    self.quest_draft = name.clone();
-    self.commit(vec![Event::QuestRenamed { quest: id, name }]);
+    self.commit_live(LiveEdit::QuestName(id), vec![Event::QuestRenamed {
+      quest: id,
+      name,
+    }]);
+  }
+
+  /// Enter in the quest rename field: the counterpart of
+  /// [`AppState::finish_rename_selected`].
+  pub fn finish_rename_quest(&mut self) {
+    self.live_edit = None;
+    self.sync_quest_draft();
   }
 
   /// Claim the selected node for the active quest.
@@ -602,6 +664,7 @@ impl AppState {
 
   /// Undo the last committed group.
   pub fn undo(&mut self) {
+    self.live_edit = None;
     if let Err(e) = self.lock().undo() {
       eprintln!("undo failed: {e}");
     }
@@ -611,6 +674,7 @@ impl AppState {
 
   /// Redo the last undone group.
   pub fn redo(&mut self) {
+    self.live_edit = None;
     if let Err(e) = self.lock().redo() {
       eprintln!("redo failed: {e}");
     }
@@ -672,15 +736,21 @@ mod tests {
       "draft seeded from the graph"
     );
 
-    // Blank input is a no-op, so Enter on an empty field costs no undo entry.
+    // Blank input is held in the draft but not committed.
     state.rename_active_quest_to("   ".into());
     assert_eq!(state.active_quest_summary().unwrap().0, "New quest");
 
-    state.rename_active_quest_to("  Ship v1  ".into());
+    // Every keystroke commits the trimmed text; the draft keeps what was
+    // typed until Enter tidies it.
+    for text in ["  S", "  Sh", "  Ship v1  "] {
+      state.rename_active_quest_to(text.into());
+    }
     assert_eq!(state.active_quest_summary().unwrap().0, "Ship v1");
+    assert_eq!(state.quest_draft, "  Ship v1  ");
+    state.finish_rename_quest();
     assert_eq!(state.quest_draft, "Ship v1");
 
-    // Undo reverts the name and pulls the draft back with it.
+    // One undo reverts the whole rename and pulls the draft back with it.
     state.undo();
     assert_eq!(state.active_quest_summary().unwrap().0, "New quest");
     assert_eq!(state.quest_draft, "New quest");
@@ -843,25 +913,60 @@ mod tests {
   }
 
   #[test]
-  fn renaming_commits_on_enter_and_stays_in_step_with_undo() {
+  fn renaming_commits_per_keystroke_as_one_undo_step() {
     let store = Store::open_in_memory().unwrap();
     let mut state = AppState::new(store);
-    let backend = node_named(&state, "Build backend");
-    state.select(Some(backend));
-    assert_eq!(state.name_draft, "Build backend");
+    state.add_task();
+    let id = state.selected.expect("a new task is selected");
+    let name = |s: &AppState| s.lock().graph().node(id).unwrap().name.clone();
+    assert_eq!(state.name_draft, "New task");
 
-    // Blank input is rejected rather than committing an empty name.
-    state.rename_selected_to("   ".into());
-    assert_eq!(state.name_draft, "Build backend");
+    // Clearing the field to retype is held in the draft, not committed.
+    state.rename_selected_to("".into());
+    assert_eq!(state.name_draft, "");
+    assert_eq!(name(&state), "New task");
 
-    state.rename_selected_to("  Renamed  ".into());
+    // Each keystroke lands in the graph, trimmed, with the draft left as
+    // typed so the cursor is not disturbed.
+    for text in ["R", "Re", "Ren ", "Renamed "] {
+      state.rename_selected_to(text.into());
+    }
+    assert_eq!(name(&state), "Renamed");
+    assert_eq!(state.name_draft, "Renamed ");
+    state.finish_rename_selected();
     assert_eq!(state.name_draft, "Renamed");
 
-    // Enter on unchanged text must not push a second undo entry — otherwise
-    // this undo would land on "Renamed" instead of the original.
-    state.rename_selected_to("Renamed".into());
+    // Typing after Enter is a second undo step.
+    state.rename_selected_to("Renamed again".into());
     state.undo();
-    assert_eq!(state.name_draft, "Build backend");
+    assert_eq!(name(&state), "Renamed");
+    assert_eq!(state.name_draft, "Renamed");
+
+    // The whole first edit undoes in one step, leaving the add intact.
+    state.undo();
+    assert_eq!(name(&state), "New task");
+    assert_eq!(state.name_draft, "New task");
+  }
+
+  #[test]
+  fn selecting_another_node_closes_the_live_edit() {
+    let store = Store::open_in_memory().unwrap();
+    let mut state = AppState::new(store);
+    state.add_task();
+    let a = state.selected.unwrap();
+    state.add_task();
+    let b = state.selected.unwrap();
+
+    state.select(Some(a));
+    state.rename_selected_to("A".into());
+    state.select(Some(b));
+    state.rename_selected_to("B".into());
+
+    // Two fields, two undo steps: undoing B's rename leaves A's alone.
+    state.undo();
+    let graph_name = |id| state.lock().graph().node(id).unwrap().name.clone();
+    assert_eq!(graph_name(a), "A");
+    assert_eq!(graph_name(b), "New task");
   }
 
   #[test]

@@ -196,3 +196,37 @@ fn settings_are_not_events() {
   );
   assert!(!store.can_undo(), "and must not be undoable");
 }
+
+#[test]
+fn amended_commits_undo_as_one_group() {
+  let mut store = Store::open_in_memory().unwrap();
+  store.commit(sample_batch()).unwrap();
+  let rename = |name: &str| Event::NodeRenamed {
+    node: nid(1),
+    name: name.into(),
+  };
+  store.commit(vec![rename("r")]).unwrap();
+  store.commit_amend(vec![rename("re")]).unwrap();
+  store.commit_amend(vec![rename("renamed")]).unwrap();
+  assert_eq!(store.graph().node(nid(1)).unwrap().name, "renamed");
+
+  // One undo backs out every amendment and the group they joined…
+  store.undo().unwrap();
+  assert_eq!(store.graph().node(nid(1)).unwrap().name, "root");
+  // …and one redo restores the end state.
+  store.redo().unwrap();
+  assert_eq!(store.graph().node(nid(1)).unwrap().name, "renamed");
+  store.undo().unwrap();
+  // The group before the rename is untouched.
+  store.undo().unwrap();
+  assert!(store.graph().node(nid(1)).is_none());
+}
+
+#[test]
+fn amending_with_nothing_to_amend_is_a_plain_commit() {
+  let mut store = Store::open_in_memory().unwrap();
+  store.commit_amend(sample_batch()).unwrap();
+  assert!(store.can_undo());
+  store.undo().unwrap();
+  assert_eq!(store.graph().node_count(), 0);
+}

@@ -172,6 +172,32 @@ impl Store {
     Ok(())
   }
 
+  /// Apply and persist a batch as part of the most recent undo group rather
+  /// than as a new one, so a single [`undo`](Store::undo) reverses both.
+  ///
+  /// This is how a live edit (a rename committed on every keystroke) stays
+  /// one undo step. With nothing to amend it is a plain
+  /// [`commit`](Store::commit).
+  pub fn commit_amend(&mut self, events: Vec<Event>) -> Result<(), DbError> {
+    if events.is_empty() {
+      return Ok(());
+    }
+    let Some(prev) = self.undo.pop() else {
+      return self.commit(events);
+    };
+    let mut inverse = base::apply_batch(&mut self.graph, &events);
+    if let Err(e) = self.persist(&events) {
+      self.undo.push(prev);
+      return Err(e);
+    }
+    // Undo runs the batch in order: first back out the amendment, then the
+    // group it was folded into.
+    inverse.extend(prev);
+    self.undo.push(inverse);
+    self.redo.clear();
+    Ok(())
+  }
+
   /// Reverse the most recently committed (or redone) group.
   ///
   /// The inverse batch is applied to the graph and *also appended* to the

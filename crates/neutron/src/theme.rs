@@ -1,8 +1,8 @@
 //! The colour palettes the UI can be set to (PLAN §5).
 //!
-//! Both painted surfaces — the Vello canvas and the Xilem side panel — read
-//! their colours from one [`Theme`], so a palette is a single value the app
-//! carries rather than two sets of constants that can drift apart. Every
+//! Both painted surfaces — the Vello canvas and the Xilem chrome — read their
+//! colours from one [`Theme`], so a palette is a single value the app carries
+//! rather than two sets of constants that can drift apart. Every
 //! theme fills the same slots, and the meanings are fixed across all of
 //! them: `accent` is selection, green is satisfied, red is a cycle, grey is
 //! waiting. The accent is always a different hue from the Ready border, so a
@@ -57,6 +57,20 @@ pub struct Theme {
   pub rule:   Color,
   /// Secondary text.
   pub muted:  Color,
+
+  /// Cards and bars that sit over the canvas: the top bar, the inspector,
+  /// the Now tray.
+  pub surface:        Color,
+  /// Popovers and the command palette, one step above `surface`.
+  pub surface_raised: Color,
+  /// Translucent wash over the canvas behind a modal overlay.
+  pub scrim:          Color,
+  /// Keyboard-focus ring on focusable controls.
+  pub focus:          Color,
+  /// Drop shadow under floating surfaces (usually translucent).
+  pub shadow:         Color,
+  /// Text and icons drawn on an `accent` fill (the primary button).
+  pub on_accent:      Color,
 
   /// Chip ground for Ready.
   pub chip_ready:   Color,
@@ -122,6 +136,13 @@ pub const SLATE: Theme = Theme {
   rule:   Color::from_rgb8(46, 50, 60),
   muted:  Color::from_rgb8(122, 131, 146),
 
+  surface:        Color::from_rgb8(30, 33, 41),
+  surface_raised: Color::from_rgb8(38, 42, 52),
+  scrim:          Color::from_rgba8(8, 10, 14, 140),
+  focus:          Color::from_rgb8(236, 186, 92),
+  shadow:         Color::from_rgba8(0, 0, 0, 115),
+  on_accent:      Color::from_rgb8(28, 22, 10),
+
   chip_ready:   Color::from_rgb8(40, 74, 118),
   chip_done:    Color::from_rgb8(40, 82, 56),
   chip_blocked: Color::from_rgb8(60, 64, 76),
@@ -153,6 +174,13 @@ pub const GRAPHITE: Theme = Theme {
   sunken: Color::from_rgb8(24, 28, 34),
   rule:   Color::from_rgb8(38, 43, 51),
   muted:  Color::from_rgb8(121, 130, 142),
+
+  surface:        Color::from_rgb8(22, 25, 30),
+  surface_raised: Color::from_rgb8(30, 34, 41),
+  scrim:          Color::from_rgba8(4, 5, 7, 150),
+  focus:          Color::from_rgb8(178, 140, 240),
+  shadow:         Color::from_rgba8(0, 0, 0, 128),
+  on_accent:      Color::from_rgb8(20, 14, 32),
 
   chip_ready:   Color::from_rgb8(18, 64, 73),
   chip_done:    Color::from_rgb8(20, 69, 58),
@@ -190,6 +218,13 @@ pub const UMBER: Theme = Theme {
   sunken: Color::from_rgb8(37, 31, 26),
   rule:   Color::from_rgb8(58, 50, 42),
   muted:  Color::from_rgb8(155, 142, 127),
+
+  surface:        Color::from_rgb8(36, 31, 26),
+  surface_raised: Color::from_rgb8(46, 40, 33),
+  scrim:          Color::from_rgba8(10, 8, 6, 140),
+  focus:          Color::from_rgb8(112, 190, 192),
+  shadow:         Color::from_rgba8(0, 0, 0, 128),
+  on_accent:      Color::from_rgb8(14, 28, 28),
 
   chip_ready:   Color::from_rgb8(74, 54, 24),
   chip_done:    Color::from_rgb8(51, 64, 31),
@@ -237,6 +272,13 @@ pub const FROST: Theme = Theme {
   rule:   Color::from_rgb8(62, 72, 89),
   muted:  Color::from_rgb8(141, 151, 168),
 
+  surface:        Color::from_rgb8(44, 51, 64),
+  surface_raised: Color::from_rgb8(54, 62, 77),
+  scrim:          Color::from_rgba8(14, 17, 23, 128),
+  focus:          Color::from_rgb8(226, 190, 128),
+  shadow:         Color::from_rgba8(0, 0, 0, 90),
+  on_accent:      Color::from_rgb8(36, 28, 12),
+
   chip_ready:   Color::from_rgb8(53, 73, 106),
   chip_done:    Color::from_rgb8(55, 84, 74),
   chip_blocked: Color::from_rgb8(58, 67, 81),
@@ -282,6 +324,13 @@ pub const MERIDIAN: Theme = Theme {
   rule:   Color::from_rgb8(210, 217, 226),
   muted:  Color::from_rgb8(94, 106, 121),
 
+  surface:        Color::from_rgb8(255, 255, 255),
+  surface_raised: Color::from_rgb8(255, 255, 255),
+  scrim:          Color::from_rgba8(20, 26, 36, 72),
+  focus:          Color::from_rgb8(126, 70, 196),
+  shadow:         Color::from_rgba8(24, 32, 48, 46),
+  on_accent:      Color::from_rgb8(255, 255, 255),
+
   chip_ready:   Color::from_rgb8(207, 224, 248),
   chip_done:    Color::from_rgb8(210, 235, 219),
   chip_blocked: Color::from_rgb8(221, 226, 233),
@@ -315,6 +364,45 @@ mod tests {
         "{} selects in its Ready colour",
         theme.name
       );
+    }
+  }
+
+  /// WCAG relative luminance of an opaque colour.
+  fn luminance(c: Color) -> f64 {
+    let [r, g, b, _] = c.components;
+    let lin = |v: f32| {
+      let v = f64::from(v);
+      if v <= 0.040_45 {
+        v / 12.92
+      } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+      }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+  }
+
+  /// WCAG contrast ratio between two opaque colours.
+  fn contrast(a: Color, b: Color) -> f64 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+  }
+
+  /// The chrome's text stays readable on every surface it sits on: body text
+  /// at WCAG AA (4.5:1), secondary text at the large/UI level (3:1), and the
+  /// primary button's label on its accent fill at AA.
+  #[test]
+  fn chrome_text_is_readable_on_its_surfaces() {
+    for t in ALL {
+      for (ground, name) in
+        [(t.surface, "surface"), (t.surface_raised, "surface_raised")]
+      {
+        let body = contrast(t.text, ground);
+        assert!(body >= 4.5, "{}: text on {name} is {body:.2}", t.name);
+        let muted = contrast(t.muted, ground);
+        assert!(muted >= 3.0, "{}: muted on {name} is {muted:.2}", t.name);
+      }
+      let primary = contrast(t.on_accent, t.accent);
+      assert!(primary >= 4.5, "{}: on_accent is {primary:.2}", t.name);
     }
   }
 }

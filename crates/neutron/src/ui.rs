@@ -35,22 +35,8 @@ use crate::{
   font,
   state::{AppState, EdgeRow},
   theme::Theme,
+  tokens::{radius, space, text},
 };
-
-/// The panel's type scale, in logical pixels.
-///
-/// Masonry's default label size is `theme::TEXT_SIZE_NORMAL`, which is 15 —
-/// and `text_input` cannot be resized in xilem 0.4. So every size here sits
-/// *below* 15, which leaves the editable node name as the largest text in the
-/// panel. That is the hierarchy we want, and it is why buttons get an explicit
-/// size instead of `text_button`'s default: at 15 they were bigger than every
-/// heading, so the chrome outshouted the content.
-const SIZE_TITLE: f32 = 14.0;
-const SIZE_BODY: f32 = 13.0;
-const SIZE_BTN: f32 = 12.5;
-const SIZE_MUTED: f32 = 12.0;
-const SIZE_CHIP: f32 = 10.5;
-const SIZE_SECTION: f32 = 10.0;
 
 /// Every label in the panel, in the app's typeface. This shadows xilem's
 /// `label` on purpose: that one sets an empty font stack, which throws away
@@ -67,7 +53,7 @@ fn btn_label<S: Into<String>>(
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
   label(text.into())
-    .text_size(SIZE_BTN)
+    .text_size(text::CONTROL)
     .color(theme.text)
     .disabled_color(theme.muted)
 }
@@ -86,8 +72,8 @@ where
   F: Fn(&mut AppState) + Send + Sync + 'static,
 {
   button(btn_label(text, theme), on_press)
-    .padding(Padding::from_vh(5.0, 12.0))
-    .corner_radius(6.0)
+    .padding(Padding::from_vh(space::XS, space::M))
+    .corner_radius(radius::CONTROL)
     .background_color(theme.sunken)
     .active_background_color(theme.rule)
     .disabled_background_color(theme.bar)
@@ -116,8 +102,8 @@ where
   };
   button(btn_label(text, theme), on_press)
     .disabled(!enabled)
-    .padding(Padding::from_vh(4.0, 10.0))
-    .corner_radius(5.0)
+    .padding(Padding::from_vh(space::XS, space::S))
+    .corner_radius(radius::CONTROL)
     .background_color(ground)
     .active_background_color(theme.rule)
     .disabled_background_color(Color::TRANSPARENT)
@@ -140,10 +126,10 @@ where
   sized_box(
     flex_row(segments)
       .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(2.0.px()),
+      .gap(space::HAIR.px()),
   )
-  .padding(Padding::all(2.0))
-  .corner_radius(7.0)
+  .padding(Padding::all(space::HAIR))
+  .corner_radius(radius::CONTROL + space::HAIR)
   .background_color(theme.sunken)
   .border_color(theme.rule)
   .border_width(1.0)
@@ -170,8 +156,8 @@ where
   // Filling the width inside the button is what pins the label left: the
   // button centres its child, and a full-width child has nowhere to go.
   button(sized_box(btn_label(text, theme)).expand_width(), on_press)
-    .padding(Padding::from_vh(4.0, 8.0))
-    .corner_radius(5.0)
+    .padding(Padding::from_vh(space::XS, space::S))
+    .corner_radius(radius::CONTROL)
     .background_color(ground)
     .active_background_color(theme.rule)
     .border_color(Color::TRANSPARENT)
@@ -207,7 +193,7 @@ fn body<S: Into<String>>(
   text: S,
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
-  label(text.into()).text_size(SIZE_BODY).color(theme.text)
+  label(text.into()).text_size(text::BODY).color(theme.text)
 }
 
 /// A section marker: a small uppercase label with a hairline running out to
@@ -219,13 +205,13 @@ fn section<S: Into<String>>(
 ) -> impl WidgetView<AppState> + use<S> {
   flex_row((
     label(text.into().to_uppercase())
-      .text_size(SIZE_SECTION)
+      .text_size(text::LABEL)
       .weight(FontWeight::BOLD)
       .color(theme.muted),
     rule(theme).flex(1.0),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(8.0.px())
+  .gap(space::S.px())
 }
 
 /// Muted secondary text.
@@ -233,7 +219,9 @@ fn muted<S: Into<String>>(
   text: S,
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
-  label(text.into()).text_size(SIZE_MUTED).color(theme.muted)
+  label(text.into())
+    .text_size(text::SECONDARY)
+    .color(theme.muted)
 }
 
 /// A small coloured status chip.
@@ -242,10 +230,10 @@ fn chip<S: Into<String>>(
   color: masonry::peniko::Color,
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
-  sized_box(label(text.into()).text_size(SIZE_CHIP).color(theme.text))
-    .padding(Padding::from_vh(2.0, 8.0))
+  sized_box(label(text.into()).text_size(text::LABEL).color(theme.text))
+    .padding(Padding::from_vh(space::HAIR, space::S))
     .background_color(color)
-    .corner_radius(8.0)
+    .corner_radius(radius::PILL)
 }
 
 /// A list of edges incident to the selection — either direction — one row per
@@ -267,7 +255,7 @@ fn edge_list(
         }),
       ))
       .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(6.0.px())
+      .gap(space::S.px())
       .into_any_flex()
     })
     .collect();
@@ -276,7 +264,7 @@ fn edge_list(
   }
   flex(Axis::Vertical, items)
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(3.0.px())
+    .gap(space::XS.px())
 }
 
 // --- the whole window ---------------------------------------------------
@@ -316,7 +304,7 @@ fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 
   let commands = flex_row((
     label("Neutron")
-      .text_size(SIZE_TITLE)
+      .text_size(text::BODY)
       .weight(FontWeight::BOLD)
       .color(theme.text)
       .flex(1.0),
@@ -356,7 +344,7 @@ fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     ),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(8.0.px());
+  .gap(space::S.px());
 
   // The palette row hangs off the toolbar rather than living in the panel:
   // it re-colours both panes, so it belongs to the window, not the selection.
@@ -373,16 +361,16 @@ fn toolbar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       .collect();
     flex_row((muted("Palette", theme), group(theme, choices)))
       .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(8.0.px())
+      .gap(space::S.px())
   });
 
   sized_box(
     flex_col((commands, picker))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(7.0.px()),
+      .gap(space::S.px()),
   )
   .expand_width()
-  .padding(Padding::from_vh(7.0, 12.0))
+  .padding(Padding::from_vh(space::S, space::M))
   .background_color(theme.bar)
 }
 
@@ -398,7 +386,7 @@ fn side_panel(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       // drift up and down with the inspector's height, which is the
       // instability this layout exists to remove.
       sized_box(portal(
-        sized_box(inspector(data)).padding(Padding::all(12.0)),
+        sized_box(inspector(data)).padding(Padding::all(space::L)),
       ))
       .expand_height()
       .flex(1.0),
@@ -430,7 +418,7 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let head = flex_row((
     label(if scoped { "◆" } else { "○" }.to_string()).color(theme.accent),
     label(name)
-      .text_size(SIZE_BODY)
+      .text_size(text::BODY)
       .weight(FontWeight::BOLD)
       .color(theme.text)
       .flex(1.0),
@@ -442,7 +430,7 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     ),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(8.0.px());
+  .gap(space::S.px());
 
   let picker = open.then(|| {
     let mut rows: Vec<_> = Vec::new();
@@ -484,16 +472,16 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     );
     flex(Axis::Vertical, rows)
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(1.0.px())
+      .gap(space::HAIR.px())
   });
 
   sized_box(
     flex_col((head, picker))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(7.0.px()),
+      .gap(space::S.px()),
   )
   .expand_width()
-  .padding(Padding::from_vh(9.0, 12.0))
+  .padding(Padding::from_vh(space::S, space::M))
   .background_color(theme.bar)
 }
 
@@ -509,7 +497,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       muted("Click a node on the canvas to inspect it.", theme),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(8.0.px())
+    .gap(space::S.px())
     .boxed();
   };
 
@@ -570,7 +558,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       muted(meta, theme),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(8.0.px()),
+    .gap(space::S.px()),
     flex_row(group(
       theme,
       (
@@ -590,7 +578,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     edge_list(&info.dependents, theme),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Fill)
-  .gap(9.0.px())
+  .gap(space::S.px())
   .boxed()
 }
 
@@ -637,7 +625,7 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   sized_box(
     flex_col((
       label("Click a node on the canvas to link it.".to_string())
-        .text_size(SIZE_MUTED)
+        .text_size(text::SECONDARY)
         .color(theme.accent),
       muted("…or search:", theme),
       text_input(data.link_filter.clone(), |s: &mut AppState, v| {
@@ -648,16 +636,16 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       .border_color(theme.rule),
       flex(Axis::Vertical, rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
-        .gap(3.0.px()),
+        .gap(space::XS.px()),
       overflow,
       btn("Cancel", theme, |s: &mut AppState| s.cancel_link()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(6.0.px()),
+    .gap(space::S.px()),
   )
-  .padding(Padding::all(9.0))
+  .padding(Padding::all(space::M))
   .background_color(theme.sunken)
-  .corner_radius(7.0)
+  .corner_radius(radius::CARD)
   .boxed()
 }
 
@@ -693,12 +681,12 @@ fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       section(format!("Actionable · {total}"), theme),
       flex(Axis::Vertical, rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
-        .gap(3.0.px()),
+        .gap(space::XS.px()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(7.0.px()),
+    .gap(space::S.px()),
   )
   .expand_width()
-  .padding(Padding::from_vh(10.0, 12.0))
+  .padding(Padding::from_vh(space::M, space::M))
   .background_color(theme.bar)
 }

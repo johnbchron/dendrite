@@ -13,6 +13,7 @@ mod font;
 mod icons;
 mod keymap;
 mod state;
+mod surface;
 mod theme;
 mod tokens;
 mod ui;

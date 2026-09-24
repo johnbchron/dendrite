@@ -19,16 +19,18 @@ use xilem::{
 };
 
 use super::controls::{
-  body, btn, chip, group, icon_seg, label, muted, row_btn, section, seg,
+  body, btn, chip, group, icon_btn, label, muted, row_btn, rule, section, seg,
   state_str,
 };
 use crate::{
+  divider::{DividerAction, divider},
   field::field,
   focus::FieldKey,
   icons::{Icon, icon},
   state::{AppState, EdgeRow},
+  surface::{Level, surface},
   theme::Theme,
-  tokens::{radius, space, text},
+  tokens::{radius, size, space, text},
 };
 
 /// A list of edges incident to the selection — either direction — one row per
@@ -50,7 +52,9 @@ fn edge_list(
       flex_row((
         icon(mark, text::BODY, tint),
         body(row.name.clone(), theme).flex(1.0),
-        icon_seg(Icon::X, theme, move |s: &mut AppState| s.remove_edge(edge)),
+        icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
+          s.remove_edge(edge)
+        }),
       ))
       .cross_axis_alignment(CrossAxisAlignment::Center)
       .gap(space::S.px())
@@ -65,15 +69,17 @@ fn edge_list(
     .gap(space::XS.px())
 }
 
-/// The side panel: lens pinned top, inspector scrolling in the middle,
-/// actionable frontier pinned bottom.
-pub(super) fn side_panel(
+/// The side card, floating over the canvas's right-hand side: lens pinned
+/// top, inspector scrolling in the middle, actionable frontier pinned
+/// bottom.
+pub(super) fn side_card(
   data: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
-  sized_box(
+  let regions = sized_box(
     flex_col((
       lens_bar(data),
+      rule(theme),
       // `expand_height` makes the portal fill its flex allocation rather than
       // shrinking to its content — otherwise the pinned bottom region would
       // drift up and down with the inspector's height, which is the
@@ -83,14 +89,36 @@ pub(super) fn side_panel(
       ))
       .expand_height()
       .flex(1.0),
+      rule(theme),
       actionable_region(data),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(0.0.px()),
   )
   .width(data.panel_width().px())
+  .expand_height();
+
+  let divider_view = divider(theme, |s: &mut AppState, action| match action {
+    DividerAction::Begin => s.begin_panel_resize(),
+    DividerAction::Drag(dx) => s.resize_panel(dx),
+  });
+
+  // The divider is the card's left edge, so dragging it resizes the card.
+  sized_box(surface(
+    theme,
+    Level::Card,
+    0.0,
+    flex_row((divider_view, regions))
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(0.0.px()),
+  ))
   .expand_height()
-  .background_color(theme.panel)
+  .padding(Padding {
+    top:    size::TOP_BAR + space::M,
+    right:  space::M,
+    bottom: space::M,
+    left:   0.0,
+  })
 }
 
 /// The active quest lens as a single always-visible line, expanding into the
@@ -174,7 +202,6 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   )
   .expand_width()
   .padding(Padding::from_vh(space::S, space::M))
-  .background_color(theme.bar)
 }
 
 /// Properties of the selected node, or a hint when nothing is selected. This
@@ -374,5 +401,4 @@ fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   )
   .expand_width()
   .padding(Padding::from_vh(space::M, space::M))
-  .background_color(theme.bar)
 }

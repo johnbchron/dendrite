@@ -20,9 +20,13 @@ use db::Store;
 use layout::{LayoutConfig, Slot};
 
 use crate::{
-  canvas::{Camera, CameraRequest, CanvasScene, RenderEdge, RenderNode},
+  canvas::{
+    Camera, CameraRequest, CanvasScene, Insets, RenderEdge, RenderNode,
+    ZoomStep,
+  },
   keymap::{self, Command},
   theme::{self, Theme},
+  tokens::{size, space},
 };
 
 /// The whole application's state.
@@ -53,8 +57,10 @@ pub struct AppState {
   picker_open:      bool,
   /// The palette every painted surface reads its colours from.
   theme:            &'static Theme,
-  /// Whether the palette picker is expanded under the toolbar.
-  palette_open:     bool,
+  /// Whether the settings popover (the palette picker) is open.
+  settings_open:    bool,
+  /// The canvas zoom as a whole percentage, as last reported by the canvas.
+  zoom_percent:     u32,
   /// The field whose keystrokes are currently being committed, if the last
   /// commit came from one. The next keystroke in the same field amends that
   /// undo group rather than opening a new one.
@@ -151,7 +157,8 @@ impl AppState {
       link_filter:      String::new(),
       picker_open:      false,
       theme:            theme::DEFAULT,
-      palette_open:     false,
+      settings_open:    false,
+      zoom_percent:     100,
       live_edit:        None,
       derivations:      Mutex::new(None),
       scene_cache:      Mutex::new(None),
@@ -180,25 +187,29 @@ impl AppState {
   pub fn set_theme(&mut self, id: &str) {
     let Some(next) = theme::by_id(id) else { return };
     self.theme = next;
-    self.palette_open = false;
     if let Err(e) = self.lock().set_setting(THEME_KEY, next.id) {
       eprintln!("saving the palette failed: {e}");
     }
   }
 
-  /// Every palette as `(id, name, is_active)`, for the picker.
-  pub fn theme_list(&self) -> Vec<(&'static str, &'static str, bool)> {
-    theme::ALL
-      .iter()
-      .map(|t| (t.id, t.name, t.id == self.theme.id))
-      .collect()
+  /// Whether the settings popover is open.
+  pub fn settings_open(&self) -> bool { self.settings_open }
+
+  /// Open or close the settings popover, closing any other popover.
+  pub fn toggle_settings(&mut self) {
+    let open = !self.settings_open;
+    self.close_popovers();
+    self.settings_open = open;
   }
 
-  /// Whether the palette picker is expanded.
-  pub fn palette_open(&self) -> bool { self.palette_open }
+  /// Whether any popover is open (so a click elsewhere should close it).
+  pub fn popover_open(&self) -> bool { self.settings_open || self.picker_open }
 
-  /// Expand or collapse the palette picker.
-  pub fn toggle_palette(&mut self) { self.palette_open = !self.palette_open; }
+  /// Close every popover.
+  pub fn close_popovers(&mut self) {
+    self.settings_open = false;
+    self.picker_open = false;
+  }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
     self.store.lock().expect("store mutex poisoned")
@@ -356,6 +367,30 @@ impl AppState {
   /// Ask the canvas to refit/centre the whole graph on the next frame.
   pub fn recenter(&mut self) { self.aim(CameraRequest::Fit); }
 
+  /// Step the canvas zoom.
+  pub fn zoom(&mut self, step: ZoomStep) {
+    self.aim(CameraRequest::Zoom(step));
+  }
+
+  /// The canvas zoom as a whole percentage.
+  pub fn zoom_percent(&self) -> u32 { self.zoom_percent }
+
+  /// Record the zoom level the canvas reports.
+  pub fn set_zoom_percent(&mut self, percent: u32) {
+    self.zoom_percent = percent;
+  }
+
+  /// How much of the canvas the floating chrome covers, so fitting and
+  /// revealing aim at the visible part.
+  pub fn canvas_insets(&self) -> Insets {
+    Insets {
+      top:    size::TOP_BAR,
+      right:  self.panel_width + size::DIVIDER + 2.0 * space::M,
+      bottom: 0.0,
+      left:   0.0,
+    }
+  }
+
   /// Select `node` and bring it into view on the canvas: the "go to" used
   /// by lists that name nodes.
   pub fn go_to(&mut self, node: NodeId) {
@@ -445,7 +480,11 @@ impl AppState {
   pub fn picker_open(&self) -> bool { self.picker_open }
 
   /// Expand or collapse the quest switcher.
-  pub fn toggle_picker(&mut self) { self.picker_open = !self.picker_open; }
+  pub fn toggle_picker(&mut self) {
+    let open = !self.picker_open;
+    self.close_popovers();
+    self.picker_open = open;
+  }
 
   /// Add a dependency requirement from the selected node to `target`.
   pub fn add_requirement(&mut self, target: NodeId) {
@@ -521,9 +560,8 @@ impl AppState {
   pub fn escape(&mut self) {
     if self.linking {
       self.cancel_link();
-    } else if self.palette_open || self.picker_open {
-      self.palette_open = false;
-      self.picker_open = false;
+    } else if self.popover_open() {
+      self.close_popovers();
     } else {
       self.select(None);
     }
@@ -966,15 +1004,6 @@ mod tests {
       Some("umber"),
       "the choice was written to the meta table"
     );
-
-    // Exactly one palette reads as active in the picker.
-    let active: Vec<&str> = state
-      .theme_list()
-      .iter()
-      .filter(|(_, _, is_active)| *is_active)
-      .map(|(id, ..)| *id)
-      .collect();
-    assert_eq!(active, vec!["umber"]);
 
     // An id this build does not ship is ignored rather than blanking the UI.
     state.set_theme("chartreuse");

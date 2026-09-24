@@ -135,7 +135,23 @@ pub enum CameraRequest {
   /// Pan, easing, until the node is inside the uncovered area. A node that
   /// is already comfortably in view does not move.
   Reveal(NodeId),
+  /// Step the zoom, easing, about the centre of the uncovered area.
+  Zoom(ZoomStep),
 }
+
+/// A zoom step from the zoom controls or keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZoomStep {
+  /// One step closer.
+  In,
+  /// One step further out.
+  Out,
+  /// Back to 100%.
+  Reset,
+}
+
+/// How much one [`ZoomStep`] multiplies or divides the zoom by.
+const ZOOM_STEP: f64 = 1.25;
 
 /// The latest camera request, tagged with a counter the app bumps for each
 /// new one, so repeating the same request (Fit twice) still acts.
@@ -152,6 +168,8 @@ pub struct Camera {
 pub enum CanvasAction {
   /// Selection changed (a node, or `None` when the user clicked empty space).
   Select(Option<NodeId>),
+  /// The zoom level, as a whole percentage, changed.
+  Zoomed(u32),
 }
 
 // --- the widget ---------------------------------------------------------
@@ -159,52 +177,55 @@ pub enum CanvasAction {
 /// The Masonry canvas widget. Owns the view transform (pan/zoom) and the
 /// interaction state; the scene is pushed in from the view.
 pub struct CanvasWidget {
-  scene:        Arc<CanvasScene>,
+  scene:         Arc<CanvasScene>,
   /// Whether labels, sizes, placement and routes need recomputing in the
   /// next layout pass: set by a new scene or a font change, and cleared
   /// once done, so resizes and repaints do not redo them.
-  dirty:        bool,
+  dirty:         bool,
   /// World→screen translation.
-  pan:          Vec2,
+  pan:           Vec2,
   /// World→screen scale.
-  zoom:         f64,
+  zoom:          f64,
   /// The scale the view is animating towards; wheel input moves this, and
   /// each animation frame eases [`Self::zoom`] after it.
-  zoom_target:  f64,
+  zoom_target:   f64,
   /// Screen point the animated zoom is anchored on (the last wheel position).
-  zoom_anchor:  Point,
+  zoom_anchor:   Point,
   /// The translation an eased pan is heading for, if one is in flight.
-  pan_target:   Option<Vec2>,
+  pan_target:    Option<Vec2>,
   /// A node to reveal once it has been placed (the request can arrive in the
   /// same rebuild as the scene that adds it).
-  reveal:       Option<NodeId>,
+  reveal:        Option<NodeId>,
   /// How much of the canvas the chrome covers.
-  insets:       Insets,
+  insets:        Insets,
+  /// The zoom percentage last reported to the app, so it hears of changes
+  /// only.
+  reported_zoom: u32,
   /// Pointer position at the last `Down`, for click-vs-pan discrimination.
-  press_origin: Option<Point>,
+  press_origin:  Option<Point>,
   /// Previous pointer position while dragging, for incremental panning.
-  last_pointer: Option<Point>,
+  last_pointer:  Option<Point>,
   /// Whether the current gesture has moved far enough to be a pan.
-  panned:       bool,
+  panned:        bool,
   /// When set, the next paint fits the whole graph into the viewport. Set on
   /// construction (so the app opens centred) and whenever a recenter is
   /// requested (PLAN §5, §6.3).
-  needs_fit:    bool,
+  needs_fit:     bool,
   /// Viewport size from the previous layout pass, so a resize can request
   /// a refit (the existing fit is centred on the old viewport).
-  last_size:    Option<Size>,
+  last_size:     Option<Size>,
   /// The palette every colour painted here comes from, pushed in from the
   /// view on rebuild.
-  theme:        &'static Theme,
+  theme:         &'static Theme,
   /// Cached per-node text layouts, keyed by id, invalidated when the label
   /// text changes.
-  text_cache:   HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  text_cache:    HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
   /// Every node's box in world coordinates, placed in the layout pass from
   /// the scene's arrangement and the measured labels.
-  rects:        HashMap<NodeId, Rect>,
+  rects:         HashMap<NodeId, Rect>,
   /// Where each of the scene's edges attaches, index-aligned with
   /// `scene.edges`; routed alongside `rects`.
-  routes:       Vec<Option<Route>>,
+  routes:        Vec<Option<Route>>,
 }
 
 impl CanvasWidget {
@@ -220,6 +241,7 @@ impl CanvasWidget {
       pan_target: None,
       reveal: None,
       insets: Insets::default(),
+      reported_zoom: 100,
       press_origin: None,
       last_pointer: None,
       panned: false,
@@ -345,7 +367,28 @@ impl CanvasWidget {
     match request {
       CameraRequest::Fit => self.needs_fit = true,
       CameraRequest::Reveal(node) => self.reveal = Some(node),
+      CameraRequest::Zoom(step) => {
+        self.zoom_target = match step {
+          ZoomStep::In => self.zoom_target * ZOOM_STEP,
+          ZoomStep::Out => self.zoom_target / ZOOM_STEP,
+          ZoomStep::Reset => 1.0,
+        }
+        .clamp(ZOOM_MIN, ZOOM_MAX);
+        let size = self.last_size.unwrap_or_default();
+        self.zoom_anchor = uncovered(size, self.insets).center();
+        self.pan_target = None;
+      }
     }
+  }
+
+  /// The zoom level as a whole percentage, if it differs from the one last
+  /// reported (and records it as reported).
+  fn zoom_change(&mut self) -> Option<u32> {
+    let percent = (self.zoom * 100.0).round() as u32;
+    (percent != self.reported_zoom).then(|| {
+      self.reported_zoom = percent;
+      percent
+    })
   }
 
   /// Start panning towards a pending [`Self::reveal`], if its node is placed
@@ -482,6 +525,9 @@ impl Widget for CanvasWidget {
       }
     }
 
+    if let Some(percent) = self.zoom_change() {
+      ctx.submit_action::<CanvasAction>(CanvasAction::Zoomed(percent));
+    }
     ctx.request_render();
     if moving || self.reveal.is_some() {
       ctx.request_anim_frame();
@@ -506,25 +552,21 @@ impl Widget for CanvasWidget {
       self.measure(ctx);
       self.dirty = false;
     }
-    // Fill whatever the parent offers; fall back to a sane size if
-    // unconstrained.
-    let max = bc.max();
-    let w = if max.width.is_finite() {
-      max.width
-    } else {
-      800.0
-    };
-    let h = if max.height.is_finite() {
-      max.height
-    } else {
-      600.0
-    };
-    let size = bc.constrain((w, h));
-    // A resize leaves the graph off-centre, so refit on the next paint.
+    let size = canvas_size(bc);
+    // A resize leaves the graph off-centre, so refit.
     if self.last_size.is_some_and(|prev| prev != size) {
       self.needs_fit = true;
     }
     self.last_size = Some(size);
+    // Fit once the viewport size and the node boxes are both known: at
+    // startup, after a resize, and on request.
+    if self.needs_fit && !self.rects.is_empty() {
+      self.fit_to(size);
+      self.needs_fit = false;
+      if let Some(percent) = self.zoom_change() {
+        ctx.submit_action::<CanvasAction>(CanvasAction::Zoomed(percent));
+      }
+    }
     size
   }
 
@@ -535,11 +577,6 @@ impl Widget for CanvasWidget {
     scene: &mut Scene,
   ) {
     let size = ctx.size();
-    // Fit-to-view once the viewport size is known (startup + on request).
-    if self.needs_fit && !self.scene.nodes.is_empty() {
-      self.fit_to(size);
-      self.needs_fit = false;
-    }
     let tf = self.transform();
     let view = visible_world(tf, size);
 
@@ -915,6 +952,23 @@ fn paint_edge(
   head.line_to(base - perp);
   head.close_path();
   scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
+}
+
+/// The canvas fills whatever its parent offers, falling back to a sane size
+/// when unconstrained.
+fn canvas_size(bc: &BoxConstraints) -> Size {
+  let max = bc.max();
+  let w = if max.width.is_finite() {
+    max.width
+  } else {
+    800.0
+  };
+  let h = if max.height.is_finite() {
+    max.height
+  } else {
+    600.0
+  };
+  bc.constrain((w, h))
 }
 
 /// The part of a `viewport`-sized canvas the chrome leaves uncovered, in

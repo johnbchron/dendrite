@@ -13,7 +13,11 @@ use masonry::{
   parley::style::{FontFamily, FontStack},
   peniko::Color,
 };
-use xilem::{WidgetView, style::Style as _, view::label};
+use xilem::{
+  WidgetView,
+  style::Style as _,
+  view::{Label, label},
+};
 
 /// The bundled icon font.
 pub const DATA: &[u8] = include_bytes!("../assets/lucide-subset.ttf");
@@ -47,14 +51,34 @@ macro_rules! icons {
 }
 
 icons! {
-  /// A satisfied requirement.
+  /// A satisfied requirement; the active choice in a list.
   Check = 0xe06c,
+  /// Fit the graph to the window.
+  Fit = 0xe257,
   /// The quest lens.
   Flag = 0xe0d1,
+  /// Redo.
+  Redo = 0xe2a0,
+  /// Settings.
+  Settings = 0xe154,
   /// An unsatisfied requirement.
   Square = 0xe167,
+  /// Undo.
+  Undo = 0xe2a1,
   /// Remove or close.
   X = 0xe1b2,
+  /// Zoom in.
+  ZoomIn = 0xe1b6,
+  /// Zoom out.
+  ZoomOut = 0xe1b7,
+}
+
+/// An icon at `size` logical pixels, uncoloured: a plain [`Label`] for
+/// callers that go on to style it (colours for each state, say).
+pub fn icon_label(icon: Icon, size: f32) -> Label {
+  label(String::from(icon.glyph()))
+    .font(FontStack::Single(FontFamily::Named(Cow::Borrowed(FAMILY))))
+    .text_size(size)
 }
 
 /// An icon at `size` logical pixels in `color`.
@@ -63,10 +87,7 @@ pub fn icon<State: 'static, Action: 'static>(
   size: f32,
   color: Color,
 ) -> impl WidgetView<State, Action> + use<State, Action> {
-  label(String::from(icon.glyph()))
-    .font(FontStack::Single(FontFamily::Named(Cow::Borrowed(FAMILY))))
-    .text_size(size)
-    .color(color)
+  icon_label(icon, size).color(color)
 }
 
 #[cfg(test)]

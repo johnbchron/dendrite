@@ -43,3 +43,13 @@ pub mod text {
   /// Section labels (set in caps) and chips.
   pub const LABEL: f32 = 11.0;
 }
+
+/// Fixed chrome dimensions, in logical pixels.
+pub mod size {
+  /// Height of the top bar.
+  pub const TOP_BAR: f64 = 44.0;
+  /// Width of the drag handle along the inspector card's left edge.
+  pub const DIVIDER: f64 = 6.0;
+  /// Icon size inside a control.
+  pub const ICON: f32 = 16.0;
+}

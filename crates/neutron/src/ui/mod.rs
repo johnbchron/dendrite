@@ -1,59 +1,86 @@
-//! The Xilem view tree: a window-wide toolbar over the canvas and the side
-//! panel (PLAN §5).
+//! The Xilem view tree (PLAN §5).
 //!
 //! `app_logic` is re-run whenever state changes; it derives the whole UI from
 //! [`AppState`].
 //!
-//! Commands that act on the document rather than the selection — undo, redo,
-//! recenter, node creation — live in the toolbar above both panes.
+//! The canvas fills the window. Everything else floats over it on a
+//! `zstack`: the top bar along the top edge, the side card down the right,
+//! and any open popover above them, with a transparent backdrop that closes
+//! the popover when clicked. The canvas is told how much of it the chrome
+//! covers, so fitting and revealing aim at the part still visible.
 
 mod controls;
 mod panel;
 mod toolbar;
 
-use masonry::properties::types::AsUnit;
+use masonry::{
+  peniko::Color,
+  properties::{Padding, types::UnitPoint},
+};
 use xilem::{
   WidgetView,
-  view::{CrossAxisAlignment, FlexExt as _, flex_col, flex_row},
+  style::Style as _,
+  view::{button, flex_col, sized_box, zstack, zstack_item},
 };
 
 use crate::{
-  canvas::{CanvasAction, Insets, canvas},
-  divider::{DividerAction, divider},
+  canvas::{CanvasAction, canvas},
   keymap::keymap,
   state::AppState,
+  tokens::{size, space},
 };
 
 /// Build the whole UI from the current state.
 pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
   let canvas_view = canvas(
     data.scene(),
     data.theme(),
     data.camera(),
-    Insets::default(),
+    data.canvas_insets(),
     |s: &mut AppState, action| match action {
       // While a link is armed this builds an edge instead of selecting.
       CanvasAction::Select(id) => s.canvas_click(id),
+      CanvasAction::Zoomed(percent) => s.set_zoom_percent(percent),
     },
   );
 
-  let divider_view = divider(theme, |s: &mut AppState, action| match action {
-    DividerAction::Begin => s.begin_panel_resize(),
-    DividerAction::Drag(dx) => s.resize_panel(dx),
+  let backdrop = data.popover_open().then(backdrop);
+  let settings = data.settings_open().then(|| {
+    zstack_item(
+      sized_box(toolbar::settings_popover(data)).padding(Padding {
+        top:    size::TOP_BAR + space::XS,
+        right:  space::M,
+        bottom: 0.0,
+        left:   0.0,
+      }),
+      UnitPoint::TOP_RIGHT,
+    )
   });
 
-  let body =
-    flex_row((canvas_view.flex(1.0), divider_view, panel::side_panel(data)))
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(0.0.px());
+  let window = zstack((
+    canvas_view,
+    zstack_item(panel::side_card(data), UnitPoint::TOP_RIGHT),
+    zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
+    backdrop,
+    settings,
+  ))
+  .alignment(UnitPoint::TOP_LEFT);
 
-  let window = flex_col((toolbar::toolbar(data), body.flex(1.0)))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(0.0.px());
   // Outermost, so it is the window's root widget and receives every key
   // that no focused field handles.
   keymap(data.key_flags(), window, |s: &mut AppState, command| {
     s.run(command)
   })
+}
+
+/// A full-window, invisible button under an open popover: clicking anywhere
+/// outside the popover closes it, rather than acting on what is beneath.
+fn backdrop() -> impl WidgetView<AppState> + use<> {
+  button(sized_box(flex_col(())).expand(), |s: &mut AppState| {
+    s.close_popovers()
+  })
+  .padding(Padding::all(0.0))
+  .background_color(Color::TRANSPARENT)
+  .active_background_color(Color::TRANSPARENT)
+  .border_width(0.0)
 }

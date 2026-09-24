@@ -1,4 +1,4 @@
-//! The draggable divider between the canvas and the side panel.
+//! The draggable divider along the side card's left edge.
 //!
 //! A thin leaf Masonry widget plus the Xilem [`View`] that hosts it, built the
 //! same way as the canvas in [`crate::canvas`]. The widget knows nothing about
@@ -32,7 +32,7 @@ use crate::theme::Theme;
 
 /// Total width of the divider. This is the grab area as well as the layout
 /// footprint, so it is deliberately wider than the hairline it draws.
-const WIDTH: f64 = 6.0;
+const WIDTH: f64 = crate::tokens::size::DIVIDER;
 /// Width of the hairline drawn down the middle of the grab area.
 const LINE: f64 = 1.0;
 
@@ -147,11 +147,12 @@ impl Widget for DividerWidget {
     scene: &mut Scene,
   ) {
     let size = ctx.size();
-    let color = if self.press_x.is_some() || ctx.is_hovered() {
-      self.theme.accent
-    } else {
-      self.theme.rule
-    };
+    // The card's own border marks the edge at rest; the handle only shows
+    // while it is being pointed at or dragged.
+    if self.press_x.is_none() && !ctx.is_hovered() {
+      return;
+    }
+    let color = self.theme.accent;
     let x = (size.width - LINE) / 2.0;
     scene.fill(
       Fill::NonZero,

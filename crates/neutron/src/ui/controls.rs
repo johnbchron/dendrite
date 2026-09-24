@@ -19,10 +19,10 @@ use xilem::{
 
 use crate::{
   font,
-  icons::{Icon, icon},
+  icons::{Icon, icon_label},
   state::AppState,
   theme::Theme,
-  tokens::{radius, space, text},
+  tokens::{radius, size, space, text},
 };
 
 /// Every label in the panel, in the app's typeface. This shadows xilem's
@@ -100,22 +100,37 @@ where
     .hovered_border_color(theme.accent)
 }
 
-/// A flat icon-only button, sized like a [`seg`].
-pub(super) fn icon_seg<F>(
+/// A flat icon-only button, sized like a [`seg`] so it can sit in a
+/// [`group`] beside them. `active` fills it, as for a toggle that is on.
+pub(super) fn icon_btn<F>(
   glyph: Icon,
   theme: &'static Theme,
+  active: bool,
+  enabled: bool,
   on_press: F,
 ) -> impl WidgetView<AppState> + use<F>
 where
   F: Fn(&mut AppState) + Send + Sync + 'static,
 {
-  button(icon(glyph, text::CONTROL, theme.muted), on_press)
-    .padding(Padding::from_vh(space::XS, space::S))
-    .corner_radius(radius::CONTROL)
-    .background_color(Color::TRANSPARENT)
-    .active_background_color(theme.rule)
-    .border_color(Color::TRANSPARENT)
-    .hovered_border_color(theme.accent)
+  let ground = if active {
+    theme.rule
+  } else {
+    Color::TRANSPARENT
+  };
+  button(
+    icon_label(glyph, size::ICON)
+      .color(theme.text)
+      .disabled_color(theme.rule),
+    on_press,
+  )
+  .disabled(!enabled)
+  .padding(Padding::from_vh(space::XS, space::S))
+  .corner_radius(radius::CONTROL)
+  .background_color(ground)
+  .active_background_color(theme.rule)
+  .disabled_background_color(Color::TRANSPARENT)
+  .border_color(Color::TRANSPARENT)
+  .hovered_border_color(theme.accent)
 }
 
 /// A row of [`seg`]s framed as one segmented control: related commands sit
@@ -153,20 +168,49 @@ where
   S: Into<String>,
   F: Fn(&mut AppState) + Send + Sync + 'static,
 {
+  row_button(theme, active, btn_label(text, theme), on_press)
+}
+
+/// A [`row_btn`] with arbitrary content (icons, swatches, a trailing mark).
+pub(super) fn row_button<V, F>(
+  theme: &'static Theme,
+  active: bool,
+  content: V,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<V, F>
+where
+  V: WidgetView<AppState>,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
   let ground = if active {
     theme.sunken
   } else {
     Color::TRANSPARENT
   };
-  // Filling the width inside the button is what pins the label left: the
+  // Filling the width inside the button is what pins the content left: the
   // button centres its child, and a full-width child has nowhere to go.
-  button(sized_box(btn_label(text, theme)).expand_width(), on_press)
+  button(sized_box(content).expand_width(), on_press)
     .padding(Padding::from_vh(space::XS, space::S))
     .corner_radius(radius::CONTROL)
     .background_color(ground)
     .active_background_color(theme.rule)
     .border_color(Color::TRANSPARENT)
     .hovered_border_color(theme.accent)
+}
+
+/// A small round swatch of `color`, for previews such as the palette list.
+/// Ringed in `theme.rule`, so a swatch the colour of the ground still shows.
+pub(super) fn swatch(
+  color: Color,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  sized_box(flex_col(()))
+    .width(12.0.px())
+    .height(12.0.px())
+    .corner_radius(radius::PILL)
+    .background_color(color)
+    .border_color(theme.rule)
+    .border_width(1.0)
 }
 
 /// Human-readable label for a derived node state.

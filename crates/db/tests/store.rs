@@ -299,3 +299,109 @@ fn an_unreadable_event_is_reported_by_position() {
     Ok(_) => panic!("an unreadable event was skipped"),
   }
 }
+
+/// Overwrite the payload of the event at `seq` with something unreadable.
+fn corrupt_event(path: &std::path::Path, seq: i64) {
+  let conn = Connection::open(path).unwrap();
+  conn
+    .execute("UPDATE events SET payload = 'garbage' WHERE seq = ?1", [
+      seq,
+    ])
+    .unwrap();
+}
+
+#[test]
+fn opening_loads_the_snapshot_instead_of_replaying_it() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  let before = {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+    store.graph().clone()
+  }; // closing writes the snapshot
+
+  // An event the snapshot already covers is never read again, so breaking
+  // it does not matter.
+  corrupt_event(&path, 1);
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &before);
+}
+
+#[test]
+fn events_after_the_snapshot_are_replayed() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+  }
+  let after = {
+    let mut store = Store::open(&path).unwrap();
+    store
+      .commit(vec![Event::NodeRenamed {
+        node: nid(1),
+        name: "renamed".into(),
+      }])
+      .unwrap();
+    let graph = store.graph().clone();
+    // A crash: the event is in the log, but the snapshot never caught up.
+    std::mem::forget(store);
+    graph
+  };
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &after);
+  assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "renamed");
+}
+
+#[test]
+fn an_unreadable_snapshot_falls_back_to_a_full_replay() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  let before = {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+    store.graph().clone()
+  };
+  let conn = Connection::open(&path).unwrap();
+  conn
+    .execute("UPDATE nodes SET kind = 'garbage'", [])
+    .unwrap();
+  drop(conn);
+
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &before);
+}
+
+#[test]
+fn commits_do_not_rewrite_the_snapshot_every_time() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  let mut store = Store::open(&path).unwrap();
+  store.commit(sample_batch()).unwrap();
+  // Still open: the snapshot tables have not been touched by the commit.
+  let conn = Connection::open(&path).unwrap();
+  let nodes: i64 = conn
+    .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get(0))
+    .unwrap();
+  assert_eq!(nodes, 0);
+  drop(conn);
+
+  // Enough commits and it catches up mid-session.
+  for i in 0..db::SNAPSHOT_EVERY {
+    store
+      .commit(vec![Event::NodeRenamed {
+        node: nid(1),
+        name: format!("n{i}"),
+      }])
+      .unwrap();
+  }
+  let conn = Connection::open(&path).unwrap();
+  let name: String = conn
+    .query_row(
+      "SELECT name FROM nodes WHERE id = ?1",
+      [nid(1).to_string()],
+      |r| r.get(0),
+    )
+    .unwrap();
+  assert!(name.starts_with('n'), "snapshot caught up, got {name}");
+}

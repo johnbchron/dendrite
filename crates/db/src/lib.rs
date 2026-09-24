@@ -5,27 +5,38 @@
 //! - The `events` table is an **append-only log** and the sole source of truth.
 //!   Every UI mutation is one [`base::Event`], stored as a self-describing JSON
 //!   payload alongside a monotonic `seq` and a ULID.
-//! - The `nodes`, `edges`, `quests` and `quest_claims` tables are
-//!   **projections** materialized from the log for fast reads. They are rebuilt
-//!   from the in-memory [`base::Graph`] inside the same transaction that
-//!   appends events, so a reader always sees a consistent snapshot.
+//! - The `nodes`, `edges`, `quests` and `quest_claims` tables are a
+//!   **snapshot** of the graph as of log position `snapshot_seq` (in `meta`).
+//!   Opening loads the snapshot and replays only the events after it, so
+//!   startup does not grow with the length of the log. The snapshot is
+//!   rewritten, together with its `snapshot_seq`, in one transaction every
+//!   [`SNAPSHOT_EVERY`] events and when the store closes. It is a cache: if it
+//!   is missing or unreadable, opening falls back to a full replay.
 //! - **Undo never deletes history.** Undoing a group appends the inverse events
 //!   to the log (keeping it monotonic — the log doubles as an audit trail)
 //!   while walking the in-memory graph backwards (PLAN §3).
 //!
-//! On [`Store::open`] the log is replayed in `seq` order to rebuild the
-//! in-memory graph, and the projection tables are refreshed from it.
+//! On [`Store::open`] the snapshot is loaded and the rest of the log is
+//! replayed in `seq` order on top of it.
 
 mod error;
 
 use std::path::Path;
 
-use base::{Event, Graph};
+use base::{Edge, Event, Graph, Node, Quest};
 pub use error::DbError;
 use rusqlite::{Connection, OptionalExtension as _};
 
 /// The current schema version, bumped when the table layout changes.
 const SCHEMA_VERSION: i64 = 1;
+
+/// How many events may accumulate after the snapshot before a commit
+/// rewrites it. Rewriting is a full table rewrite, so it is amortised
+/// rather than done per commit; replaying this many events on open is cheap.
+pub const SNAPSHOT_EVERY: i64 = 500;
+
+/// `meta` key holding the log position the snapshot tables reflect.
+const SNAPSHOT_KEY: &str = "snapshot_seq";
 
 /// A single event as stored in (and read back from) the log.
 struct StoredEvent {
@@ -41,13 +52,17 @@ struct StoredEvent {
 /// Each entry on a stack is one *group* — the set of events committed
 /// together — so a single `undo`/`redo` reverses a whole user action.
 pub struct Store {
-  conn:  Connection,
-  graph: Graph,
+  conn:         Connection,
+  graph:        Graph,
   /// Inverse batches, newest last. Popping one and applying it undoes the
   /// most recent group.
-  undo:  Vec<Vec<Event>>,
+  undo:         Vec<Vec<Event>>,
   /// Batches that re-apply undone groups, newest last.
-  redo:  Vec<Vec<Event>>,
+  redo:         Vec<Vec<Event>>,
+  /// `seq` of the newest event in the log (0 for an empty log).
+  last_seq:     i64,
+  /// `seq` the snapshot tables reflect.
+  snapshot_seq: i64,
 }
 
 impl Store {
@@ -76,10 +91,22 @@ impl Store {
       graph: Graph::new(),
       undo: Vec::new(),
       redo: Vec::new(),
+      last_seq: 0,
+      snapshot_seq: 0,
     };
     store.migrate()?;
-    store.graph = store.replay()?;
-    store.rebuild_projections()?;
+    let (graph, from) = store.load_snapshot()?.unwrap_or_default();
+    let (graph, last_seq) = store.replay(graph, from)?;
+    store.graph = graph;
+    store.last_seq = last_seq;
+    store.snapshot_seq = from;
+    // Catch the snapshot up now, so the next open replays nothing.
+    if store.last_seq != store.snapshot_seq {
+      let tx = store.conn.transaction()?;
+      Self::write_snapshot(&tx, &store.graph, last_seq)?;
+      tx.commit()?;
+      store.snapshot_seq = last_seq;
+    }
     Ok(store)
   }
 
@@ -165,22 +192,124 @@ impl Store {
     Ok(value.map(|v| v.parse().unwrap_or(i64::MAX)))
   }
 
-  /// Fold every stored event, in `seq` order, into a fresh graph.
-  fn replay(&self) -> Result<Graph, DbError> {
-    let mut stmt = self
-      .conn
-      .prepare("SELECT seq, payload FROM events ORDER BY seq ASC")?;
-    let rows = stmt.query_map([], |row| {
+  /// Fold every stored event after `after`, in `seq` order, into `graph`.
+  /// Returns the graph and the `seq` of the last event in the log.
+  fn replay(
+    &self,
+    mut graph: Graph,
+    after: i64,
+  ) -> Result<(Graph, i64), DbError> {
+    let mut stmt = self.conn.prepare(
+      "SELECT seq, payload FROM events WHERE seq > ?1 ORDER BY seq ASC",
+    )?;
+    let rows = stmt.query_map([after], |row| {
       Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
-    let mut graph = Graph::new();
+    let mut last = after;
     for row in rows {
       let (seq, payload) = row?;
       let event: Event = serde_json::from_str(&payload)
         .map_err(|error| DbError::BadEvent { seq, error })?;
       event.apply(&mut graph);
+      last = seq;
     }
-    Ok(graph)
+    Ok((graph, last))
+  }
+
+  /// The snapshot graph and the log position it reflects, or `None` when
+  /// there is no usable snapshot: none recorded, one claiming a position
+  /// past the end of the log, or rows that do not parse. The caller then
+  /// replays from the start, so a bad snapshot costs time, never data.
+  fn load_snapshot(&self) -> Result<Option<(Graph, i64)>, DbError> {
+    let Some(seq) = self
+      .setting(SNAPSHOT_KEY)?
+      .and_then(|v| v.parse::<i64>().ok())
+    else {
+      return Ok(None);
+    };
+    let max: i64 = self.conn.query_row(
+      "SELECT COALESCE(MAX(seq), 0) FROM events",
+      [],
+      |r| r.get(0),
+    )?;
+    if seq > max {
+      return Ok(None);
+    }
+    Ok(self.read_projections().map(|g| (g, seq)))
+  }
+
+  /// Rebuild a graph from the projection tables, or `None` if any row is
+  /// unreadable.
+  fn read_projections(&self) -> Option<Graph> {
+    let mut graph = Graph::new();
+
+    let mut stmt = self
+      .conn
+      .prepare("SELECT id, name, kind, order_hint FROM nodes")
+      .ok()?;
+    let rows = stmt
+      .query_map([], |r| {
+        Ok((
+          r.get::<_, String>(0)?,
+          r.get::<_, String>(1)?,
+          r.get::<_, String>(2)?,
+          r.get::<_, f64>(3)?,
+        ))
+      })
+      .ok()?;
+    for row in rows {
+      let (id, name, kind, hint) = row.ok()?;
+      let kind = serde_json::from_str(&kind).ok()?;
+      graph.insert_node(Node::new(id.parse().ok()?, name, kind, hint));
+    }
+
+    let mut stmt = self
+      .conn
+      .prepare("SELECT id, kind, from_node, to_node FROM edges")
+      .ok()?;
+    let rows = stmt
+      .query_map([], |r| {
+        Ok((
+          r.get::<_, String>(0)?,
+          r.get::<_, String>(1)?,
+          r.get::<_, String>(2)?,
+          r.get::<_, String>(3)?,
+        ))
+      })
+      .ok()?;
+    for row in rows {
+      let (id, kind, from, to) = row.ok()?;
+      let kind = serde_json::from_str(&kind).ok()?;
+      graph.insert_edge(Edge::new(
+        id.parse().ok()?,
+        kind,
+        from.parse().ok()?,
+        to.parse().ok()?,
+      ));
+    }
+
+    let mut stmt = self.conn.prepare("SELECT id, name FROM quests").ok()?;
+    let rows = stmt
+      .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+      .ok()?;
+    for row in rows {
+      let (id, name) = row.ok()?;
+      graph.insert_quest(Quest::new(id.parse().ok()?, name));
+    }
+
+    let mut stmt = self
+      .conn
+      .prepare("SELECT quest_id, node_id FROM quest_claims")
+      .ok()?;
+    let rows = stmt
+      .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+      .ok()?;
+    for row in rows {
+      let (quest, node) = row.ok()?;
+      graph.claim(quest.parse().ok()?, node.parse().ok()?);
+    }
+
+    Some(graph)
   }
 
   /// The current in-memory graph projection.
@@ -296,8 +425,9 @@ impl Store {
     Ok(n as u64)
   }
 
-  /// Append `events` to the log and rebuild the projection tables from the
-  /// current in-memory graph, all in one transaction.
+  /// Append `events` to the log, in one transaction. When the log has run
+  /// [`SNAPSHOT_EVERY`] events past the snapshot, the snapshot is rewritten
+  /// in the same transaction.
   fn persist(&mut self, events: &[Event]) -> Result<(), DbError> {
     // Serialize + mint ids up front so a failure leaves the DB untouched.
     let stored: Vec<StoredEvent> = events
@@ -318,15 +448,33 @@ impl Store {
         insert.execute((&ev.id, &ev.payload))?;
       }
     }
-    Self::write_projections(&tx, &self.graph)?;
+    let last_seq = tx.last_insert_rowid();
+    let snapshot = last_seq - self.snapshot_seq >= SNAPSHOT_EVERY;
+    if snapshot {
+      Self::write_snapshot(&tx, &self.graph, last_seq)?;
+    }
     tx.commit()?;
+    self.last_seq = last_seq;
+    if snapshot {
+      self.snapshot_seq = last_seq;
+    }
     Ok(())
   }
 
-  /// Rebuild the projection tables from `graph` outside of a caller-supplied
-  /// transaction (used once at open time).
-  fn rebuild_projections(&self) -> Result<(), DbError> {
-    Self::write_projections(&self.conn, &self.graph)
+  /// Rewrite the snapshot tables from `graph` and record that they reflect
+  /// the log up to `seq`.
+  fn write_snapshot(
+    conn: &Connection,
+    graph: &Graph,
+    seq: i64,
+  ) -> Result<(), DbError> {
+    Self::write_projections(conn, graph)?;
+    conn.execute(
+      "INSERT INTO meta (key, value) VALUES (?1, ?2)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      (SNAPSHOT_KEY, seq.to_string()),
+    )?;
+    Ok(())
   }
 
   /// Overwrite every projection table to exactly mirror `graph`.
@@ -388,5 +536,21 @@ impl Store {
       }
     }
     Ok(())
+  }
+}
+
+impl Drop for Store {
+  /// Catch the snapshot up on close, so the next open replays nothing. Best
+  /// effort: if it fails, the next open replays the gap from the log.
+  fn drop(&mut self) {
+    if self.last_seq == self.snapshot_seq {
+      return;
+    }
+    let Ok(tx) = self.conn.transaction() else {
+      return;
+    };
+    if Self::write_snapshot(&tx, &self.graph, self.last_seq).is_ok() {
+      let _ = tx.commit();
+    }
   }
 }

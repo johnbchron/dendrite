@@ -11,6 +11,7 @@
 
 mod controls;
 mod lens;
+mod now;
 mod panel;
 mod toolbar;
 
@@ -73,6 +74,15 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let window = zstack((
     canvas_view,
     zstack_item(panel::side_card(data), UnitPoint::TOP_RIGHT),
+    zstack_item(
+      sized_box(now::tray(data)).padding(Padding {
+        top:    0.0,
+        right:  0.0,
+        bottom: space::M,
+        left:   space::M,
+      }),
+      UnitPoint::BOTTOM_LEFT,
+    ),
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
     backdrop,
     settings,

@@ -19,7 +19,7 @@ use xilem::{
 };
 
 use super::controls::{
-  body, btn, chip, group, icon_btn, label, muted, row_btn, rule, section, seg,
+  body, btn, chip, group, icon_btn, label, muted, row_btn, section, seg,
   spacer, state_str,
 };
 use crate::{
@@ -89,8 +89,6 @@ pub(super) fn side_card(
       ))
       .expand_height()
       .flex(1.0),
-      rule(theme),
-      actionable_region(data),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(0.0.px()),
@@ -279,43 +277,4 @@ fn link_block(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .background_color(theme.sunken)
   .corner_radius(radius::CARD)
   .boxed()
-}
-
-/// "What can I do right now?" (PLAN §2), pinned to the bottom so it is never
-/// scrolled away by whatever the inspector happens to be showing.
-fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
-  let (list, total) = data.actionable_list();
-  let shown = list.len();
-  let mut rows: Vec<_> = list
-    .into_iter()
-    .map(|(id, name)| {
-      row_btn(
-        format!("→ {name}"),
-        theme,
-        false,
-        move |s: &mut AppState| s.go_to(id),
-      )
-      .into_any_flex()
-    })
-    .collect();
-  if rows.is_empty() {
-    rows.push(muted("Nothing ready right now.", theme).into_any_flex());
-  }
-  if total > shown {
-    rows.push(muted(format!("+{} more", total - shown), theme).into_any_flex());
-  }
-
-  sized_box(
-    flex_col((
-      section(format!("Actionable · {total}"), theme),
-      flex(Axis::Vertical, rows)
-        .cross_axis_alignment(CrossAxisAlignment::Fill)
-        .gap(space::XS.px()),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(space::S.px()),
-  )
-  .expand_width()
-  .padding(Padding::from_vh(space::M, space::M))
 }

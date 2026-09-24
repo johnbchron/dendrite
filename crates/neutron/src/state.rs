@@ -62,6 +62,8 @@ pub struct AppState {
   theme:            &'static Theme,
   /// Whether the settings popover (the palette picker) is open.
   settings_open:    bool,
+  /// Whether the Now tray is open (rather than collapsed to its pill).
+  now_open:         bool,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
   zoom_percent:     u32,
   /// The field whose keystrokes are currently being committed, if the last
@@ -111,8 +113,16 @@ const PANEL_MAX: f64 = 680.0;
 /// Most rows the requirement picker will ever show. The panel must not grow
 /// with the graph; anything beyond this is narrowed with the filter instead.
 const LINK_PICKER_MAX: usize = 6;
-/// Most rows the pinned actionable list will ever show, for the same reason.
-const ACTIONABLE_MAX: usize = 6;
+
+/// A group of actionable nodes in the Now tray.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NowGroup {
+  /// The quest (or "Not in a quest") the group is for; `None` when there is
+  /// only one group and nothing to tell it apart from.
+  pub title: Option<String>,
+  /// The nodes, by name.
+  pub items: Vec<(NodeId, String)>,
+}
 
 /// What a quest switcher row does when chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +194,7 @@ impl AppState {
       quest_query:      Query::default(),
       theme:            theme::DEFAULT,
       settings_open:    false,
+      now_open:         false,
       zoom_percent:     100,
       live_edit:        None,
       derivations:      Mutex::new(None),
@@ -581,31 +592,67 @@ impl AppState {
     }
   }
 
-  /// The actionable frontier for the active quest, or all Ready nodes in the
-  /// global view (PLAN §2 actionable query). Capped at [`ACTIONABLE_MAX`];
-  /// the second value is the true total.
-  pub fn actionable_list(&self) -> (Vec<(NodeId, String)>, usize) {
+  /// What can be done right now (PLAN §2 actionable query), for the Now
+  /// tray, and how many distinct nodes that is.
+  ///
+  /// In a quest lens, one untitled group: the quest's actionable frontier.
+  /// In the global view, one group per quest with any actionable work (a
+  /// node in several quests' scopes appears under each), then the Ready
+  /// nodes no quest reaches, under "Not in a quest".
+  pub fn now(&self) -> (Vec<NowGroup>, usize) {
     let store = self.lock();
     let graph = store.graph();
     let cached = self.derivations(&store);
     let derived = &cached.derived;
-    let ids: Vec<NodeId> = match self.active_quest {
-      Some(q) => base::actionable(graph, derived, q),
-      None => {
-        let mut v: Vec<NodeId> =
-          derived.ready_nodes().iter().copied().collect();
-        v.sort_unstable();
-        v
-      }
+    let named = |ids: Vec<NodeId>| -> Vec<(NodeId, String)> {
+      let mut v: Vec<(NodeId, String)> = ids
+        .into_iter()
+        .filter_map(|id| graph.node(id).map(|n| (id, n.name.clone())))
+        .collect();
+      v.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+      v
     };
-    let mut v: Vec<(NodeId, String)> = ids
-      .into_iter()
-      .filter_map(|id| graph.node(id).map(|n| (id, n.name.clone())))
-      .collect();
-    let total = v.len();
-    v.truncate(ACTIONABLE_MAX);
-    (v, total)
+
+    if let Some(q) = self.active_quest {
+      let items = named(base::actionable(graph, derived, q));
+      let total = items.len();
+      return (vec![NowGroup { title: None, items }], total);
+    }
+
+    let mut quests: Vec<_> = graph.quests().collect();
+    quests.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+    let mut reached = std::collections::HashSet::new();
+    let mut groups = Vec::new();
+    for quest in quests {
+      let ids = base::actionable(graph, derived, quest.id);
+      reached.extend(ids.iter().copied());
+      if !ids.is_empty() {
+        groups.push(NowGroup {
+          title: Some(quest.name.clone()),
+          items: named(ids),
+        });
+      }
+    }
+    let ready: Vec<NodeId> = derived.ready_nodes().iter().copied().collect();
+    let total = ready.len();
+    let loose: Vec<NodeId> =
+      ready.into_iter().filter(|n| !reached.contains(n)).collect();
+    if !loose.is_empty() {
+      // Titled only when there are quest groups to tell it apart from.
+      let title = (!groups.is_empty()).then(|| "Not in a quest".to_string());
+      groups.push(NowGroup {
+        title,
+        items: named(loose),
+      });
+    }
+    (groups, total)
   }
+
+  /// Whether the Now tray is open.
+  pub fn now_open(&self) -> bool { self.now_open }
+
+  /// Open or close the Now tray.
+  pub fn toggle_now(&mut self) { self.now_open = !self.now_open; }
 
   /// Whether an undo is available.
   pub fn can_undo(&self) -> bool { self.lock().can_undo() }
@@ -1451,17 +1498,64 @@ mod tests {
     assert_eq!(state.panel_width(), PANEL_MIN);
   }
 
+  /// In the global view the tray groups by quest, a node reached by
+  /// several quests shows under each, and the total counts it once.
+  #[test]
+  fn the_now_tray_groups_by_quest_in_the_global_view() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    // A second quest that reaches Build backend too.
+    state.new_quest_named("Backend".into());
+    state.select(Some(backend));
+    state.claim_selected();
+    state.set_active_quest(None);
+
+    let (groups, total) = state.now();
+    let titles: Vec<_> = groups.iter().map(|g| g.title.clone()).collect();
+    assert_eq!(titles, [
+      Some("Backend".to_string()),
+      Some("v1 Launch".to_string()),
+    ]);
+    assert!(
+      groups
+        .iter()
+        .all(|g| g.items.iter().any(|(id, _)| *id == backend))
+    );
+    let distinct: std::collections::HashSet<_> = groups
+      .iter()
+      .flat_map(|g| g.items.iter().map(|(id, _)| *id))
+      .collect();
+    assert_eq!(total, distinct.len());
+
+    // A lens shows just its own frontier, untitled.
+    state.set_active_quest(state.quest_rows().iter().find_map(
+      |r| match r.choice {
+        QuestChoice::Quest(q) if r.label == "Backend" => Some(q),
+        _ => None,
+      },
+    ));
+    let (groups, total) = state.now();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].title, None);
+    assert_eq!(groups[0].items, vec![(
+      backend,
+      "Build backend".to_string()
+    )]);
+    assert_eq!(total, 1);
+  }
+
   #[test]
   fn actionable_tracks_the_ready_frontier() {
     let mut state = AppState::new(demo_store());
     // Global view: schema is done, so backend is ready; signoff pending is
     // actionable; frontend/ship blocked.
-    let names: Vec<String> = state
-      .actionable_list()
-      .0
+    let (groups, total) = state.now();
+    let names: Vec<String> = groups
       .into_iter()
+      .flat_map(|g| g.items)
       .map(|(_, n)| n)
       .collect();
+    assert_eq!(names.len(), total);
     assert!(names.contains(&"Build backend".to_string()));
     assert!(!names.contains(&"Ship v1".to_string()));
 

@@ -53,8 +53,10 @@ macro_rules! icons {
 icons! {
   /// A satisfied requirement; the active choice in a list.
   Check = 0xe06c,
-  /// Opens a menu.
+  /// Opens a menu; collapses a tray.
   ChevronDown = 0xe06d,
+  /// Expands a tray.
+  ChevronUp = 0xe070,
   /// Fit the graph to the window.
   Fit = 0xe257,
   /// The quest lens.
@@ -73,6 +75,8 @@ icons! {
   Undo = 0xe2a1,
   /// Remove or close.
   X = 0xe1b2,
+  /// Actionable work: the Now tray.
+  Zap = 0xe1b4,
   /// Zoom in.
   ZoomIn = 0xe1b6,
   /// Zoom out.

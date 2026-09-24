@@ -230,3 +230,72 @@ fn amending_with_nothing_to_amend_is_a_plain_commit() {
   store.undo().unwrap();
   assert_eq!(store.graph().node_count(), 0);
 }
+
+#[test]
+fn a_newer_schema_is_refused_and_left_untouched() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+  }
+  let conn = Connection::open(&path).unwrap();
+  conn
+    .execute(
+      "UPDATE meta SET value = '99' WHERE key = 'schema_version'",
+      [],
+    )
+    .unwrap();
+  let events_before: i64 = conn
+    .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+    .unwrap();
+  drop(conn);
+
+  match Store::open(&path) {
+    Err(db::DbError::NewerSchema { found, .. }) => assert_eq!(found, 99),
+    Err(e) => panic!("wrong error: {e}"),
+    Ok(_) => panic!("a newer schema was opened"),
+  }
+  // Nothing was written: the version and the log are as the newer build
+  // left them.
+  let conn = Connection::open(&path).unwrap();
+  let version: String = conn
+    .query_row(
+      "SELECT value FROM meta WHERE key = 'schema_version'",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap();
+  assert_eq!(version, "99");
+  let events_after: i64 = conn
+    .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+    .unwrap();
+  assert_eq!(events_after, events_before);
+}
+
+#[test]
+fn an_unreadable_event_is_reported_by_position() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+  }
+  let conn = Connection::open(&path).unwrap();
+  conn
+    .execute(
+      "INSERT INTO events (id, payload) VALUES ('x', '{\"FromTheFuture\":{}}')",
+      [],
+    )
+    .unwrap();
+  let bad_seq: i64 = conn
+    .query_row("SELECT MAX(seq) FROM events", [], |r| r.get(0))
+    .unwrap();
+  drop(conn);
+
+  match Store::open(&path) {
+    Err(db::DbError::BadEvent { seq, .. }) => assert_eq!(seq, bad_seq),
+    Err(e) => panic!("wrong error: {e}"),
+    Ok(_) => panic!("an unreadable event was skipped"),
+  }
+}

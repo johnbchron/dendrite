@@ -83,8 +83,17 @@ impl Store {
     Ok(store)
   }
 
-  /// Create the tables if they do not yet exist.
+  /// Refuse a database from a newer build, then create the tables if they
+  /// do not yet exist.
   fn migrate(&self) -> Result<(), DbError> {
+    if let Some(found) = self.schema_version()?
+      && found > SCHEMA_VERSION
+    {
+      return Err(DbError::NewerSchema {
+        found,
+        supported: SCHEMA_VERSION,
+      });
+    }
     self.conn.execute_batch(
       "
       CREATE TABLE IF NOT EXISTS meta (
@@ -131,16 +140,44 @@ impl Store {
     Ok(())
   }
 
+  /// The schema version recorded in `meta`, or `None` for a database that
+  /// has none yet (brand new, or never migrated).
+  fn schema_version(&self) -> Result<Option<i64>, DbError> {
+    let has_meta: bool = self.conn.query_row(
+      "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND \
+       name = 'meta')",
+      [],
+      |r| r.get(0),
+    )?;
+    if !has_meta {
+      return Ok(None);
+    }
+    let value: Option<String> = self
+      .conn
+      .query_row(
+        "SELECT value FROM meta WHERE key = 'schema_version'",
+        [],
+        |r| r.get(0),
+      )
+      .optional()?;
+    // An unparseable version is treated as unknown-and-newer: better to
+    // refuse than to write into a layout we do not understand.
+    Ok(value.map(|v| v.parse().unwrap_or(i64::MAX)))
+  }
+
   /// Fold every stored event, in `seq` order, into a fresh graph.
   fn replay(&self) -> Result<Graph, DbError> {
     let mut stmt = self
       .conn
-      .prepare("SELECT payload FROM events ORDER BY seq ASC")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+      .prepare("SELECT seq, payload FROM events ORDER BY seq ASC")?;
+    let rows = stmt.query_map([], |row| {
+      Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
     let mut graph = Graph::new();
     for row in rows {
-      let payload = row?;
-      let event: Event = serde_json::from_str(&payload)?;
+      let (seq, payload) = row?;
+      let event: Event = serde_json::from_str(&payload)
+        .map_err(|error| DbError::BadEvent { seq, error })?;
       event.apply(&mut graph);
     }
     Ok(graph)

@@ -17,7 +17,7 @@ use base::{
   Derived, EdgeId, EdgeKind, Event, NodeId, NodeKind, NodeState, QuestId,
 };
 use db::Store;
-use layout::LayoutConfig;
+use layout::{LayoutConfig, Slot};
 
 use crate::{
   canvas::{CanvasScene, RenderEdge, RenderNode},
@@ -220,6 +220,7 @@ impl AppState {
         continue;
       }
       edges.push(RenderEdge {
+        id:       edge.id,
         from:     edge.from,
         to:       edge.to,
         kind:     edge.kind,
@@ -229,7 +230,13 @@ impl AppState {
 
     // Out-of-scope nodes give up their slots, so a lens shows its nodes
     // packed together rather than scattered among gaps.
-    let arrangement = lay.arrangement.retain(|n| visible.contains(&n));
+    // A long edge keeps its channels only while both its ends are shown.
+    let arrangement = lay.arrangement.retain(|slot| match slot {
+      Slot::Node(n) => visible.contains(&n),
+      Slot::Bend { edge, .. } => graph
+        .edge(edge)
+        .is_some_and(|e| visible.contains(&e.from) && visible.contains(&e.to)),
+    });
     CanvasScene {
       nodes,
       edges,

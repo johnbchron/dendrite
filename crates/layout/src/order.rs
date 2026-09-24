@@ -4,47 +4,69 @@
 //! by [`order_hint`](base::Node::order_hint) — so a chosen ordering survives
 //! relayout (risk §6.3). A few barycenter sweeps then reduce edge crossings
 //! while leaving unconstrained nodes where the hint put them.
+//!
+//! An edge that spans several ranks is split into unit-length segments by a
+//! [`Slot::Bend`] in every rank it skips. The bends are ordered along with
+//! the nodes, so each one claims a gap in its row for the edge to pass
+//! through rather than being drawn across whatever node sits there.
 
 use std::collections::HashMap;
 
 use base::{Graph, NodeId};
 
-use crate::rank::Layering;
+use crate::{Slot, rank::Layering};
 
-/// The nodes of every rank in their final left-to-right order.
+/// The slots of every rank in their final left-to-right order.
 ///
-/// `by_rank[r]` is rank `r`'s ordered node list; a node's x index is its
+/// `by_rank[r]` is rank `r`'s ordered slot list; a slot's x index is its
 /// position in that vector.
 pub struct Ordering {
-  /// Ordered node ids per rank.
-  pub by_rank: Vec<Vec<NodeId>>,
+  /// Ordered slots per rank.
+  pub by_rank: Vec<Vec<Slot>>,
 }
 
 /// Order every rank, seeding from `order_hint` then applying `sweeps`
 /// barycenter passes (alternating down and up).
 pub fn order(graph: &Graph, layering: &Layering, sweeps: u32) -> Ordering {
   let max_rank = layering.ranks.values().copied().max().unwrap_or(0);
-  let mut by_rank: Vec<Vec<NodeId>> = vec![Vec::new(); max_rank + 1];
+  let hint = |n: NodeId| graph.node(n).map(|n| n.order_hint).unwrap_or(0.0);
+
+  // Seed keys: a node's own order_hint; a bend sits between the hints of
+  // its edge's ends, so it starts out roughly under the path it belongs to.
+  let mut seeded: Vec<Vec<(f64, Slot)>> = vec![Vec::new(); max_rank + 1];
   for (&node, &rank) in &layering.ranks {
-    by_rank[rank].push(node);
+    seeded[rank].push((hint(node), Slot::Node(node)));
   }
 
-  // Seed: ascending order_hint, node id breaking ties. Deterministic.
-  for row in &mut by_rank {
-    row.sort_by(|a, b| {
-      let ha = graph.node(*a).map(|n| n.order_hint).unwrap_or(0.0);
-      let hb = graph.node(*b).map(|n| n.order_hint).unwrap_or(0.0);
-      ha.total_cmp(&hb).then(a.cmp(b))
-    });
-  }
-
-  // Upper/lower adjacency from the acyclic edge list.
-  let mut upper: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-  let mut lower: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-  for &(u, v) in &layering.dag_edges {
+  // Upper/lower adjacency over unit-length segments: every long edge is
+  // chained through one bend per rank it skips.
+  let mut upper: HashMap<Slot, Vec<Slot>> = HashMap::new();
+  let mut lower: HashMap<Slot, Vec<Slot>> = HashMap::new();
+  let mut link = |u: Slot, v: Slot| {
     lower.entry(u).or_default().push(v);
     upper.entry(v).or_default().push(u);
+  };
+  for &(edge, u, v) in &layering.dag_edges {
+    let (ru, rv) = (layering.ranks[&u], layering.ranks[&v]);
+    let key = (hint(u) + hint(v)) / 2.0;
+    let mut prev = Slot::Node(u);
+    for rank in ru + 1..rv {
+      let bend = Slot::Bend { edge, rank };
+      seeded[rank].push((key, bend));
+      link(prev, bend);
+      prev = bend;
+    }
+    link(prev, Slot::Node(v));
   }
+
+  // Seed order: ascending key, slot breaking ties. Deterministic.
+  let mut by_rank: Vec<Vec<Slot>> = seeded
+    .into_iter()
+    .map(|mut row| {
+      row.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+      row.into_iter().map(|(_, slot)| slot).collect()
+    })
+    .collect();
 
   let mut index = index_map(&by_rank);
   for sweep in 0..sweeps {
@@ -66,8 +88,8 @@ pub fn order(graph: &Graph, layering: &Layering, sweeps: u32) -> Ordering {
   Ordering { by_rank }
 }
 
-/// Map each node to its current within-rank index.
-fn index_map(by_rank: &[Vec<NodeId>]) -> HashMap<NodeId, usize> {
+/// Map each slot to its current within-rank index.
+fn index_map(by_rank: &[Vec<Slot>]) -> HashMap<Slot, usize> {
   let mut m = HashMap::new();
   for row in by_rank {
     for (i, n) in row.iter().enumerate() {
@@ -78,25 +100,25 @@ fn index_map(by_rank: &[Vec<NodeId>]) -> HashMap<NodeId, usize> {
 }
 
 /// Refresh the indices of a single rank after it was reordered.
-fn refresh(row: &[NodeId], index: &mut HashMap<NodeId, usize>) {
+fn refresh(row: &[Slot], index: &mut HashMap<Slot, usize>) {
   for (i, n) in row.iter().enumerate() {
     index.insert(*n, i);
   }
 }
 
-/// Stable-sort one rank by the barycenter of each node's neighbours in
-/// `adj`. A node with no neighbours keeps its current index, so unconstrained
-/// nodes stay where the order-hint seed put them.
+/// Stable-sort one rank by the barycenter of each slot's neighbours in
+/// `adj`. A slot with no neighbours keeps its current index, so
+/// unconstrained nodes stay where the order-hint seed put them.
 fn reorder_rank(
-  row: &mut [NodeId],
-  adj: &HashMap<NodeId, Vec<NodeId>>,
-  index: &HashMap<NodeId, usize>,
+  row: &mut [Slot],
+  adj: &HashMap<Slot, Vec<Slot>>,
+  index: &HashMap<Slot, usize>,
 ) {
   // Snapshot current indices so "no neighbours → stay put" is well defined
   // even as we sort.
-  let current: HashMap<NodeId, usize> =
+  let current: HashMap<Slot, usize> =
     row.iter().enumerate().map(|(i, n)| (*n, i)).collect();
-  let bary = |n: &NodeId| -> f64 {
+  let bary = |n: &Slot| -> f64 {
     match adj.get(n) {
       Some(neigh) if !neigh.is_empty() => {
         let sum: usize = neigh.iter().map(|m| index[m]).sum();

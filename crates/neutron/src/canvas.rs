@@ -13,8 +13,8 @@
 
 use std::collections::HashMap;
 
-use base::{EdgeKind, NodeId, NodeKind, NodeState};
-use layout::{Arrangement, LayoutConfig};
+use base::{EdgeId, EdgeKind, NodeId, NodeKind, NodeState};
+use layout::{Arrangement, Channel, LayoutConfig};
 use masonry::{
   accesskit::{Node as AccessNode, Role},
   core::{
@@ -84,6 +84,8 @@ pub struct RenderNode {
 /// One edge between two rendered nodes, plus styling flags.
 #[derive(Clone, Debug)]
 pub struct RenderEdge {
+  /// Which edge this is, to find the channels it was given.
+  pub id:       EdgeId,
   /// The dependent / parent end.
   pub from:     NodeId,
   /// The requirement / child end (the arrow points here).
@@ -251,10 +253,11 @@ impl CanvasWidget {
       .map(|(id, (_, text))| (*id, node_size(text)))
       .collect();
     let cfg = LayoutConfig::default();
-    let centres = self
+    let placed = self
       .scene
       .arrangement
       .place(&cfg, |id| sizes.get(&id).copied().unwrap_or(cfg.node_size));
+    let centres = &placed.nodes;
     self.rects = self
       .scene
       .nodes
@@ -265,7 +268,7 @@ impl CanvasWidget {
         Some((n.id, Rect::from_center_size((c.x, c.y), (size.w, size.h))))
       })
       .collect();
-    self.routes = route_edges(&self.scene.edges, &self.rects);
+    self.routes = route_edges(&self.scene.edges, &self.rects, &placed.channels);
   }
 
   /// Fit the whole scene into `viewport`, centred, with a margin. Never
@@ -483,7 +486,7 @@ impl Widget for CanvasWidget {
 
     // Edges under nodes.
     for (edge, route) in self.scene.edges.iter().zip(&self.routes) {
-      if let Some(route) = *route {
+      if let Some(route) = route {
         paint_edge(scene, tf, edge, route, self.theme);
       }
     }
@@ -620,7 +623,7 @@ const PORT_SPAN: f64 = 0.7;
 
 /// Where an edge leaves its dependent and enters its requirement, and which
 /// way it travels there.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Route {
   /// On the border of the `from` node.
   start: Point,
@@ -629,6 +632,10 @@ struct Route {
   /// Unit direction the edge leaves `start` and arrives at `end` along:
   /// down or up between rows, sideways within one.
   axis:  Vec2,
+  /// For an edge that skips rows, the straight run it makes through each
+  /// skipped row, as `(entry, exit)` in travel order. Following these keeps
+  /// the edge in the gap the layout reserved instead of crossing nodes.
+  via:   Vec<(Point, Point)>,
 }
 
 /// The side of a box an edge attaches to.
@@ -640,8 +647,9 @@ enum Side {
   Right,
 }
 
-/// Route every edge between the boxes in `rects`, index-aligned with
-/// `edges` (`None` where an end is not placed).
+/// Route every edge between the boxes in `rects`, through its `channels` if
+/// it skips rows, index-aligned with `edges` (`None` where an end is not
+/// placed).
 ///
 /// Edges run bottom-to-top between rows — leaving the lower side of the
 /// node above and entering the upper side of the node below, whichever way
@@ -652,15 +660,18 @@ enum Side {
 fn route_edges(
   edges: &[RenderEdge],
   rects: &HashMap<NodeId, Rect>,
+  channels: &HashMap<EdgeId, Vec<Channel>>,
 ) -> Vec<Option<Route>> {
-  // First pass: sides and axes, plus who attaches where.
+  // First pass: sides, axes and waypoints, plus who attaches where.
   let mut sides: Vec<Option<(Side, Side, Vec2)>> = Vec::new();
+  let mut vias: Vec<Vec<(Point, Point)>> = Vec::new();
   let mut ports: HashMap<(NodeId, Side), Vec<(f64, usize, bool)>> =
     HashMap::new();
   for (i, edge) in edges.iter().enumerate() {
     let (Some(a), Some(b)) = (rects.get(&edge.from), rects.get(&edge.to))
     else {
       sides.push(None);
+      vias.push(Vec::new());
       continue;
     };
     let (from_side, to_side, axis) = if b.y0 >= a.y1 {
@@ -672,23 +683,37 @@ fn route_edges(
     } else {
       (Side::Left, Side::Right, Vec2::new(-1.0, 0.0))
     };
-    // Ports along a side are ordered by where the other end lies along it.
-    let along = |r: &Rect| {
-      if axis.x == 0.0 {
-        r.center().x
-      } else {
-        r.center().y
+    // Channels come top row first, each entered at the top; an edge
+    // travelling up walks them in reverse and enters each at the bottom.
+    let mut via: Vec<(Point, Point)> = channels
+      .get(&edge.id)
+      .into_iter()
+      .flatten()
+      .map(|c| (Point::new(c.x, c.top), Point::new(c.x, c.bottom)))
+      .collect();
+    if axis.y < 0.0 {
+      via.reverse();
+      for (entry, exit) in &mut via {
+        std::mem::swap(entry, exit);
       }
-    };
-    ports
-      .entry((edge.from, from_side))
-      .or_default()
-      .push((along(b), i, true));
+    }
+    // Ports along a side are ordered by where the edge heads next: its
+    // first channel from the start, its last into the end, else the far
+    // node.
+    let along = |p: Point| if axis.x == 0.0 { p.x } else { p.y };
+    let next = via.first().map_or(b.center(), |v| v.0);
+    let prev = via.last().map_or(a.center(), |v| v.1);
+    ports.entry((edge.from, from_side)).or_default().push((
+      along(next),
+      i,
+      true,
+    ));
     ports
       .entry((edge.to, to_side))
       .or_default()
-      .push((along(a), i, false));
+      .push((along(prev), i, false));
     sides.push(Some((from_side, to_side, axis)));
+    vias.push(via);
   }
 
   let mut starts: Vec<Option<Point>> = vec![None; edges.len()];
@@ -716,6 +741,7 @@ fn route_edges(
         start: starts[i]?,
         end: ends[i]?,
         axis,
+        via: vias[i].clone(),
       })
     })
     .collect()
@@ -743,19 +769,29 @@ fn port(rect: Rect, side: Side, k: usize, n: usize) -> Point {
   }
 }
 
-/// The curve an edge is drawn along: a cubic that leaves `start` and meets
-/// the arrowhead's base both square to their node, so edges bend smoothly
-/// between rows the way Mermaid draws them. Returns the curve and the tip.
-fn edge_curve(route: Route) -> (BezPath, Point) {
-  let Route { start, end, axis } = route;
-  let tip = end - axis * TIP_GAP;
+/// The curve an edge is drawn along: cubics between rows that leave and
+/// arrive square to whatever they join, so edges bend smoothly the way
+/// Mermaid draws them, with a straight run down each skipped row's channel.
+/// It ends at the arrowhead's base. Returns the curve and the tip.
+fn edge_curve(route: &Route) -> (BezPath, Point) {
+  let axis = route.axis;
+  let tip = route.end - axis * TIP_GAP;
   let base = tip - axis * HEAD_LEN;
   // Handles reach halfway along the travel axis, with a floor so a short
   // hop between close rows still bends rather than kinking.
-  let reach = ((base - start).dot(axis).abs() / 2.0).max(24.0);
+  let bend = |path: &mut BezPath, from: Point, to: Point| {
+    let reach = ((to - from).dot(axis).abs() / 2.0).max(24.0);
+    path.curve_to(from + axis * reach, to - axis * reach, to);
+  };
   let mut path = BezPath::new();
-  path.move_to(start);
-  path.curve_to(start + axis * reach, base - axis * reach, base);
+  path.move_to(route.start);
+  let mut at = route.start;
+  for &(entry, exit) in &route.via {
+    bend(&mut path, at, entry);
+    path.line_to(exit);
+    at = exit;
+  }
+  bend(&mut path, at, base);
   (path, tip)
 }
 
@@ -764,7 +800,7 @@ fn paint_edge(
   scene: &mut Scene,
   tf: Affine,
   edge: &RenderEdge,
-  route: Route,
+  route: &Route,
   theme: &Theme,
 ) {
   let color = if edge.reversed {
@@ -908,6 +944,7 @@ mod tests {
 
   fn edge(from: u128, to: u128) -> RenderEdge {
     RenderEdge {
+      id:       EdgeId::from_u128(from * 100 + to),
       from:     NodeId::from_u128(from),
       to:       NodeId::from_u128(to),
       kind:     EdgeKind::Dependency,
@@ -931,12 +968,16 @@ mod tests {
     let lower = Rect::new(0.0, 100.0, 150.0, 150.0);
     let rects = boxes(&[(1, upper), (2, lower)]);
 
-    let down = route_edges(&[edge(1, 2)], &rects)[0].unwrap();
+    let down = route_edges(&[edge(1, 2)], &rects, &HashMap::new())
+      .remove(0)
+      .unwrap();
     assert_eq!(down.start, Point::new(75.0, 50.0));
     assert_eq!(down.end, Point::new(75.0, 100.0));
     assert_eq!(down.axis, Vec2::new(0.0, 1.0));
 
-    let up = route_edges(&[edge(2, 1)], &rects)[0].unwrap();
+    let up = route_edges(&[edge(2, 1)], &rects, &HashMap::new())
+      .remove(0)
+      .unwrap();
     assert_eq!(up.start, Point::new(75.0, 100.0));
     assert_eq!(up.end, Point::new(75.0, 50.0));
     assert_eq!(up.axis, Vec2::new(0.0, -1.0));
@@ -951,8 +992,10 @@ mod tests {
     let right = Rect::new(200.0, 100.0, 350.0, 150.0);
     let rects = boxes(&[(1, parent), (2, left), (3, right)]);
     // Listed right-first, to show order comes from geometry.
-    let routes = route_edges(&[edge(1, 3), edge(1, 2)], &rects);
-    let (to_right, to_left) = (routes[0].unwrap(), routes[1].unwrap());
+    let routes =
+      route_edges(&[edge(1, 3), edge(1, 2)], &rects, &HashMap::new());
+    let (to_right, to_left) =
+      (routes[0].clone().unwrap(), routes[1].clone().unwrap());
     assert!(to_left.start.x < to_right.start.x);
     assert_eq!(to_right.start.x - to_left.start.x, PORT_PITCH);
     // Centred on the side as a group.
@@ -981,8 +1024,9 @@ mod tests {
       start: Point::new(0.0, 0.0),
       end:   Point::new(80.0, 100.0),
       axis:  Vec2::new(0.0, 1.0),
+      via:   Vec::new(),
     };
-    let (curve, tip) = edge_curve(route);
+    let (curve, tip) = edge_curve(&route);
     assert_eq!(tip, Point::new(80.0, 100.0 - TIP_GAP));
     let els = curve.elements();
     let masonry::kurbo::PathEl::CurveTo(c1, c2, base) = els[1] else {
@@ -991,5 +1035,60 @@ mod tests {
     assert_eq!(c1.x, 0.0, "leaves straight down");
     assert_eq!(c2.x, base.x, "arrives straight down");
     assert_eq!(base, Point::new(80.0, tip.y - HEAD_LEN));
+  }
+
+  /// An edge that skips rows runs straight down each channel the layout
+  /// gave it, and a reversed one climbs them in the opposite order.
+  #[test]
+  fn skipping_edges_run_through_their_channels() {
+    let top = Rect::new(0.0, 0.0, 150.0, 50.0);
+    let bottom = Rect::new(0.0, 300.0, 150.0, 350.0);
+    let rects = boxes(&[(1, top), (2, bottom)]);
+    let channels = |id| {
+      HashMap::from([(id, vec![
+        Channel {
+          x:      200.0,
+          top:    100.0,
+          bottom: 150.0,
+        },
+        Channel {
+          x:      210.0,
+          top:    200.0,
+          bottom: 250.0,
+        },
+      ])])
+    };
+
+    let down = edge(1, 2);
+    let route = route_edges(&[down.clone()], &rects, &channels(down.id))
+      .remove(0)
+      .unwrap();
+    assert_eq!(route.via, vec![
+      (Point::new(200.0, 100.0), Point::new(200.0, 150.0)),
+      (Point::new(210.0, 200.0), Point::new(210.0, 250.0)),
+    ]);
+    // The straight runs are in the drawn path.
+    let (curve, _) = edge_curve(&route);
+    let lines: Vec<Point> = curve
+      .elements()
+      .iter()
+      .filter_map(|el| match el {
+        masonry::kurbo::PathEl::LineTo(p) => Some(*p),
+        _ => None,
+      })
+      .collect();
+    assert_eq!(lines, vec![
+      Point::new(200.0, 150.0),
+      Point::new(210.0, 250.0)
+    ]);
+
+    let up = edge(2, 1);
+    let route = route_edges(&[up.clone()], &rects, &channels(up.id))
+      .remove(0)
+      .unwrap();
+    assert_eq!(route.via, vec![
+      (Point::new(210.0, 250.0), Point::new(210.0, 200.0)),
+      (Point::new(200.0, 150.0), Point::new(200.0, 100.0)),
+    ]);
   }
 }

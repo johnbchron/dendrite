@@ -16,9 +16,9 @@ use base::{EdgeId, Graph, NodeId};
 pub struct Layering {
   /// Rank (row index, 0 at the top) for every node.
   pub ranks:     HashMap<NodeId, usize>,
-  /// DAG edges as `(upper, lower)` pairs — `upper` sits one-or-more ranks
+  /// DAG edges as `(edge, upper, lower)` — `upper` sits one-or-more ranks
   /// above `lower`. Self-loops are excluded.
-  pub dag_edges: Vec<(NodeId, NodeId)>,
+  pub dag_edges: Vec<(EdgeId, NodeId, NodeId)>,
 }
 
 /// Layer the graph, given the set of edges that must be reversed to make it
@@ -29,7 +29,7 @@ pub fn layer(
 ) -> Layering {
   // Build the acyclic edge list: a reversed edge flows `to -> from`, an
   // ordinary edge flows `from -> to`. Self-loops carry no layering signal.
-  let mut dag_edges: Vec<(NodeId, NodeId)> = Vec::new();
+  let mut dag_edges: Vec<(EdgeId, NodeId, NodeId)> = Vec::new();
   for e in graph.edges() {
     let (upper, lower) = if reversed.contains(&e.id) {
       (e.to, e.from)
@@ -37,7 +37,7 @@ pub fn layer(
       (e.from, e.to)
     };
     if upper != lower {
-      dag_edges.push((upper, lower));
+      dag_edges.push((e.id, upper, lower));
     }
   }
 
@@ -52,7 +52,7 @@ pub fn layer(
     indeg.entry(n).or_insert(0);
     succ.entry(n).or_default();
   }
-  for &(u, v) in &dag_edges {
+  for &(_, u, v) in &dag_edges {
     succ.entry(u).or_default().push(v);
     *indeg.entry(v).or_insert(0) += 1;
   }

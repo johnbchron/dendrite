@@ -1,7 +1,7 @@
 //! Tests for the Sugiyama layout pipeline (PLAN §4, Milestone 4).
 
 use base::{Edge, EdgeId, EdgeKind, Graph, NodeId, NodeKind};
-use layout::{LayoutConfig, Size, layout};
+use layout::{LayoutConfig, Size, Slot, layout};
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
 
@@ -153,7 +153,7 @@ fn placement_follows_node_sizes() {
     n if n == nid(2) => Size { w: 100.0, h: 90.0 },
     _ => Size { w: 100.0, h: 40.0 },
   };
-  let pos = l.arrangement.place(&cfg, size);
+  let pos = l.arrangement.place(&cfg, size).nodes;
   let (p1, p2) = (pos[&nid(1)], pos[&nid(2)]);
 
   // Neighbours in a row are exactly one gap apart, box edge to box edge,
@@ -223,11 +223,57 @@ fn a_lone_tree_is_centred_in_its_own_column() {
 }
 
 #[test]
+fn long_edges_pass_through_their_own_gap() {
+  // 0 -> 1 -> 2 -> 3 is a chain, and 0 -> 3 skips ranks 1 and 2. The skip
+  // must not be drawn through nodes 1 and 2.
+  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 2, 3), (13, 0, 3)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+  let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
+
+  let skip = &placed.channels[&EdgeId::from_u128(13)];
+  assert_eq!(skip.len(), 2, "one channel per skipped rank");
+  let half = cfg.node_size.w / 2.0;
+  for (channel, node) in skip.iter().zip([1, 2]) {
+    let p = placed.nodes[&nid(node)];
+    // The channel spans that node's row…
+    assert!(channel.top <= p.y - cfg.node_size.h / 2.0 + 1e-9);
+    assert!(channel.bottom >= p.y + cfg.node_size.h / 2.0 - 1e-9);
+    // …but clears the node by at least a gap.
+    let clearance = (channel.x - p.x).abs() - half - cfg.bend_width / 2.0;
+    assert!(clearance >= cfg.x_gap - 1e-9, "clearance {clearance}");
+  }
+  // Channels run top row first.
+  assert!(skip[0].bottom < skip[1].top);
+
+  // Edges between adjacent ranks need no channels.
+  for e in [10, 11, 12] {
+    assert!(!placed.channels.contains_key(&EdgeId::from_u128(e)));
+  }
+}
+
+#[test]
+fn a_reversed_long_edge_still_gets_channels() {
+  // 0 -> 1 -> 2 -> 3, plus 3 -> 0 closing a cycle that the cut reverses.
+  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 2, 3), (13, 3, 0)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+  let reversed: Vec<_> = l.reversed_edges.iter().copied().collect();
+  assert_eq!(reversed.len(), 1);
+  let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
+  assert_eq!(placed.channels[&reversed[0]].len(), 2);
+}
+
+#[test]
 fn retain_drops_hidden_nodes_and_empty_rows() {
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 0, 3)]);
   let l = layout(&g, &LayoutConfig::default());
-  let only = l.arrangement.retain(|n| n != nid(1) && n != nid(3));
-  assert_eq!(only.rows, vec![vec![nid(0)], vec![nid(2)]]);
+  let only = l
+    .arrangement
+    .retain(|s| s != Slot::Node(nid(1)) && s != Slot::Node(nid(3)));
+  assert_eq!(only.rows, vec![vec![Slot::Node(nid(0))], vec![Slot::Node(
+    nid(2)
+  )]]);
 }
 
 #[test]
@@ -290,6 +336,30 @@ mod props {
           continue;
         }
         prop_assert!(l.rank(e.from).unwrap() < l.rank(e.to).unwrap());
+      }
+    }
+
+    /// Every edge that skips ranks gets one channel per skipped rank, and no
+    /// channel runs through a node's box.
+    #[test]
+    fn channels_never_cross_nodes((n, edges) in arb_graph()) {
+      let g = build_props(n, &edges);
+      let cfg = LayoutConfig::default();
+      let l = layout(&g, &cfg);
+      let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
+      let (hw, hh) = (cfg.node_size.w / 2.0, cfg.node_size.h / 2.0);
+      for e in g.edges() {
+        let span = l.rank(e.from).unwrap().abs_diff(l.rank(e.to).unwrap());
+        let got = placed.channels.get(&e.id).map_or(0, Vec::len);
+        prop_assert_eq!(got, span.saturating_sub(1));
+      }
+      for channel in placed.channels.values().flatten() {
+        for p in placed.nodes.values() {
+          let same_row = p.y - hh < channel.bottom && p.y + hh > channel.top;
+          if same_row {
+            prop_assert!((channel.x - p.x).abs() > hw);
+          }
+        }
       }
     }
 

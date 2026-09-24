@@ -25,7 +25,7 @@ use crate::{
   tokens::{radius, size, space, text},
 };
 
-/// Every label in the panel, in the app's typeface. This shadows xilem's
+/// Every label in the chrome, in the app's typeface. This shadows xilem's
 /// `label` on purpose: that one sets an empty font stack, which throws away
 /// even Masonry's default family (see [`font`]).
 pub(super) fn label(text: impl Into<ArcStr>) -> Label {
@@ -241,7 +241,7 @@ pub(super) fn rule(theme: &'static Theme) -> impl WidgetView<AppState> + use<> {
     .background_color(theme.rule)
 }
 
-/// Primary panel text. Masonry's default label colour is a fixed light grey,
+/// Primary chrome text. Masonry's default label colour is a fixed light grey,
 /// which only works on a dark ground — every palette carries its own text
 /// colour instead, and this is where it goes on.
 pub(super) fn body<S: Into<String>>(

@@ -2,14 +2,14 @@
 //!
 //! A thin leaf Masonry widget plus the Xilem [`View`] that hosts it, built the
 //! same way as the canvas in [`crate::canvas`]. The widget knows nothing about
-//! panel widths: it just reports how far the pointer has travelled since the
+//! card widths: it just reports how far the pointer has travelled since the
 //! press, and the app decides what that means.
 //!
 //! Drags are measured against a **window-space** anchor taken at press time.
-//! The divider itself slides as the panel resizes, so a delta measured in
+//! The divider itself slides as the card resizes, so a delta measured in
 //! widget-local coordinates would feed back on itself; and reporting the total
 //! offset from a fixed anchor (rather than accumulating per-move deltas) means
-//! clamping the panel at its minimum or maximum width does not desynchronise
+//! clamping the card at its minimum or maximum width does not desynchronise
 //! the pointer from the divider.
 
 use masonry::{
@@ -39,7 +39,7 @@ const LINE: f64 = 1.0;
 /// What the divider reports to the app.
 #[derive(Clone, Debug)]
 pub enum DividerAction {
-  /// A drag started; the app should snapshot its current panel width.
+  /// A drag started; the app should snapshot its current card width.
   Begin,
   /// The pointer is now this many logical pixels to the right of where it was
   /// pressed (negative means to the left).

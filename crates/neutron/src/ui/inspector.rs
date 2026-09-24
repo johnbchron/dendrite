@@ -1,11 +1,10 @@
-//! The side panel (PLAN §5).
+//! The inspector card: the selected node's properties, floating down the
+//! canvas's right-hand side while something is selected (PLAN §5).
 //!
-//! The panel is three fixed regions rather than one scrolling stack, because
-//! the three things it shows change on completely different rhythms: the quest
-//! lens is pinned at the top, the inspector takes the flexible middle and is
-//! the only part that scrolls, and the actionable frontier is pinned at the
-//! bottom where it can never be pushed out of sight. Both list regions are
-//! capped, so the panel's height never grows with the graph.
+//! Its left edge is a drag handle that resizes it. The card does not reflow
+//! the canvas when it appears, so the graph never shifts under the pointer;
+//! the canvas is told the card's width instead, so fitting and revealing
+//! aim at the part still visible.
 
 use base::NodeState;
 use masonry::properties::{Padding, types::AsUnit};
@@ -71,12 +70,8 @@ fn edge_list(
     .gap(space::XS.px())
 }
 
-/// The side card, floating over the canvas's right-hand side: lens pinned
-/// top, inspector scrolling in the middle, actionable frontier pinned
-/// bottom.
-pub(super) fn side_card(
-  data: &mut AppState,
-) -> impl WidgetView<AppState> + use<> {
+/// The card, scrolling when the node's details outgrow it.
+pub(super) fn card(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
   let regions = sized_box(
     flex_col((
@@ -93,12 +88,12 @@ pub(super) fn side_card(
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(0.0.px()),
   )
-  .width(data.panel_width().px())
+  .width(data.inspector_width().px())
   .expand_height();
 
   let divider_view = divider(theme, |s: &mut AppState, action| match action {
-    DividerAction::Begin => s.begin_panel_resize(),
-    DividerAction::Drag(dx) => s.resize_panel(dx),
+    DividerAction::Begin => s.begin_inspector_resize(),
+    DividerAction::Drag(dx) => s.resize_inspector(dx),
   });
 
   // The divider is the card's left edge, so dragging it resizes the card.
@@ -123,14 +118,10 @@ pub(super) fn side_card(
 /// is the only scrolling region.
 fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
+  // The card is only shown with a selection; this covers the frame where
+  // the selected node has just been deleted.
   let Some(info) = data.selected_info() else {
-    return flex_col((
-      section("Nothing selected", theme),
-      muted("Click a node on the canvas to inspect it.", theme),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(space::S.px())
-    .boxed();
+    return flex_col(()).boxed();
   };
 
   let done = matches!(info.state, NodeState::Completed | NodeState::Satisfied);

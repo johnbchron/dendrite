@@ -4,15 +4,16 @@
 //! [`AppState`].
 //!
 //! The canvas fills the window. Everything else floats over it on a
-//! `zstack`: the top bar along the top edge, the side card down the right,
-//! and any open popover above them, with a transparent backdrop that closes
+//! `zstack`: the top bar along the top edge, the inspector card down the
+//! right while something is selected, the Now tray at the bottom-left, and
+//! any open popover above them, with a transparent backdrop that closes
 //! the popover when clicked. The canvas is told how much of it the chrome
 //! covers, so fitting and revealing aim at the part still visible.
 
 mod controls;
+mod inspector;
 mod lens;
 mod now;
-mod panel;
 mod toolbar;
 
 use masonry::{
@@ -20,7 +21,7 @@ use masonry::{
   properties::{Padding, types::UnitPoint},
 };
 use xilem::{
-  WidgetView,
+  AnyWidgetView, WidgetView,
   style::Style as _,
   view::{button, flex_col, sized_box, zstack, zstack_item},
 };
@@ -46,47 +47,42 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     },
   );
 
-  let backdrop = data.popover_open().then(backdrop);
-  let settings = data.settings_open().then(|| {
-    zstack_item(
-      sized_box(toolbar::settings_popover(data)).padding(Padding {
-        top:    size::TOP_BAR + space::XS,
-        right:  space::M,
-        bottom: 0.0,
-        left:   0.0,
-      }),
-      UnitPoint::TOP_RIGHT,
-    )
+  // Every layer is always present, showing nothing when it has nothing to
+  // show: xilem 0.4's zstack appends a child it is asked to insert, so a
+  // layer appearing mid-sequence would be paired with the wrong widget.
+  let card = layer(data.selected.is_some().then(|| inspector::card(data)));
+  let tray = sized_box(now::tray(data)).padding(Padding {
+    top:    0.0,
+    right:  0.0,
+    bottom: space::M,
+    left:   space::M,
   });
-
-  let quests = data.picker_open().then(|| {
-    zstack_item(
-      sized_box(lens::switcher(data)).padding(Padding {
-        top:    size::TOP_BAR + space::XS,
-        right:  0.0,
-        bottom: 0.0,
-        left:   space::M,
-      }),
-      UnitPoint::TOP_LEFT,
-    )
-  });
+  let backdrop = layer(data.popover_open().then(backdrop));
+  let settings = layer(data.settings_open().then(|| {
+    sized_box(toolbar::settings_popover(data)).padding(Padding {
+      top:    size::TOP_BAR + space::XS,
+      right:  space::M,
+      bottom: 0.0,
+      left:   0.0,
+    })
+  }));
+  let quests = layer(data.picker_open().then(|| {
+    sized_box(lens::switcher(data)).padding(Padding {
+      top:    size::TOP_BAR + space::XS,
+      right:  0.0,
+      bottom: 0.0,
+      left:   space::M,
+    })
+  }));
 
   let window = zstack((
     canvas_view,
-    zstack_item(panel::side_card(data), UnitPoint::TOP_RIGHT),
-    zstack_item(
-      sized_box(now::tray(data)).padding(Padding {
-        top:    0.0,
-        right:  0.0,
-        bottom: space::M,
-        left:   space::M,
-      }),
-      UnitPoint::BOTTOM_LEFT,
-    ),
+    zstack_item(card, UnitPoint::TOP_RIGHT),
+    zstack_item(tray, UnitPoint::BOTTOM_LEFT),
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
-    backdrop,
-    settings,
-    quests,
+    zstack_item(backdrop, UnitPoint::TOP_LEFT),
+    zstack_item(settings, UnitPoint::TOP_RIGHT),
+    zstack_item(quests, UnitPoint::TOP_LEFT),
   ))
   .alignment(UnitPoint::TOP_LEFT);
 
@@ -95,6 +91,18 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   keymap(data.key_flags(), window, |s: &mut AppState, command| {
     s.run(command)
   })
+}
+
+/// A zstack layer that shows `view` when there is one, and otherwise an
+/// empty, zero-sized widget that neither paints nor takes the pointer.
+fn layer<V>(view: Option<V>) -> Box<AnyWidgetView<AppState>>
+where
+  V: WidgetView<AppState>,
+{
+  match view {
+    Some(view) => view.boxed(),
+    None => flex_col(()).boxed(),
+  }
 }
 
 /// A full-window, invisible button under an open popover: clicking anywhere

@@ -3,7 +3,7 @@
 //!
 //! `AppState` owns the store (the persistent global graph) and the ephemeral
 //! view state — the current selection, the active quest lens, and the rename
-//! draft. Everything the canvas and side panel render is derived here from
+//! draft. Everything the canvas and inspector render is derived here from
 //! the store on demand.
 //!
 //! The store is wrapped in a [`Mutex`] because Xilem's `WidgetView` bound is
@@ -32,51 +32,51 @@ use crate::{
 
 /// The whole application's state.
 pub struct AppState {
-  store:            Mutex<Store>,
+  store:                Mutex<Store>,
   /// Currently selected node, if any.
-  pub selected:     Option<NodeId>,
+  pub selected:         Option<NodeId>,
   /// Active quest lens; `None` means the global "all nodes" view (PLAN §5).
-  pub active_quest: Option<QuestId>,
+  pub active_quest:     Option<QuestId>,
   /// Editable name buffer for the selected node.
-  pub name_draft:   String,
+  pub name_draft:       String,
   /// Editable name buffer for the active quest, shown in the switcher.
-  pub quest_draft:  String,
+  pub quest_draft:      String,
   /// The latest request for the canvas camera (fit, reveal a node).
-  camera:           Camera,
-  /// Current width of the side panel, in logical pixels.
-  panel_width:      f64,
+  camera:               Camera,
+  /// Current width of the inspector, in logical pixels.
+  inspector_width:      f64,
   /// Panel width when the current divider drag started, so drags measure
   /// against a fixed anchor instead of accumulating.
-  panel_width_base: f64,
+  inspector_width_base: f64,
   /// When set, the next canvas click picks a requirement target for the
   /// selection instead of changing the selection.
-  linking:          bool,
+  linking:              bool,
   /// Filter text for the requirement picker — the fallback path for targets
   /// that are not on the canvas (e.g. outside the active quest's scope).
-  pub link_filter:  String,
+  pub link_filter:      String,
   /// Whether the quest switcher popover is open.
-  picker_open:      bool,
+  picker_open:          bool,
   /// What has been typed into the quest switcher, and its highlight.
-  quest_query:      Query,
+  quest_query:          Query,
   /// The palette every painted surface reads its colours from.
-  theme:            &'static Theme,
+  theme:                &'static Theme,
   /// Whether the settings popover (the palette picker) is open.
-  settings_open:    bool,
+  settings_open:        bool,
   /// Whether the Now tray is open (rather than collapsed to its pill).
-  now_open:         bool,
+  now_open:             bool,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
-  zoom_percent:     u32,
+  zoom_percent:         u32,
   /// The field whose keystrokes are currently being committed, if the last
   /// commit came from one. The next keystroke in the same field amends that
   /// undo group rather than opening a new one.
-  live_edit:        Option<LiveEdit>,
+  live_edit:            Option<LiveEdit>,
   /// Derived state and layout for the store's current revision. Both are
   /// whole-graph computations, and the view asks for them on every rebuild,
   /// most of which (a keystroke in a filter, a panel drag) change nothing.
-  derivations:      Mutex<Option<Arc<Derivations>>>,
+  derivations:          Mutex<Option<Arc<Derivations>>>,
   /// The last canvas scene and what it was built from. Handing the canvas
   /// the same `Arc` is how it knows it has nothing to re-measure.
-  scene_cache:      Mutex<Option<(SceneKey, Arc<CanvasScene>)>>,
+  scene_cache:          Mutex<Option<(SceneKey, Arc<CanvasScene>)>>,
 }
 
 /// Whole-graph computations that depend only on the graph.
@@ -105,11 +105,11 @@ enum LiveEdit {
 /// `meta` key the chosen palette is stored under.
 const THEME_KEY: &str = "palette";
 
-/// Default width of the side panel, in logical pixels.
-const PANEL_WIDTH: f64 = 380.0;
-/// How narrow and how wide the side panel may be dragged.
-const PANEL_MIN: f64 = 280.0;
-const PANEL_MAX: f64 = 680.0;
+/// Default width of the inspector card, in logical pixels.
+const INSPECTOR_WIDTH: f64 = 320.0;
+/// How narrow and how wide the inspector card may be dragged.
+const INSPECTOR_MIN: f64 = 280.0;
+const INSPECTOR_MAX: f64 = 560.0;
 /// Most rows the requirement picker will ever show. The panel must not grow
 /// with the graph; anything beyond this is narrowed with the filter instead.
 const LINK_PICKER_MAX: usize = 6;
@@ -146,7 +146,7 @@ pub struct QuestRow {
   pub current: bool,
 }
 
-/// One edge incident to the selected node, as the side panel shows it. Carries
+/// One edge incident to the selected node, as the inspector shows it. Carries
 /// the [`EdgeId`] so a row can delete the edge it stands for.
 pub struct EdgeRow {
   /// The edge this row stands for.
@@ -157,7 +157,7 @@ pub struct EdgeRow {
   pub satisfied: bool,
 }
 
-/// A summary of the selected node for the side panel. The *name* is not here:
+/// A summary of the selected node for the inspector. The *name* is not here:
 /// the inspector's title is an editable field fed from
 /// [`AppState::name_draft`], which `select` and undo/redo keep in step with the
 /// graph.
@@ -177,28 +177,28 @@ impl AppState {
   /// Open (or create) the store at `path` and seed demo data if empty.
   pub fn new(store: Store) -> Self {
     let mut state = Self {
-      store:            Mutex::new(store),
-      selected:         None,
-      active_quest:     None,
-      name_draft:       String::new(),
-      quest_draft:      String::new(),
-      camera:           Camera {
+      store:                Mutex::new(store),
+      selected:             None,
+      active_quest:         None,
+      name_draft:           String::new(),
+      quest_draft:          String::new(),
+      camera:               Camera {
         epoch:   0,
         request: CameraRequest::Fit,
       },
-      panel_width:      PANEL_WIDTH,
-      panel_width_base: PANEL_WIDTH,
-      linking:          false,
-      link_filter:      String::new(),
-      picker_open:      false,
-      quest_query:      Query::default(),
-      theme:            theme::DEFAULT,
-      settings_open:    false,
-      now_open:         false,
-      zoom_percent:     100,
-      live_edit:        None,
-      derivations:      Mutex::new(None),
-      scene_cache:      Mutex::new(None),
+      inspector_width:      INSPECTOR_WIDTH,
+      inspector_width_base: INSPECTOR_WIDTH,
+      linking:              false,
+      link_filter:          String::new(),
+      picker_open:          false,
+      quest_query:          Query::default(),
+      theme:                theme::DEFAULT,
+      settings_open:        false,
+      now_open:             false,
+      zoom_percent:         100,
+      live_edit:            None,
+      derivations:          Mutex::new(None),
+      scene_cache:          Mutex::new(None),
     };
     // A palette recorded by an older version that no longer ships falls back
     // to the default rather than blocking startup.
@@ -354,7 +354,7 @@ impl AppState {
     }
   }
 
-  /// Details of the selected node for the side panel.
+  /// Details of the selected node for the inspector.
   pub fn selected_info(&self) -> Option<SelectedInfo> {
     let id = self.selected?;
     let store = self.lock();
@@ -420,9 +420,15 @@ impl AppState {
   /// How much of the canvas the floating chrome covers, so fitting and
   /// revealing aim at the visible part.
   pub fn canvas_insets(&self) -> Insets {
+    // The inspector card is only up while something is selected.
+    let card = if self.selected.is_some() {
+      self.inspector_width + size::DIVIDER + 2.0 * space::M
+    } else {
+      0.0
+    };
     Insets {
       top:    size::TOP_BAR,
-      right:  self.panel_width + size::DIVIDER + 2.0 * space::M,
+      right:  card,
       bottom: 0.0,
       left:   0.0,
     }
@@ -435,18 +441,19 @@ impl AppState {
     self.aim(CameraRequest::Reveal(node));
   }
 
-  /// The side panel's current width in logical pixels.
-  pub fn panel_width(&self) -> f64 { self.panel_width }
+  /// The inspector's current width in logical pixels.
+  pub fn inspector_width(&self) -> f64 { self.inspector_width }
 
   /// Anchor a divider drag at the current panel width.
-  pub fn begin_panel_resize(&mut self) {
-    self.panel_width_base = self.panel_width;
+  pub fn begin_inspector_resize(&mut self) {
+    self.inspector_width_base = self.inspector_width;
   }
 
   /// Resize the panel from a divider drag. `dx` is the pointer's total travel
   /// since the press, so dragging left (negative) widens the panel.
-  pub fn resize_panel(&mut self, dx: f64) {
-    self.panel_width = (self.panel_width_base - dx).clamp(PANEL_MIN, PANEL_MAX);
+  pub fn resize_inspector(&mut self, dx: f64) {
+    self.inspector_width =
+      (self.inspector_width_base - dx).clamp(INSPECTOR_MIN, INSPECTOR_MAX);
   }
 
   /// Whether the canvas is armed to pick a requirement target.
@@ -1472,30 +1479,30 @@ mod tests {
   }
 
   #[test]
-  fn panel_resize_measures_from_the_press_anchor() {
+  fn inspector_resize_measures_from_the_press_anchor() {
     let store = Store::open_in_memory().unwrap();
     let mut state = AppState::new(store);
-    assert_eq!(state.panel_width(), PANEL_WIDTH);
+    assert_eq!(state.inspector_width(), INSPECTOR_WIDTH);
 
     // Dragging left widens the panel.
-    state.begin_panel_resize();
-    state.resize_panel(-40.0);
-    assert_eq!(state.panel_width(), PANEL_WIDTH + 40.0);
+    state.begin_inspector_resize();
+    state.resize_inspector(-40.0);
+    assert_eq!(state.inspector_width(), INSPECTOR_WIDTH + 40.0);
     // Still the same drag: the delta is total travel, not an increment.
-    state.resize_panel(-60.0);
-    assert_eq!(state.panel_width(), PANEL_WIDTH + 60.0);
+    state.resize_inspector(-60.0);
+    assert_eq!(state.inspector_width(), INSPECTOR_WIDTH + 60.0);
 
     // Overshooting clamps, and coming back does not drift: because the
     // anchor is fixed, returning the pointer restores the original width.
-    state.begin_panel_resize();
-    state.resize_panel(-10_000.0);
-    assert_eq!(state.panel_width(), PANEL_MAX);
-    state.resize_panel(0.0);
-    assert_eq!(state.panel_width(), PANEL_WIDTH + 60.0);
+    state.begin_inspector_resize();
+    state.resize_inspector(-10_000.0);
+    assert_eq!(state.inspector_width(), INSPECTOR_MAX);
+    state.resize_inspector(0.0);
+    assert_eq!(state.inspector_width(), INSPECTOR_WIDTH + 60.0);
 
-    state.begin_panel_resize();
-    state.resize_panel(10_000.0);
-    assert_eq!(state.panel_width(), PANEL_MIN);
+    state.begin_inspector_resize();
+    state.resize_inspector(10_000.0);
+    assert_eq!(state.inspector_width(), INSPECTOR_MIN);
   }
 
   /// In the global view the tray groups by quest, a node reached by

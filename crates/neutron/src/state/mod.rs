@@ -73,6 +73,14 @@ pub struct AppState {
   toast:                Option<Toast>,
   /// Counter for [`Toast::id`].
   toast_serial:         u64,
+  /// Whether the command palette is open.
+  palette_open:         bool,
+  /// What has been typed into the palette, and its highlight.
+  palette_query:        Query,
+  /// Whether the palette was opened to search nodes only.
+  palette_nodes_only:   bool,
+  /// Recently selected nodes, newest first, for the empty palette.
+  recent:               Vec<NodeId>,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
   zoom_percent:         u32,
   /// The field whose keystrokes are currently being committed, if the last
@@ -122,6 +130,10 @@ const INSPECTOR_MAX: f64 = 560.0;
 /// Most rows the requirement picker will ever show. The panel must not grow
 /// with the graph; anything beyond this is narrowed with the filter instead.
 const LINK_PICKER_MAX: usize = 6;
+
+mod palette;
+
+pub use palette::{PaletteRow, RowKind};
 
 /// A group of actionable nodes in the Now tray.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -282,6 +294,10 @@ impl AppState {
       more_open:            false,
       toast:                None,
       toast_serial:         0,
+      palette_open:         false,
+      palette_query:        Query::default(),
+      palette_nodes_only:   false,
+      recent:               Vec::new(),
       zoom_percent:         100,
       live_edit:            None,
       derivations:          Mutex::new(None),
@@ -326,13 +342,21 @@ impl AppState {
     self.settings_open = open;
   }
 
-  /// Whether any popover is open (so a click elsewhere should close it).
-  pub fn popover_open(&self) -> bool { self.settings_open || self.picker_open }
+  /// Whether any popover (or the palette) is open, so Escape closes it.
+  pub fn popover_open(&self) -> bool {
+    self.settings_open || self.picker_open || self.palette_open
+  }
 
-  /// Close every popover.
+  /// Whether a popover that a click anywhere else should close is open.
+  pub fn dismissable_open(&self) -> bool {
+    self.settings_open || self.picker_open
+  }
+
+  /// Close every popover, and the palette.
   pub fn close_popovers(&mut self) {
     self.settings_open = false;
     self.picker_open = false;
+    self.palette_open = false;
   }
 
   fn lock(&self) -> MutexGuard<'_, Store> {
@@ -890,7 +914,7 @@ impl AppState {
   pub fn key_flags(&self) -> keymap::Flags {
     keymap::Flags {
       selection: self.selected.is_some(),
-      query:     self.picker_open,
+      query:     self.picker_open || self.palette_open,
     }
   }
 
@@ -901,22 +925,38 @@ impl AppState {
       Command::Redo => self.redo(),
       Command::Delete => self.delete_selected(),
       Command::Escape => self.escape(),
+      // The palette sits above the quest switcher, so it takes the query
+      // keys when both could.
       Command::Query(edit) => {
-        if self.picker_open {
+        if self.palette_open {
+          self.palette_query.edit(&edit);
+        } else if self.picker_open {
           self.quest_query.edit(&edit);
         }
       }
       Command::Move(by) => {
-        if self.picker_open {
+        if self.palette_open {
+          let len = self.palette_rows().0.len();
+          self.palette_query.move_highlight(by, len);
+        } else if self.picker_open {
           let len = self.quest_rows().len();
           self.quest_query.move_highlight(by, len);
         }
       }
       Command::Accept => {
-        if self.picker_open {
+        if self.palette_open {
+          self.accept_palette();
+        } else if self.picker_open {
           let rows = self.quest_rows();
           let pick = rows[self.quest_query.highlighted(rows.len())].choice;
           self.choose_quest(pick);
+        }
+      }
+      Command::Palette { nodes_only } => {
+        if self.palette_open {
+          self.close_popovers();
+        } else {
+          self.open_palette(nodes_only);
         }
       }
     }
@@ -966,6 +1006,9 @@ impl AppState {
     self.cancel_link();
     self.live_edit = None;
     self.more_open = false;
+    if let Some(node) = node {
+      self.remember(node);
+    }
     self.selected = node;
     self.name_draft = {
       let store = self.lock();
@@ -1284,7 +1327,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use super::{palette::PaletteAct, *};
   use crate::query::QueryEdit;
 
   /// A store holding the small demo graph the app used to seed on first run:
@@ -1833,6 +1876,66 @@ mod tests {
     state.add_condition();
     let lone = state.selected.unwrap();
     assert_eq!(state.lock().graph().dependents_of(lone).count(), 0);
+  }
+
+  #[test]
+  fn the_palette_finds_nodes_commands_and_quests() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    state.select(Some(backend));
+    state.select(None);
+    state.run(Command::Palette { nodes_only: false });
+    assert!(state.palette_open() && state.key_flags().query);
+
+    // Empty: the recent node first, then commands; no quests.
+    let (rows, _) = state.palette_rows();
+    assert_eq!(rows[0].act, PaletteAct::GoTo(backend));
+    assert!(rows.iter().all(|r| r.kind != RowKind::Quest));
+
+    // Typing ranks all three kinds; a quest shows as "Switch to ...".
+    for c in ["l", "a", "u", "n"] {
+      state.run(Command::Query(QueryEdit::Insert(c.into())));
+    }
+    let (rows, _) = state.palette_rows();
+    assert!(rows.iter().any(|r| r.label == "Switch to v1 Launch"));
+    // Enter on it switches the lens and closes the palette.
+    let at = rows
+      .iter()
+      .position(|r| r.label == "Switch to v1 Launch")
+      .unwrap();
+    state.run(Command::Move(at as isize));
+    state.run(Command::Accept);
+    assert!(!state.palette_open());
+    assert_eq!(state.active_quest_summary().unwrap().0, "v1 Launch");
+
+    // Going to a node the lens hides leaves the lens.
+    let loose = {
+      state.set_active_quest(None);
+      state.select(None);
+      state.add_task();
+      state.selected.unwrap()
+    };
+    let quest = state.quest_rows().iter().find_map(|r| match r.choice {
+      QuestChoice::Quest(q) => Some(q),
+      _ => None,
+    });
+    state.set_active_quest(quest);
+    state.run_palette(PaletteAct::GoTo(loose));
+    assert_eq!(state.active_quest, None);
+    assert_eq!(state.selected, Some(loose));
+  }
+
+  #[test]
+  fn the_slash_palette_lists_nodes_only() {
+    let mut state = AppState::new(demo_store());
+    state.run(Command::Palette { nodes_only: true });
+    state.run(Command::Query(QueryEdit::Insert("e".into())));
+    let (rows, total) = state.palette_rows();
+    assert!(total > 0);
+    assert!(rows.iter().all(|r| r.kind == RowKind::Node));
+    // Escape closes it.
+    state.run(Command::Escape);
+    assert!(!state.palette_open());
   }
 
   #[test]

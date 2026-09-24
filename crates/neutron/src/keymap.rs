@@ -52,6 +52,11 @@ pub enum Command {
   Move(isize),
   /// Act on the open query's highlighted result.
   Accept,
+  /// Open (or close) the command palette; `nodes_only` to search nodes.
+  Palette {
+    /// Search nodes only (opened with `/`).
+    nodes_only: bool,
+  },
 }
 
 /// What a key does.
@@ -121,7 +126,11 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
     {
       Some(Focus(FieldKey::LinkSearch))
     }
+    Key::Character(c) if plain && c == "/" => {
+      Some(Run(Command::Palette { nodes_only: true }))
+    }
     _ if cmd => match letter(key) {
+      Some('k') => Some(Run(Command::Palette { nodes_only: false })),
       Some('z') if m.shift() => Some(Run(Command::Redo)),
       Some('z') => Some(Run(Command::Undo)),
       Some('y') => Some(Run(Command::Redo)),
@@ -503,6 +512,30 @@ mod tests {
     assert_eq!(
       resolve(&r, QUERY),
       Some(Binding::Run(Command::Query(QueryEdit::Insert("r".into()))))
+    );
+  }
+
+  #[test]
+  fn ctrl_k_and_slash_open_the_palette() {
+    let k = down(Key::Character("k".into()), Code::KeyK, CMD);
+    assert_eq!(
+      resolve(&k, Flags::default()),
+      Some(Binding::Run(Command::Palette { nodes_only: false }))
+    );
+    // Also from inside an open query, where it closes the palette.
+    assert_eq!(
+      resolve(&k, QUERY),
+      Some(Binding::Run(Command::Palette { nodes_only: false }))
+    );
+    let slash = character("/", Modifiers::empty());
+    assert_eq!(
+      resolve(&slash, Flags::default()),
+      Some(Binding::Run(Command::Palette { nodes_only: true }))
+    );
+    // Typed into a query, a slash is just text.
+    assert_eq!(
+      resolve(&slash, QUERY),
+      Some(Binding::Run(Command::Query(QueryEdit::Insert("/".into()))))
     );
   }
 

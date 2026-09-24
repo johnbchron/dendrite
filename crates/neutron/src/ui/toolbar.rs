@@ -160,6 +160,8 @@ pub(super) fn top_bar(
     super::lens::pill(data),
     create,
     spacer(),
+    sized_box(super::palette::search_button(theme)).width(280.0.px()),
+    spacer(),
     history,
     camera,
     settings,

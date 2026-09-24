@@ -14,6 +14,7 @@ mod controls;
 mod inspector;
 mod lens;
 mod now;
+mod palette;
 mod toolbar;
 
 use std::time::Duration;
@@ -60,6 +61,9 @@ fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Label {
   xilem::view::label(text).font(font::STACK)
 }
 
+/// How far down the window the command palette hangs.
+const PALETTE_TOP: f64 = 120.0;
+
 /// Build the whole UI from the current state.
 pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let link = data.link_mode();
@@ -95,7 +99,12 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     bottom: space::M,
     left:   space::M,
   });
-  let backdrop = layer(data.popover_open().then(backdrop));
+  let backdrop = layer(data.dismissable_open().then(backdrop));
+  let scrim = layer(data.palette_open().then(|| palette::scrim(data.theme())));
+  let palette = layer(data.palette_open().then(|| {
+    sized_box(appear(DROP, palette::palette(data)))
+      .padding(Padding::top(PALETTE_TOP))
+  }));
   let settings = layer(data.settings_open().then(|| {
     sized_box(appear(DROP, toolbar::settings_popover(data))).padding(Padding {
       top:    size::TOP_BAR + space::XS,
@@ -122,6 +131,8 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
     zstack_item(banner, UnitPoint::TOP),
     zstack_item(toast, UnitPoint::BOTTOM),
+    zstack_item(scrim, UnitPoint::TOP_LEFT),
+    zstack_item(palette, UnitPoint::TOP),
     zstack_item(backdrop, UnitPoint::TOP_LEFT),
     zstack_item(settings, UnitPoint::TOP_RIGHT),
     zstack_item(quests, UnitPoint::TOP_LEFT),

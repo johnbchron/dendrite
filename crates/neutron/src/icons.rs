@@ -58,6 +58,8 @@ icons! {
   ChevronDown = 0xe06d,
   /// A cycle, or anything else wrong.
   CircleAlert = 0xe077,
+  /// A command, in the palette.
+  Command = 0xe09a,
   /// More actions.
   Ellipsis = 0xe0b6,
   /// Expands a tray.

@@ -12,7 +12,7 @@ use xilem::{
 };
 
 use super::controls::{
-  body, group, icon_btn, row_button, section, seg, spacer, swatch,
+  body, fill, group, icon_btn, row_button, section, seg, spacer, swatch,
 };
 use crate::{
   canvas::ZoomStep,
@@ -183,8 +183,7 @@ pub(super) fn settings_popover(
             swatch(t.ready.1, active),
           ))
           .gap(space::XS.px()),
-          body(t.name, active),
-          spacer(),
+          fill(body(t.name, active)),
           chosen.then(|| icon(Icon::Check, text::BODY, active.accent)),
         ))
         .must_fill_major_axis(true)

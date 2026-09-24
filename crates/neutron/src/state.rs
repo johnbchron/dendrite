@@ -64,6 +64,8 @@ pub struct AppState {
   settings_open:        bool,
   /// Whether the Now tray is open (rather than collapsed to its pill).
   now_open:             bool,
+  /// Whether the inspector's "more actions" list is showing.
+  more_open:            bool,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
   zoom_percent:         u32,
   /// The field whose keystrokes are currently being committed, if the last
@@ -166,11 +168,70 @@ pub struct SelectedInfo {
   pub state:        NodeState,
   /// Whether the node is a task (vs. a condition).
   pub is_task:      bool,
+  /// Why the node is in its state.
+  pub reason:       Reason,
+  /// The one action the inspector leads with.
+  pub primary:      Primary,
+  /// Every quest that claims the node, by name.
+  pub quests:       Vec<(QuestId, String)>,
+  /// Whether the active quest claims the node; `None` in the global view.
+  pub claimed:      Option<bool>,
   /// Edges to the things this node requires.
   pub requirements: Vec<EdgeRow>,
   /// Edges from the things that require this node — the other direction,
   /// which answers "what does finishing this unblock?".
   pub dependents:   Vec<EdgeRow>,
+}
+
+/// Why the selected node is in its state, for the inspector's reason line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reason {
+  /// Ready: this many requirements, all met (possibly none).
+  AllMet(usize),
+  /// Blocked (or a condition waiting) on these unmet requirements.
+  WaitingOn(Vec<(NodeId, String)>),
+  /// In a cycle with these nodes; never ready until it is broken.
+  CycleWith(Vec<(NodeId, String)>),
+  /// A completed task.
+  Completed,
+  /// A satisfied condition.
+  Satisfied,
+  /// A condition with nothing unmet, waiting to be set satisfied.
+  AwaitingSatisfaction,
+}
+
+/// The inspector's primary action for the selected node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Primary {
+  /// Mark a task complete. Offered but disabled unless it is Ready: PLAN §5
+  /// only lets Ready tasks be completed.
+  Complete {
+    /// Whether the task is Ready.
+    enabled: bool,
+  },
+  /// Reopen a completed task.
+  Reopen,
+  /// Mark a condition satisfied.
+  Satisfy,
+  /// Clear a condition's satisfaction.
+  Unsatisfy,
+}
+
+impl Primary {
+  /// The button's label.
+  pub fn label(self) -> &'static str {
+    match self {
+      Primary::Complete { .. } => "Mark complete",
+      Primary::Reopen => "Reopen",
+      Primary::Satisfy => "Mark satisfied",
+      Primary::Unsatisfy => "Unsatisfy",
+    }
+  }
+
+  /// Whether the button can be pressed.
+  pub fn enabled(self) -> bool {
+    !matches!(self, Primary::Complete { enabled: false })
+  }
 }
 
 impl AppState {
@@ -195,6 +256,7 @@ impl AppState {
       theme:                theme::DEFAULT,
       settings_open:        false,
       now_open:             false,
+      more_open:            false,
       zoom_percent:         100,
       live_edit:            None,
       derivations:          Mutex::new(None),
@@ -382,9 +444,66 @@ impl AppState {
     requirements.sort_by(|a, b| a.name.cmp(&b.name));
     dependents.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let state = derived.state(id).unwrap_or(NodeState::Blocked);
+    let named = |ids: Vec<NodeId>| -> Vec<(NodeId, String)> {
+      let mut v: Vec<(NodeId, String)> = ids
+        .into_iter()
+        .filter_map(|n| graph.node(n).map(|node| (n, node.name.clone())))
+        .collect();
+      v.sort_by(|a, b| a.1.cmp(&b.1));
+      v
+    };
+    let unmet = || {
+      named(
+        graph
+          .requirements_of(id)
+          .map(|e| e.to)
+          .filter(|t| !graph.is_satisfied(*t))
+          .collect(),
+      )
+    };
+    let reason = match state {
+      NodeState::Completed => Reason::Completed,
+      NodeState::Satisfied => Reason::Satisfied,
+      NodeState::Cyclic => {
+        Reason::CycleWith(named(base::cycle_peers(graph, id)))
+      }
+      NodeState::Ready => Reason::AllMet(requirements.len()),
+      NodeState::Blocked => Reason::WaitingOn(unmet()),
+      NodeState::Pending => match unmet() {
+        waiting if waiting.is_empty() => Reason::AwaitingSatisfaction,
+        waiting => Reason::WaitingOn(waiting),
+      },
+    };
+    let primary = match (&node.kind, state) {
+      (NodeKind::Task { completed: true }, _) => Primary::Reopen,
+      (NodeKind::Task { .. }, state) => Primary::Complete {
+        enabled: state == NodeState::Ready,
+      },
+      (
+        NodeKind::Condition {
+          satisfied: true, ..
+        },
+        _,
+      ) => Primary::Unsatisfy,
+      (NodeKind::Condition { .. }, _) => Primary::Satisfy,
+    };
+    let mut quests: Vec<(QuestId, String)> = base::claiming_quests(graph, id)
+      .into_iter()
+      .filter_map(|q| graph.quest(q).map(|quest| (q, quest.name.clone())))
+      .collect();
+    quests.sort_by(|a, b| a.1.cmp(&b.1));
+    let claimed = self
+      .active_quest
+      .map(|q| quests.iter().any(|(claimer, _)| *claimer == q));
+
     Some(SelectedInfo {
-      state: derived.state(id).unwrap_or(NodeState::Blocked),
+      state,
       is_task: matches!(node.kind, NodeKind::Task { .. }),
+      reason,
+      primary,
+      quests,
+      claimed,
       requirements,
       dependents,
     })
@@ -655,6 +774,12 @@ impl AppState {
     (groups, total)
   }
 
+  /// Whether the inspector's "more actions" list is showing.
+  pub fn more_open(&self) -> bool { self.more_open }
+
+  /// Show or hide the inspector's "more actions" list.
+  pub fn toggle_more(&mut self) { self.more_open = !self.more_open; }
+
   /// Whether the Now tray is open.
   pub fn now_open(&self) -> bool { self.now_open }
 
@@ -754,6 +879,7 @@ impl AppState {
   pub fn select(&mut self, node: Option<NodeId>) {
     self.cancel_link();
     self.live_edit = None;
+    self.more_open = false;
     self.selected = node;
     self.name_draft = {
       let store = self.lock();
@@ -791,8 +917,17 @@ impl AppState {
   }
 
   /// Toggle the selected node's completion / satisfaction bit.
+  ///
+  /// A task that is not Ready cannot be completed (PLAN §5): it would claim
+  /// work done whose requirements are not.
   pub fn toggle_selected(&mut self) {
     let Some(id) = self.selected else { return };
+    if self
+      .selected_info()
+      .is_some_and(|info| !info.primary.enabled())
+    {
+      return;
+    }
     let event = {
       let store = self.lock();
       let Some(node) = store.graph().node(id) else {
@@ -971,18 +1106,6 @@ impl AppState {
       return;
     };
     self.commit(vec![Event::QuestUnclaimed { quest: q, node: n }]);
-  }
-
-  /// Whether the selected node is claimed by the active quest.
-  pub fn selected_is_claimed(&self) -> bool {
-    let (Some(q), Some(n)) = (self.active_quest, self.selected) else {
-      return false;
-    };
-    self
-      .lock()
-      .graph()
-      .quest(q)
-      .is_some_and(|q| q.claims.contains(&n))
   }
 
   /// Undo the last committed group.
@@ -1376,6 +1499,66 @@ mod tests {
     assert!(state.lock().graph().node(backend).is_some());
     state.run(Command::Redo);
     assert!(state.lock().graph().node(backend).is_none());
+  }
+
+  /// The inspector explains each state, and only a Ready task can be
+  /// completed.
+  #[test]
+  fn reasons_and_primary_actions_follow_the_state() {
+    let mut state = AppState::new(demo_store());
+    let info = |s: &mut AppState, name: &str| {
+      let id = node_named(s, name);
+      s.select(Some(id));
+      s.selected_info().unwrap()
+    };
+
+    let ship = info(&mut state, "Ship v1");
+    assert_eq!(ship.state, NodeState::Blocked);
+    let Reason::WaitingOn(unmet) = &ship.reason else {
+      panic!("{:?}", ship.reason)
+    };
+    let names: Vec<_> = unmet.iter().map(|(_, n)| n.as_str()).collect();
+    assert_eq!(names, ["Build backend", "Build frontend"]);
+    assert_eq!(ship.primary, Primary::Complete { enabled: false });
+    // Pressing it anyway does nothing.
+    state.toggle_selected();
+    assert_eq!(state.selected_info().unwrap().state, NodeState::Blocked);
+
+    let backend = info(&mut state, "Build backend");
+    assert_eq!(backend.reason, Reason::AllMet(1));
+    assert_eq!(backend.primary, Primary::Complete { enabled: true });
+    state.toggle_selected();
+    let backend = state.selected_info().unwrap();
+    assert_eq!(backend.reason, Reason::Completed);
+    assert_eq!(backend.primary, Primary::Reopen);
+
+    let signoff = info(&mut state, "Design signed off");
+    assert_eq!(signoff.reason, Reason::AwaitingSatisfaction);
+    assert_eq!(signoff.primary, Primary::Satisfy);
+
+    // Quests claiming the node, and claim status under a lens.
+    let ship = info(&mut state, "Ship v1");
+    assert_eq!(ship.claimed, None, "no lens, no claim status");
+    let names: Vec<_> = ship.quests.iter().map(|(_, n)| n.as_str()).collect();
+    assert_eq!(names, ["v1 Launch"]);
+    state.set_active_quest(Some(ship.quests[0].0));
+    assert_eq!(state.selected_info().unwrap().claimed, Some(true));
+  }
+
+  #[test]
+  fn a_cycle_names_its_members() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    let ship = node_named(&state, "Ship v1");
+    state.add_edge(backend, ship, EdgeKind::Dependency);
+    state.select(Some(backend));
+    let info = state.selected_info().unwrap();
+    assert_eq!(info.state, NodeState::Cyclic);
+    assert_eq!(
+      info.reason,
+      Reason::CycleWith(vec![(ship, "Ship v1".into())])
+    );
+    assert_eq!(info.primary, Primary::Complete { enabled: false });
   }
 
   #[test]

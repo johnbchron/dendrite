@@ -6,7 +6,6 @@
 //! the canvas is told the card's width instead, so fitting and revealing
 //! aim at the part still visible.
 
-use base::NodeState;
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
   WidgetView,
@@ -18,18 +17,19 @@ use xilem::{
 };
 
 use super::controls::{
-  body, btn, chip, group, icon_btn, label, muted, row_btn, section, seg,
-  spacer, state_str,
+  body, btn, chip, fill, icon_btn, label, muted, primary_btn, row_btn,
+  row_button, section, spacer, state_str,
 };
 use crate::{
   divider::{DividerAction, divider},
   field::field,
   focus::FieldKey,
   icons::{Icon, icon},
-  state::{AppState, EdgeRow},
+  state::{AppState, EdgeRow, Reason},
   surface::{Level, surface},
   theme::Theme,
   tokens::{radius, size, space, text},
+  tooltip::{Anchor, tooltip},
 };
 
 /// A list of edges incident to the selection — either direction — one row per
@@ -50,8 +50,7 @@ fn edge_list(
       let edge = row.edge;
       flex_row((
         icon(mark, text::BODY, tint),
-        body(row.name.clone(), theme),
-        spacer(),
+        fill(body(row.name.clone(), theme)),
         icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
           s.remove_edge(edge)
         }),
@@ -124,45 +123,102 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     return flex_col(()).boxed();
   };
 
-  let done = matches!(info.state, NodeState::Completed | NodeState::Satisfied);
-  let toggle_label = match (info.is_task, done) {
-    (true, false) => "✓ Complete",
-    (true, true) => "Reopen",
-    (false, false) => "✓ Satisfy",
-    (false, true) => "Unsatisfy",
-  };
-
-  // A one-line summary under the name: kind, plus quest membership when a
-  // lens is active (the canvas dims pulled-in nodes, so name the distinction).
-  let kind_word = if info.is_task { "Task" } else { "Condition" };
-  let meta = if data.active_quest.is_some() {
-    let claimed = if data.selected_is_claimed() {
-      "claimed"
-    } else {
-      "pulled in"
-    };
-    format!("{kind_word} · {claimed}")
+  let (kind_icon, kind_word) = if info.is_task {
+    (Icon::Square, "Task")
   } else {
-    kind_word.to_string()
+    (Icon::Octagon, "Condition")
   };
-
-  let claim_button = data.active_quest.map(|_| {
-    let claimed = data.selected_is_claimed();
-    let text = if claimed {
-      "Unclaim"
-    } else {
-      "Claim for quest"
-    };
-    seg(text, theme, false, true, move |s: &mut AppState| {
+  // Under a lens, say whether this node is one of the quest's own or only
+  // pulled in by one of them (the canvas dims the pulled-in ones).
+  let membership = info.claimed.map(|claimed| {
+    muted(
       if claimed {
-        s.unclaim_selected();
+        "· claimed"
       } else {
-        s.claim_selected();
-      }
-    })
+        "· pulled in"
+      },
+      theme,
+    )
+  });
+  let header = flex_row((
+    icon(kind_icon, size::ICON, theme.muted),
+    muted(kind_word, theme),
+    membership,
+    spacer(),
+    chip(
+      state_str(info.state),
+      theme.chip_for_state(info.state),
+      theme,
+    ),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Center)
+  .gap(space::S.px())
+  .must_fill_major_axis(true);
+
+  let primary = info.primary;
+  let actions = flex_row((
+    primary_btn(
+      primary.label(),
+      theme,
+      primary.enabled(),
+      |s: &mut AppState| s.toggle_selected(),
+    ),
+    spacer(),
+    tooltip(
+      "More actions",
+      theme,
+      Anchor::End,
+      icon_btn(
+        Icon::Ellipsis,
+        theme,
+        data.more_open(),
+        true,
+        |s: &mut AppState| s.toggle_more(),
+      ),
+    ),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Center)
+  .must_fill_major_axis(true);
+
+  let more = data.more_open().then(|| more_actions(data, info.claimed));
+
+  let quests = (!info.quests.is_empty()).then(|| {
+    let rows: Vec<_> = info
+      .quests
+      .iter()
+      .map(|(id, name)| {
+        let id = *id;
+        let current = data.active_quest == Some(id);
+        row_button(
+          theme,
+          false,
+          flex_row((
+            icon(
+              Icon::Flag,
+              size::ICON,
+              if current { theme.accent } else { theme.muted },
+            ),
+            fill(body(name.clone(), theme)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| s.set_active_quest(Some(id)),
+        )
+        .into_any_flex()
+      })
+      .collect();
+    flex_col((
+      section(format!("Quests · {}", info.quests.len()), theme),
+      flex_col(rows)
+        .cross_axis_alignment(CrossAxisAlignment::Fill)
+        .gap(space::HAIR.px()),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Fill)
+    .gap(space::S.px())
   });
 
   flex_col((
+    header,
     // The name field *is* the title: one place, committed as it is typed so
     // the canvas follows along and nothing is lost by clicking away.
     field(data.name_draft.clone(), theme, |s: &mut AppState, v| {
@@ -171,28 +227,10 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     .size(text::TITLE)
     .focus_key(FieldKey::Title)
     .on_enter(|s: &mut AppState, _| s.finish_rename_selected()),
-    flex_row((
-      chip(
-        state_str(info.state),
-        theme.chip_for_state(info.state),
-        theme,
-      ),
-      muted(meta, theme),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(space::S.px()),
-    flex_row(group(
-      theme,
-      (
-        seg(toggle_label, theme, false, true, |s: &mut AppState| {
-          s.toggle_selected()
-        }),
-        seg("Delete", theme, false, true, |s: &mut AppState| {
-          s.delete_selected()
-        }),
-        claim_button,
-      ),
-    )),
+    reason_line(&info.reason, theme),
+    actions,
+    more,
+    quests,
     section(format!("Requires · {}", info.requirements.len()), theme),
     edge_list(&info.requirements, theme),
     link_block(data),
@@ -202,6 +240,135 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .cross_axis_alignment(CrossAxisAlignment::Fill)
   .gap(space::S.px())
   .boxed()
+}
+
+/// Why the node is in its state: one sentence, then — when other nodes are
+/// the reason — each of them as a row that goes to it.
+fn reason_line(
+  reason: &Reason,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  let count = |n: usize, one: &str, many: &str| {
+    if n == 1 {
+      one.to_string()
+    } else {
+      format!("{n} {many}")
+    }
+  };
+  let (sentence, alert, nodes) = match reason {
+    Reason::AllMet(0) => {
+      ("Nothing required: ready to do.".to_string(), false, vec![])
+    }
+    Reason::AllMet(n) => (
+      format!(
+        "{} met.",
+        count(*n, "Its one requirement", "requirements, all")
+      ),
+      false,
+      vec![],
+    ),
+    Reason::WaitingOn(nodes) => {
+      ("Waiting on:".to_string(), false, nodes.clone())
+    }
+    Reason::CycleWith(nodes) => (
+      "In a cycle with these; remove an edge to break it:".to_string(),
+      true,
+      nodes.clone(),
+    ),
+    Reason::Completed => ("Completed.".to_string(), false, vec![]),
+    Reason::Satisfied => ("Satisfied.".to_string(), false, vec![]),
+    Reason::AwaitingSatisfaction => (
+      "Nothing unmet: waiting to be marked satisfied.".to_string(),
+      false,
+      vec![],
+    ),
+  };
+  let rows: Vec<_> = nodes
+    .into_iter()
+    .map(|(id, name)| {
+      row_button(
+        theme,
+        false,
+        flex_row((
+          icon(Icon::ArrowRight, size::ICON, theme.muted),
+          fill(body(name, theme)),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(space::S.px()),
+        move |s: &mut AppState| s.go_to(id),
+      )
+      .into_any_flex()
+    })
+    .collect();
+  flex_col((
+    flex_row((
+      alert.then(|| icon(Icon::CircleAlert, size::ICON, theme.cycle)),
+      label(sentence).text_size(text::BODY).color(if alert {
+        theme.cycle
+      } else {
+        theme.muted
+      }),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px()),
+    flex_col(rows)
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::HAIR.px()),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Fill)
+  .gap(space::XS.px())
+}
+
+/// The actions behind "more": claiming for the active quest, and deleting.
+fn more_actions(
+  data: &mut AppState,
+  claimed: Option<bool>,
+) -> impl WidgetView<AppState> + use<> {
+  let theme = data.theme();
+  let quest = data.active_quest_summary().map(|(name, _)| name);
+  let claim = claimed.zip(quest).map(|(claimed, quest)| {
+    let text = if claimed {
+      format!("Unclaim from {quest}")
+    } else {
+      format!("Claim for {quest}")
+    };
+    row_button(
+      theme,
+      false,
+      flex_row((
+        icon(Icon::Flag, size::ICON, theme.muted),
+        fill(body(text, theme)),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(space::S.px()),
+      move |s: &mut AppState| {
+        if claimed {
+          s.unclaim_selected();
+        } else {
+          s.claim_selected();
+        }
+      },
+    )
+  });
+  let delete = row_button(
+    theme,
+    false,
+    flex_row((
+      icon(Icon::Trash, size::ICON, theme.cycle),
+      label("Delete").text_size(text::BODY).color(theme.cycle),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px()),
+    |s: &mut AppState| s.delete_selected(),
+  );
+  sized_box(
+    flex_col((claim, delete))
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::HAIR.px()),
+  )
+  .padding(Padding::all(space::XS))
+  .corner_radius(radius::CONTROL)
+  .background_color(theme.sunken)
 }
 
 /// The requirement-adding control: a single button, which on arming expands

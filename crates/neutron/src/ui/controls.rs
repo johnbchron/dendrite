@@ -6,7 +6,7 @@ use base::NodeState;
 use masonry::{
   core::ArcStr,
   peniko::Color,
-  properties::{Padding, types::AsUnit},
+  properties::{LineBreaking, Padding, types::AsUnit},
 };
 use xilem::{
   FontWeight, WidgetView,
@@ -66,6 +66,36 @@ where
     .disabled_background_color(theme.surface)
     .border_color(theme.rule)
     .hovered_border_color(theme.accent)
+}
+
+/// The one filled button on a surface: the action it leads with. Disabled,
+/// it drops to the plain ground so it no longer reads as the thing to do.
+pub(super) fn primary_btn<S, F>(
+  text: S,
+  theme: &'static Theme,
+  enabled: bool,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<S, F>
+where
+  S: Into<String>,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
+  button(
+    label(text.into())
+      .text_size(text::CONTROL)
+      .weight(FontWeight::SEMI_BOLD)
+      .color(theme.on_accent)
+      .disabled_color(theme.muted),
+    on_press,
+  )
+  .disabled(!enabled)
+  .padding(Padding::from_vh(space::XS + space::HAIR, space::M))
+  .corner_radius(radius::CONTROL)
+  .background_color(theme.accent)
+  .active_background_color(theme.focus)
+  .disabled_background_color(theme.sunken)
+  .border_color(Color::TRANSPARENT)
+  .hovered_border_color(theme.text)
 }
 
 /// One segment of a [`group`]: flat, so the group's frame carries the shape
@@ -206,6 +236,18 @@ pub(super) fn spacer()
   sized_box(flex_col(())).expand_width().flex(1.0)
 }
 
+/// `view` taking all the room left in a row: a label in it wraps at the
+/// row's edge instead of overflowing it, and anything after it is pushed to
+/// the row's far end.
+pub(super) fn fill<V>(
+  view: V,
+) -> FlexItem<impl WidgetView<AppState> + use<V>, AppState, ()>
+where
+  V: WidgetView<AppState>,
+{
+  sized_box(view).expand_width().flex(1.0)
+}
+
 /// A small round swatch of `color`, for previews such as the palette list.
 /// Ringed in `theme.rule`, so a swatch the colour of the ground still shows.
 pub(super) fn swatch(
@@ -248,7 +290,12 @@ pub(super) fn body<S: Into<String>>(
   text: S,
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
-  label(text.into()).text_size(text::BODY).color(theme.text)
+  // Word-wrapped: in a row with room to fill (see [`fill`]) a long name
+  // wraps at the edge. Masonry labels overflow by default.
+  label(text.into())
+    .text_size(text::BODY)
+    .color(theme.text)
+    .line_break_mode(LineBreaking::WordWrap)
 }
 
 /// A section marker: a small uppercase label with a hairline running out to
@@ -277,6 +324,7 @@ pub(super) fn muted<S: Into<String>>(
   label(text.into())
     .text_size(text::SECONDARY)
     .color(theme.muted)
+    .line_break_mode(LineBreaking::WordWrap)
 }
 
 /// A small coloured status chip.

@@ -51,16 +51,23 @@ macro_rules! icons {
 }
 
 icons! {
-  /// A satisfied requirement; the active choice in a list.
+  /// Go to a node.
+  ArrowRight = 0xe049,  /// A satisfied requirement; the active choice in a list.
   Check = 0xe06c,
   /// Opens a menu; collapses a tray.
   ChevronDown = 0xe06d,
+  /// A cycle, or anything else wrong.
+  CircleAlert = 0xe077,
+  /// More actions.
+  Ellipsis = 0xe0b6,
   /// Expands a tray.
   ChevronUp = 0xe070,
   /// Fit the graph to the window.
   Fit = 0xe257,
   /// The quest lens.
   Flag = 0xe0d1,
+  /// A condition (the nearest shape to its chamfered box).
+  Octagon = 0xe126,
   /// Create something.
   Plus = 0xe13d,
   /// Redo.
@@ -69,8 +76,10 @@ icons! {
   Search = 0xe151,
   /// Settings.
   Settings = 0xe154,
-  /// An unsatisfied requirement.
+  /// A task; an unsatisfied requirement.
   Square = 0xe167,
+  /// Delete.
+  Trash = 0xe18e,
   /// Undo.
   Undo = 0xe2a1,
   /// Remove or close.

@@ -121,6 +121,40 @@ pub fn cyclic_nodes(graph: &Graph) -> HashSet<NodeId> {
   cyclic
 }
 
+/// The other nodes that share a cycle with `node`: its strongly connected
+/// component, less itself, sorted. Empty when `node` is in no cycle (a lone
+/// self-loop has no peers either).
+///
+/// Linear in the size of the graph, so meant for one node at a time (the
+/// inspector's "in a cycle with …"), not for sweeping every node.
+pub fn cycle_peers(graph: &Graph, node: NodeId) -> Vec<NodeId> {
+  let reach = |forward: bool| {
+    let mut seen = HashSet::from([node]);
+    let mut stack = vec![node];
+    while let Some(n) = stack.pop() {
+      let next: Vec<NodeId> = if forward {
+        graph.requirements_of(n).map(|e| e.to).collect()
+      } else {
+        graph.dependents_of(n).map(|e| e.from).collect()
+      };
+      for m in next {
+        if seen.insert(m) {
+          stack.push(m);
+        }
+      }
+    }
+    seen
+  };
+  let (down, up) = (reach(true), reach(false));
+  let mut peers: Vec<NodeId> = down
+    .intersection(&up)
+    .copied()
+    .filter(|n| *n != node)
+    .collect();
+  peers.sort_unstable();
+  peers
+}
+
 /// Iterative Tarjan SCC over the requirement graph (edges `from -> to`).
 ///
 /// Returns the strongly-connected components. The explicit work stack keeps

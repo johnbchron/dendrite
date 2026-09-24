@@ -16,7 +16,7 @@ use xilem::{
   },
 };
 
-use super::controls::{body, label, muted, row_button, section, spacer};
+use super::controls::{body, fill, label, muted, row_button, section};
 use crate::{
   field::field,
   icons::{Icon, icon},
@@ -104,8 +104,7 @@ pub(super) fn switcher(
         i == highlight,
         flex_row((
           lead,
-          body(row.label, theme),
-          spacer(),
+          fill(body(row.label, theme)),
           row
             .current
             .then(|| icon(Icon::Check, size::ICON, theme.accent)),

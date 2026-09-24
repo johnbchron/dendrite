@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use base::{
   Derived, Edge, EdgeKind, Event, Graph, NodeId, NodeKind, NodeState, Quest,
-  QuestId, actionable, apply_batch, cyclic_nodes, scope,
+  QuestId, actionable, apply_batch, cycle_peers, cyclic_nodes, scope,
 };
 
 // --- helpers ------------------------------------------------------------
@@ -131,6 +131,23 @@ fn two_cycle_flags_both_members() {
   let d = Derived::compute(&g);
   assert!(d.is_cyclic(nid(1)));
   assert!(d.is_cyclic(nid(2)));
+}
+
+#[test]
+fn cycle_peers_are_the_rest_of_the_component() {
+  // 1 -> 2 -> 3 -> 1 is a cycle; 3 -> 4 hangs off it; 5 loops on itself.
+  let g = build(
+    &[(1, false), (2, false), (3, false), (4, false), (5, false)],
+    &[],
+    &[(10, 1, 2), (11, 2, 3), (12, 3, 1), (13, 3, 4), (14, 5, 5)],
+  );
+  assert_eq!(cycle_peers(&g, nid(1)), vec![nid(2), nid(3)]);
+  assert_eq!(cycle_peers(&g, nid(3)), vec![nid(1), nid(2)]);
+  assert!(cycle_peers(&g, nid(4)).is_empty(), "reached, but not in it");
+  assert!(
+    cycle_peers(&g, nid(5)).is_empty(),
+    "a self-loop has no peers"
+  );
 }
 
 #[test]

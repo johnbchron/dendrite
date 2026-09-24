@@ -14,7 +14,7 @@ pub mod ids;
 pub mod model;
 pub mod quest;
 
-pub use derive::{Derived, NodeState, cyclic_nodes};
+pub use derive::{Derived, NodeState, cycle_peers, cyclic_nodes};
 pub use event::{Event, apply_batch};
 pub use graph::Graph;
 pub use ids::{EdgeId, EventId, NodeId, QuestId};

@@ -108,9 +108,9 @@ impl Node {
 
 /// The semantic flavour of an [`Edge`].
 ///
-/// Both variants gate identically ("requires all targets satisfied"); the
-/// distinction is purely visual/organizational (PLAN §2). The enum is
-/// non-exhaustive so further kinds can be added later (PLAN §7.5).
+/// Dependency is the only kind; there are deliberately no subtasks (PLAN
+/// §7.5). The enum is non-exhaustive so further kinds can be added later
+/// without a schema change, and stored edges already carry their kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -125,11 +125,11 @@ pub enum EdgeKind {
 pub struct Edge {
   /// Stable identity, needed for the event log and reordering.
   pub id:   EdgeId,
-  /// Dependency vs. subtask.
+  /// The edge's kind (only [`EdgeKind::Dependency`] exists).
   pub kind: EdgeKind,
-  /// The dependent / parent.
+  /// The dependent.
   pub from: NodeId,
-  /// The requirement / child.
+  /// The requirement.
   pub to:   NodeId,
 }
 

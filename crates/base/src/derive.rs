@@ -2,9 +2,8 @@
 //!
 //! Nothing here is stored — it is all recomputed from the [`Graph`]
 //! (PLAN §2 "Derived state"). Readiness has AND semantics (a node is ready
-//! only when *all* its requirement targets are satisfied), subtask edges
-//! gate exactly like dependencies, and cycle members are flagged Cyclic and
-//! treated as permanently blocked.
+//! only when *all* its requirement targets are satisfied), and cycle members
+//! are flagged Cyclic and treated as permanently blocked.
 
 use std::collections::{HashMap, HashSet};
 

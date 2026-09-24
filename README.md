@@ -55,8 +55,7 @@ database starts empty.
 - **Canvas**: drag to pan, scroll to zoom, click a node to select it. Task
   nodes are rounded rectangles, conditions are chamfered rectangles;
   border/fill encode Ready / Blocked / Completed / Cyclic / Pending.
-  Dependency edges are solid, subtask edges dashed, and cycle-reversed edges
-  are drawn in warning red.
+  Edges are dependencies, and cycle-reversed edges are drawn in warning red.
 - **Side panel**: create tasks/conditions, rename, toggle done, delete, add
   requirement edges to other nodes, and undo/redo. Switch quests to scope the
   view (pulled-in but unclaimed nodes render dimmed), claim/unclaim the

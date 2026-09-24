@@ -21,8 +21,8 @@ auto-laid-out, layered DAG with clear visual states.
 - **Quests are lenses, not containers**: a quest *claims* a set of nodes as an
   epic. Claims are many-to-many — a node can belong to several quests or none.
   Claiming mutable gates? No: claiming/unclaiming never affects node state.
-- Subtasks are a **semantic edge variant**, not nesting: the graph stays flat,
-  any node can link to any node, no hierarchy limits.
+- The graph stays **flat**: there is no nesting and no subtask relation. Any
+  node can require any other node, with no hierarchy limits.
 - Primary view: a pannable/zoomable canvas rendering the graph as a layered
   DAG (Sugiyama-style). A text view exists but the canvas leads.
 - Must stay usable at 1k+ nodes: incremental layout, viewport culling, minimap,
@@ -64,9 +64,9 @@ Changes from the current skeleton:
   ```rust
   struct Edge {
     id: EdgeId,           // needed for event log and reordering
-    kind: EdgeKind,       // Dependency | Subtask
-    from: NodeId,         // the dependent / parent
-    to: NodeId,           // the requirement / child
+    kind: EdgeKind,       // Dependency (the only kind)
+    from: NodeId,         // the dependent
+    to: NodeId,           // the requirement
   }
   ```
   `from → to` always reads "**from** requires **to**".
@@ -88,8 +88,6 @@ Changes from the current skeleton:
 
 - Ready requires **ALL** dependency targets satisfied (AND semantics, v1 only
   — no ANY/n-of-N).
-- **Subtask edges gate exactly like dependencies** ("parent requires all its
-  children"); the distinction is purely visual/organizational.
 - Cycles are **allowed but flagged**: SCC detection (Tarjan) marks members
   Cyclic; they render invalid and are treated as permanently blocked until the
   cycle is broken. Layout uses a feedback-arc heuristic to rank them anyway.
@@ -155,8 +153,8 @@ technical risk (see §6).
 - **State visuals**: Completed (filled/dimmed + check), Ready (accent border,
   "actionable"), Blocked (neutral/grey), Cyclic (distinct warning treatment),
   Condition Pending/Satisfied (empty vs filled diamond).
-- **Edges**: solid = Dependency, visually distinct (e.g. double-line or
-  bracketed) = Subtask. Direction arrows point at the requirement.
+- **Edges**: every edge is a dependency, drawn solid. Direction arrows point
+  at the requirement.
 - **Layout**: fully automatic levelling, **top-down: quest roots/dependents
   at the top, requirements below** (progress flows upward toward the goal;
   backward edges of allowed cycles point upward and are styled as such).
@@ -204,7 +202,8 @@ technical risk (see §6).
 3. **Levelling**: top-down, roots (dependents/goals) at the top, dependencies
    below.
 4. **Crates**: `base` stays pure; SQLite in a separate `db` crate.
-5. **Edge kinds**: open-ended enum; v1 ships Dependency + Subtask only.
+5. **Edge kinds**: open-ended enum; v1 ships Dependency only. Subtasks were
+   dropped: requiring a node already expresses "this is part of that".
 
 ## 8. Milestones
 

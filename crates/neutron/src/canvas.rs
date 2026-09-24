@@ -13,7 +13,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use base::{EdgeId, EdgeKind, NodeId, NodeKind, NodeState};
+use base::{EdgeId, NodeId, NodeKind, NodeState};
 use layout::{Arrangement, Channel, LayoutConfig};
 use masonry::{
   accesskit::{Node as AccessNode, Role},
@@ -90,12 +90,10 @@ pub struct RenderNode {
 pub struct RenderEdge {
   /// Which edge this is, to find the channels it was given.
   pub id:       EdgeId,
-  /// The dependent / parent end.
+  /// The dependent end.
   pub from:     NodeId,
-  /// The requirement / child end (the arrow points here).
+  /// The requirement end (the arrow points here).
   pub to:       NodeId,
-  /// Dependency (solid) vs. subtask (dashed).
-  pub kind:     EdgeKind,
   /// Whether the cycle-cut reversed this edge (a backward cycle edge).
   pub reversed: bool,
 }
@@ -847,10 +845,7 @@ fn paint_edge(
   } else {
     theme.edge
   };
-  let stroke_style = match edge.kind {
-    EdgeKind::Dependency => masonry::kurbo::Stroke::new(1.5),
-    _ => masonry::kurbo::Stroke::new(1.5),
-  };
+  let stroke_style = masonry::kurbo::Stroke::new(1.5);
   let (curve, tip) = edge_curve(route);
   scene.stroke(&stroke_style, tf, &Brush::Solid(color), None, &curve);
 
@@ -1001,7 +996,6 @@ mod tests {
       id:       EdgeId::from_u128(from * 100 + to),
       from:     NodeId::from_u128(from),
       to:       NodeId::from_u128(to),
-      kind:     EdgeKind::Dependency,
       reversed: false,
     }
   }

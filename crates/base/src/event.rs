@@ -69,11 +69,11 @@ pub enum Event {
   EdgeAdded {
     /// New edge id.
     edge: EdgeId,
-    /// Dependency vs. subtask.
+    /// The edge's kind (only [`EdgeKind::Dependency`] exists).
     kind: EdgeKind,
-    /// Dependent / parent.
+    /// The dependent.
     from: NodeId,
-    /// Requirement / child.
+    /// The requirement.
     to:   NodeId,
   },
   /// Remove an edge.

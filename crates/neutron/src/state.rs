@@ -282,7 +282,6 @@ impl AppState {
         id:       edge.id,
         from:     edge.from,
         to:       edge.to,
-        kind:     edge.kind,
         reversed: lay.is_reversed(edge.id),
       });
     }
@@ -622,9 +621,9 @@ impl AppState {
 
   /// Add an edge `from -> to` (from requires to).
   ///
-  /// A no-op if `from` already requires `to`, by an edge of any kind: every
-  /// kind gates the same way (PLAN §2), so a second edge would add nothing
-  /// but a duplicate row in the panel and a second arrow on the canvas.
+  /// A no-op if `from` already requires `to`: a second edge would add
+  /// nothing but a duplicate row in the panel and a second arrow on the
+  /// canvas.
   pub fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) {
     if from == to {
       return;

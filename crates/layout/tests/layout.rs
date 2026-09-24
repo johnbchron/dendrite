@@ -178,6 +178,51 @@ fn placement_follows_node_sizes() {
 }
 
 #[test]
+fn independent_trees_do_not_interleave() {
+  // Tree A: 0 -> {2, 4}. Tree B: 1 -> {3, 5}. Hints alternate between the
+  // trees in every row, which interleaved them when each row was simply
+  // centred on its own.
+  let g = build(6, &[(10, 0, 2), (11, 0, 4), (12, 1, 3), (13, 1, 5)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+  let tree_a = [0, 2, 4];
+  let tree_b = [1, 3, 5];
+  let xs = |ids: &[u128]| -> Vec<f64> {
+    ids.iter().map(|i| l.pos(nid(*i)).unwrap().x).collect()
+  };
+  let (a, b) = (xs(&tree_a), xs(&tree_b));
+  let a_max = a.iter().copied().fold(f64::MIN, f64::max);
+  let a_min = a.iter().copied().fold(f64::MAX, f64::min);
+  let b_max = b.iter().copied().fold(f64::MIN, f64::max);
+  let b_min = b.iter().copied().fold(f64::MAX, f64::min);
+  let w = cfg.node_size.w;
+  // One tree sits wholly to one side of the other, a tree gap apart.
+  let gap = if a_max < b_min {
+    (b_min - w / 2.0) - (a_max + w / 2.0)
+  } else {
+    assert!(b_max < a_min, "trees interleave: {a:?} vs {b:?}");
+    (a_min - w / 2.0) - (b_max + w / 2.0)
+  };
+  assert!((gap - cfg.tree_gap).abs() < 1e-9, "gap was {gap}");
+  // Rows still line up across trees.
+  assert_eq!(l.pos(nid(0)).unwrap().y, l.pos(nid(1)).unwrap().y);
+}
+
+#[test]
+fn a_lone_tree_is_centred_in_its_own_column() {
+  // The parent sits over the middle of its two children even though an
+  // unrelated singleton shares its row.
+  let g = build(4, &[(10, 0, 1), (11, 0, 2)]);
+  let l = layout(&g, &LayoutConfig::default());
+  let (x0, x1, x2) = (
+    l.pos(nid(0)).unwrap().x,
+    l.pos(nid(1)).unwrap().x,
+    l.pos(nid(2)).unwrap().x,
+  );
+  assert!((x0 - (x1 + x2) / 2.0).abs() < 1e-9);
+}
+
+#[test]
 fn retain_drops_hidden_nodes_and_empty_rows() {
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 0, 3)]);
   let l = layout(&g, &LayoutConfig::default());

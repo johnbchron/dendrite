@@ -12,7 +12,7 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
 | `db` | SQLite event log (append-only source of truth) + materialized projections + undo/redo via inverse events. One database for the whole global graph. | ✅ complete, round-trip tested |
 | `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → coordinate assignment. | ✅ complete, tested |
-| `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling), a side panel, and the command layer wiring gestures to events. | 🚧 canvas spike + editing |
+| `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), a root key map, and the command layer wiring gestures to events. | 🚧 editing done, text sync to come |
 
 ## Milestone status (PLAN §8)
 
@@ -28,12 +28,14 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 - **M4 Auto layout** — ◑ algorithm done and integrated (cycle cut + order-hint
   seeding). The *within-level reorder gesture* is not yet wired.
 - **M5 Canvas editing** — ◑ add task/condition, rename, complete/satisfy,
-  delete, add-requirement edges, claim/unclaim, quest switcher, actionable
-  view, side panel are all wired. Canvas drag-to-create-edge and
-  block-reason hover are not yet done (edges are added from the side panel).
+  delete (with undo), requirement edges by clicking nodes in link mode,
+  claim/unclaim, quest switcher, actionable view, block reasons in the
+  inspector, command palette and a full key map are all wired. Drag-to-create
+  edges on the canvas is not done (link mode covers it).
 - **M6 Text sync (RON)** — ☐ not started.
-- **M7 Scale & polish** (culling, incremental relayout, minimap, focus) — ☐ not
-  started.
+- **M7 Scale & polish** — ◑ viewport culling, per-revision caching of
+  derived state and layout, and snapshot loading are done; incremental
+  relayout, the minimap and focus mode are not started.
 
 ## Build & run
 
@@ -42,7 +44,7 @@ fontconfig, wayland/xkb, …):
 
 ```sh
 nix develop        # or: direnv allow
-cargo test         # 61 tests across the workspace
+cargo test         # 114 tests across the workspace
 cargo run -p neutron
 ```
 
@@ -52,14 +54,44 @@ database starts empty.
 
 ### Using it
 
-- **Canvas**: drag to pan, scroll to zoom, click a node to select it. Task
-  nodes are rounded rectangles, conditions are chamfered rectangles;
-  border/fill encode Ready / Blocked / Completed / Cyclic / Pending.
-  Edges are dependencies, and cycle-reversed edges are drawn in warning red.
-- **Side panel**: create tasks/conditions, rename, toggle done, delete, add
-  requirement edges to other nodes, and undo/redo. Switch quests to scope the
-  view (pulled-in but unclaimed nodes render dimmed), claim/unclaim the
-  selection, and read the **Actionable** list — "what can I do right now?".
+The canvas fills the window; everything else floats over it.
+
+- **Canvas**: drag to pan, scroll to zoom, click a node to select it. Tasks
+  are rounded rectangles, conditions chamfered ones; fill and border encode
+  Ready / Blocked / Completed / Cyclic / Pending. Edges are dependencies, and
+  cycle-reversed edges are drawn in warning red.
+- **Top bar**: the quest lens (switch, search, create and rename quests),
+  new task / condition (attached to the selection as its requirement, if
+  there is one), a search box for the command palette, undo / redo (their
+  tooltips name the step), zoom and fit, and settings (the colour palette).
+- **Inspector**: appears while a node is selected. It says why the node is
+  in its state ("Waiting on…", "In a cycle with…", each a link), leads with
+  one primary action (complete, reopen, satisfy), and lists requirements and
+  dependents; click one to go to it. The requirement search arms link mode:
+  click nodes on the canvas (Shift+click for several) or pick a match.
+- **Now tray** (bottom left): everything actionable right now, grouped by
+  quest in the global view.
+
+### Keys
+
+Single letters work while no text field has focus. Ctrl is Cmd on macOS.
+
+| Key | Action |
+|-----|--------|
+| Ctrl+K | Command palette: nodes, commands, quests |
+| / | Palette, nodes only |
+| N / Shift+N | New task / condition (a requirement of the selection) |
+| R | Add a requirement (link mode) |
+| Space | The selection's primary action |
+| Enter or F2 | Rename the selection |
+| Delete / Backspace | Delete the selection (undo from the toast) |
+| Arrow keys | Move the selection: up to a dependent, down to a requirement, along its row |
+| Escape | Leave a field, then link mode, then a popover, then the selection |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / 100% |
+| F | Fit the graph |
+| Q | Quest switcher |
+| A | Now tray |
 
 ## Notes
 

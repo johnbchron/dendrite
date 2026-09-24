@@ -405,3 +405,31 @@ fn commits_do_not_rewrite_the_snapshot_every_time() {
     .unwrap();
   assert!(name.starts_with('n'), "snapshot caught up, got {name}");
 }
+
+#[test]
+fn revision_moves_with_every_graph_change_and_only_then() {
+  let mut store = Store::open_in_memory().unwrap();
+  let mut seen = vec![store.revision()];
+  let mut changed = |store: &Store| {
+    assert!(!seen.contains(&store.revision()), "revision reused");
+    seen.push(store.revision());
+  };
+  store.commit(sample_batch()).unwrap();
+  changed(&store);
+  let rename = Event::NodeRenamed {
+    node: nid(1),
+    name: "x".into(),
+  };
+  store.commit_amend(vec![rename]).unwrap();
+  changed(&store);
+  store.undo().unwrap();
+  changed(&store);
+  store.redo().unwrap();
+  changed(&store);
+
+  // Things that leave the graph alone leave the revision alone.
+  let r = store.revision();
+  store.set_setting("palette", "umber").unwrap();
+  store.commit(vec![]).unwrap();
+  assert_eq!(store.revision(), r);
+}

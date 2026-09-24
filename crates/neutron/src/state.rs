@@ -11,7 +11,7 @@
 //! single-threaded, so the lock is uncontended; each read method takes it
 //! exactly once (the `std` mutex is not re-entrant).
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use base::{
   Derived, EdgeId, EdgeKind, Event, NodeId, NodeKind, NodeState, QuestId,
@@ -58,7 +58,28 @@ pub struct AppState {
   /// commit came from one. The next keystroke in the same field amends that
   /// undo group rather than opening a new one.
   live_edit:        Option<LiveEdit>,
+  /// Derived state and layout for the store's current revision. Both are
+  /// whole-graph computations, and the view asks for them on every rebuild,
+  /// most of which (a keystroke in a filter, a panel drag) change nothing.
+  derivations:      Mutex<Option<Arc<Derivations>>>,
+  /// The last canvas scene and what it was built from. Handing the canvas
+  /// the same `Arc` is how it knows it has nothing to re-measure.
+  scene_cache:      Mutex<Option<(SceneKey, Arc<CanvasScene>)>>,
 }
+
+/// Whole-graph computations that depend only on the graph.
+struct Derivations {
+  /// The [`Store::revision`] these were computed at.
+  revision: u64,
+  /// Readiness, cycles, satisfaction.
+  derived:  Derived,
+  /// Ranks, ordering and the reversed edges.
+  layout:   layout::Layout,
+}
+
+/// Everything a [`CanvasScene`] is built from: the graph revision, the
+/// selection (highlighted), and the lens (which nodes show, which dim).
+type SceneKey = (u64, Option<NodeId>, Option<QuestId>);
 
 /// A text field that commits as it is typed in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,6 +149,8 @@ impl AppState {
       theme:            theme::DEFAULT,
       palette_open:     false,
       live_edit:        None,
+      derivations:      Mutex::new(None),
+      scene_cache:      Mutex::new(None),
     };
     // A palette recorded by an older version that no longer ships falls back
     // to the default rather than blocking startup.
@@ -177,14 +200,50 @@ impl AppState {
     self.store.lock().expect("store mutex poisoned")
   }
 
+  /// Derived state and layout for `store`'s current graph, computed at most
+  /// once per revision.
+  fn derivations(&self, store: &Store) -> Arc<Derivations> {
+    let mut cache = self.derivations.lock().expect("cache mutex poisoned");
+    if let Some(d) = cache.as_ref()
+      && d.revision == store.revision()
+    {
+      return d.clone();
+    }
+    let graph = store.graph();
+    let fresh = Arc::new(Derivations {
+      revision: store.revision(),
+      derived:  Derived::compute(graph),
+      layout:   layout::layout(graph, &LayoutConfig::default()),
+    });
+    *cache = Some(fresh.clone());
+    fresh
+  }
+
   // --- derived views ----------------------------------------------------
 
-  /// Build the paint scene for the canvas, honouring the active quest lens.
-  pub fn scene(&self) -> CanvasScene {
+  /// The paint scene for the canvas, honouring the active quest lens.
+  ///
+  /// Rebuilt only when the graph, the selection or the lens changed; other
+  /// calls return the same `Arc`, which the canvas takes as "nothing new".
+  pub fn scene(&self) -> Arc<CanvasScene> {
     let store = self.lock();
+    let key = (store.revision(), self.selected, self.active_quest);
+    let mut cache = self.scene_cache.lock().expect("cache mutex poisoned");
+    if let Some((k, scene)) = cache.as_ref()
+      && *k == key
+    {
+      return scene.clone();
+    }
+    let scene = Arc::new(self.build_scene(&store));
+    *cache = Some((key, scene.clone()));
+    scene
+  }
+
+  /// Build the paint scene from scratch.
+  fn build_scene(&self, store: &Store) -> CanvasScene {
     let graph = store.graph();
-    let derived = Derived::compute(graph);
-    let lay = layout::layout(graph, &LayoutConfig::default());
+    let cached = self.derivations(store);
+    let (derived, lay) = (&cached.derived, &cached.layout);
 
     // Which nodes are visible, and which are only pulled in (dimmed)?
     let (visible, claimed): (
@@ -250,7 +309,7 @@ impl AppState {
     let store = self.lock();
     let graph = store.graph();
     let node = graph.node(id)?;
-    let derived = Derived::compute(graph);
+    let derived = &self.derivations(&store).derived;
 
     // `requirements_of` walks outgoing edges (what this node needs) and
     // `dependents_of` incoming ones (what needs this node); either way the
@@ -394,9 +453,10 @@ impl AppState {
   pub fn actionable_list(&self) -> (Vec<(NodeId, String)>, usize) {
     let store = self.lock();
     let graph = store.graph();
-    let derived = Derived::compute(graph);
+    let cached = self.derivations(&store);
+    let derived = &cached.derived;
     let ids: Vec<NodeId> = match self.active_quest {
-      Some(q) => base::actionable(graph, &derived, q),
+      Some(q) => base::actionable(graph, derived, q),
       None => {
         let mut v: Vec<NodeId> =
           derived.ready_nodes().iter().copied().collect();
@@ -974,6 +1034,32 @@ mod tests {
     state.canvas_click(None);
     assert!(!state.is_linking());
     assert_eq!(state.selected, Some(backend));
+  }
+
+  #[test]
+  fn derivations_and_scene_are_reused_until_something_changes() {
+    let mut state = AppState::new(demo_store());
+    let derivations = |s: &AppState| s.derivations(&s.lock());
+    let (d0, s0) = (derivations(&state), state.scene());
+
+    // Asking again, or changing nothing the scene depends on, reuses both.
+    state.link_filter = "x".into();
+    assert!(Arc::ptr_eq(&d0, &derivations(&state)));
+    assert!(Arc::ptr_eq(&s0, &state.scene()));
+
+    // Selection restyles the scene but leaves the graph work alone.
+    state.select(Some(node_named(&state, "Build backend")));
+    let s1 = state.scene();
+    assert!(!Arc::ptr_eq(&s0, &s1));
+    assert!(Arc::ptr_eq(&d0, &derivations(&state)));
+
+    // A commit, and its undo, invalidate both.
+    state.toggle_selected();
+    let d1 = derivations(&state);
+    assert!(!Arc::ptr_eq(&d0, &d1));
+    assert!(!Arc::ptr_eq(&s1, &state.scene()));
+    state.undo();
+    assert!(!Arc::ptr_eq(&d1, &derivations(&state)));
   }
 
   #[test]

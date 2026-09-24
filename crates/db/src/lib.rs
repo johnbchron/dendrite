@@ -61,6 +61,9 @@ pub struct Store {
   redo:         Vec<Vec<Event>>,
   /// `seq` of the newest event in the log (0 for an empty log).
   last_seq:     i64,
+  /// Bumped every time the graph changes, so callers can cache anything
+  /// derived from it and know when to recompute.
+  revision:     u64,
   /// `seq` the snapshot tables reflect.
   snapshot_seq: i64,
 }
@@ -92,6 +95,7 @@ impl Store {
       undo: Vec::new(),
       redo: Vec::new(),
       last_seq: 0,
+      revision: 0,
       snapshot_seq: 0,
     };
     store.migrate()?;
@@ -315,6 +319,10 @@ impl Store {
   /// The current in-memory graph projection.
   pub fn graph(&self) -> &Graph { &self.graph }
 
+  /// A counter that changes whenever [`Store::graph`] does (commit, amend,
+  /// undo, redo) and never otherwise. Equal revisions mean an equal graph.
+  pub fn revision(&self) -> u64 { self.revision }
+
   /// Whether there is a group available to [`undo`](Store::undo).
   pub fn can_undo(&self) -> bool { !self.undo.is_empty() }
 
@@ -332,6 +340,7 @@ impl Store {
       return Ok(());
     }
     let inverse = base::apply_batch(&mut self.graph, &events);
+    self.revision += 1;
     self.persist(&events)?;
     self.undo.push(inverse);
     self.redo.clear();
@@ -352,6 +361,7 @@ impl Store {
       return self.commit(events);
     };
     let mut inverse = base::apply_batch(&mut self.graph, &events);
+    self.revision += 1;
     if let Err(e) = self.persist(&events) {
       self.undo.push(prev);
       return Err(e);
@@ -373,6 +383,7 @@ impl Store {
       return Ok(());
     };
     let redo = base::apply_batch(&mut self.graph, &inverse);
+    self.revision += 1;
     self.persist(&inverse)?;
     self.redo.push(redo);
     Ok(())
@@ -384,6 +395,7 @@ impl Store {
       return Ok(());
     };
     let inverse = base::apply_batch(&mut self.graph, &forward);
+    self.revision += 1;
     self.persist(&forward)?;
     self.undo.push(inverse);
     Ok(())

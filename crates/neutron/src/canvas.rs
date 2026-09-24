@@ -11,7 +11,7 @@
 //! global graph on every rebuild. All domain logic lives in `base`; all
 //! layout lives in `layout`.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use base::{EdgeId, EdgeKind, NodeId, NodeKind, NodeState};
 use layout::{Arrangement, Channel, LayoutConfig};
@@ -120,7 +120,11 @@ pub enum CanvasAction {
 /// The Masonry canvas widget. Owns the view transform (pan/zoom) and the
 /// interaction state; the scene is pushed in from the view.
 pub struct CanvasWidget {
-  scene:        CanvasScene,
+  scene:        Arc<CanvasScene>,
+  /// Whether labels, sizes, placement and routes need recomputing in the
+  /// next layout pass: set by a new scene or a font change, and cleared
+  /// once done, so resizes and repaints do not redo them.
+  dirty:        bool,
   /// World→screen translation.
   pan:          Vec2,
   /// World→screen scale.
@@ -164,7 +168,8 @@ impl CanvasWidget {
   /// A fresh canvas with an identity transform and no scene.
   pub fn new(theme: &'static Theme) -> Self {
     Self {
-      scene: CanvasScene::default(),
+      scene: Arc::default(),
+      dirty: true,
       pan: Vec2::new(60.0, 60.0),
       zoom: 1.0,
       zoom_target: 1.0,
@@ -184,12 +189,13 @@ impl CanvasWidget {
 
   /// Replace the scene. The caller must request a layout, which re-measures
   /// and re-places the nodes.
-  fn set_scene(&mut self, scene: CanvasScene) {
+  fn set_scene(&mut self, scene: Arc<CanvasScene>) {
     // Drop cached text for nodes that vanished.
     let live: std::collections::HashSet<NodeId> =
       scene.nodes.iter().map(|n| n.id).collect();
     self.text_cache.retain(|id, _| live.contains(id));
     self.scene = scene;
+    self.dirty = true;
   }
 
   /// Swap the palette. Colours are read at paint time, so storing it is the
@@ -429,6 +435,7 @@ impl Widget for CanvasWidget {
     // this be checked in the layout pass, not at paint time).
     if ctx.fonts_changed() {
       self.text_cache.clear();
+      self.dirty = true;
     }
     // The canvas is the one widget of ours with a layout pass, so it is where
     // the default family gets remapped. The bundled face only appears once
@@ -438,7 +445,10 @@ impl Widget for CanvasWidget {
       let (font_cx, _) = ctx.text_contexts();
       self.font_ready = font::install(font_cx);
     }
-    self.measure(ctx);
+    if self.dirty {
+      self.measure(ctx);
+      self.dirty = false;
+    }
     // Fill whatever the parent offers; fall back to a sane size if
     // unconstrained.
     let max = bc.max();
@@ -834,7 +844,7 @@ fn paint_edge(
 /// [`CanvasScene`] into the widget; the widget's [`CanvasAction`]s are routed
 /// to `on_action`.
 pub struct Canvas<F> {
-  scene:     CanvasScene,
+  scene:     Arc<CanvasScene>,
   /// The palette the widget paints with.
   theme:     &'static Theme,
   /// A monotonically increasing token; whenever it changes, the widget
@@ -851,7 +861,7 @@ pub struct Canvas<F> {
 /// app state. (`RequestRebuild` only re-diffs the *existing* view tree, so a
 /// selection change made here would never reach the widgets.)
 pub fn canvas<State, Action, F>(
-  scene: CanvasScene,
+  scene: Arc<CanvasScene>,
   theme: &'static Theme,
   fit_epoch: u64,
   on_action: F,
@@ -896,23 +906,30 @@ where
 
   fn rebuild(
     &self,
-    _prev: &Self,
+    prev: &Self,
     last_epoch: &mut Self::ViewState,
     _ctx: &mut ViewCtx,
     mut element: Mut<'_, Self::Element>,
     _app_state: &mut State,
   ) {
-    // The scene is cheap to diff by clone-and-replace for v1; a later pass
-    // can compare against `_prev.scene`.
-    element.widget.set_scene(self.scene.clone());
-    element.widget.set_theme(self.theme);
-    // Labels may have changed, and with them node sizes and placement.
-    element.ctx.request_layout();
+    // The app hands back the same `Arc` while nothing the scene depends on
+    // changed, so most rebuilds (panel typing, drags) skip the canvas
+    // entirely instead of re-measuring every label.
+    if !Arc::ptr_eq(&prev.scene, &self.scene) {
+      element.widget.set_scene(self.scene.clone());
+      // Labels may have changed, and with them node sizes and placement.
+      element.ctx.request_layout();
+      element.ctx.request_render();
+    }
+    if !std::ptr::eq(prev.theme, self.theme) {
+      element.widget.set_theme(self.theme);
+      element.ctx.request_render();
+    }
     if *last_epoch != self.fit_epoch {
       element.widget.request_fit();
       *last_epoch = self.fit_epoch;
+      element.ctx.request_render();
     }
-    element.ctx.request_render();
   }
 
   fn teardown(

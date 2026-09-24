@@ -31,15 +31,33 @@ pub(super) fn top_bar(
 ) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
 
+  // With a selection, new nodes become its requirements; say so.
+  let (task_tip, condition_tip) = match data.attach_point() {
+    Some(name) => (
+      format!("New task required by {name}"),
+      format!("New condition required by {name}"),
+    ),
+    None => ("New task".to_string(), "New condition".to_string()),
+  };
   let create = group(
     theme,
     (
-      seg("+ Task", theme, false, true, |s: &mut AppState| {
-        s.add_task()
-      }),
-      seg("+ Condition", theme, false, true, |s: &mut AppState| {
-        s.add_condition()
-      }),
+      tooltip(
+        task_tip,
+        theme,
+        Anchor::Center,
+        seg("+ Task", theme, false, true, |s: &mut AppState| {
+          s.add_task()
+        }),
+      ),
+      tooltip(
+        condition_tip,
+        theme,
+        Anchor::Center,
+        seg("+ Condition", theme, false, true, |s: &mut AppState| {
+          s.add_condition()
+        }),
+      ),
     ),
   );
 

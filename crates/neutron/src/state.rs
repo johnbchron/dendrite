@@ -976,30 +976,43 @@ impl AppState {
     };
   }
 
-  /// Add a new task and select it.
-  pub fn add_task(&mut self) {
-    let id = NodeId::new();
-    let hint = self.lock().graph().node_count() as f64;
-    self.commit(vec![Event::NodeAdded {
-      node:       id,
-      kind:       NodeKind::task(),
-      name:       "New task".into(),
-      order_hint: hint,
-    }]);
-    self.select(Some(id));
+  /// Add a new task: see [`AppState::add_node`].
+  pub fn add_task(&mut self) { self.add_node(NodeKind::task(), "New task"); }
+
+  /// Add a new condition: see [`AppState::add_node`].
+  pub fn add_condition(&mut self) {
+    self.add_node(NodeKind::condition(), "New condition");
   }
 
-  /// Add a new condition and select it.
-  pub fn add_condition(&mut self) {
+  /// Add a node, select it and bring it into view. With a node selected, the
+  /// new one becomes its requirement, in the same undo step, so it lands
+  /// connected (below the selection) rather than as a tree of its own.
+  fn add_node(&mut self, kind: NodeKind, name: &str) {
     let id = NodeId::new();
     let hint = self.lock().graph().node_count() as f64;
-    self.commit(vec![Event::NodeAdded {
-      node:       id,
-      kind:       NodeKind::condition(),
-      name:       "New condition".into(),
+    let mut events = vec![Event::NodeAdded {
+      node: id,
+      kind,
+      name: name.into(),
       order_hint: hint,
-    }]);
-    self.select(Some(id));
+    }];
+    if let Some(parent) = self.selected {
+      events.push(Event::EdgeAdded {
+        edge: EdgeId::new(),
+        kind: EdgeKind::Dependency,
+        from: parent,
+        to:   id,
+      });
+    }
+    self.commit(events);
+    self.go_to(id);
+  }
+
+  /// The name of the node new nodes would attach to, for the create
+  /// buttons' tooltips.
+  pub fn attach_point(&self) -> Option<String> {
+    let id = self.selected?;
+    self.lock().graph().node(id).map(|n| n.name.clone())
   }
 
   /// Toggle the selected node's completion / satisfaction bit.
@@ -1789,6 +1802,37 @@ mod tests {
     let second = state.toast().unwrap().id;
     state.dismiss_toast(second);
     assert!(state.toast().is_none());
+  }
+
+  #[test]
+  fn new_nodes_attach_to_the_selection_in_one_step() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    state.select(Some(backend));
+    state.add_task();
+    let new = state.selected.expect("the new task is selected");
+    assert_ne!(new, backend);
+    assert_eq!(state.camera().request, CameraRequest::Reveal(new));
+    let reqs: Vec<_> = state
+      .lock()
+      .graph()
+      .requirements_of(backend)
+      .map(|e| e.to)
+      .collect();
+    assert!(
+      reqs.contains(&new),
+      "created as a requirement of the selection"
+    );
+    // One undo removes the node and its edge together.
+    state.undo();
+    assert!(state.lock().graph().node(new).is_none());
+    assert_eq!(state.lock().graph().requirements_of(backend).count(), 1);
+
+    // With nothing selected it stands alone.
+    state.select(None);
+    state.add_condition();
+    let lone = state.selected.unwrap();
+    assert_eq!(state.lock().graph().dependents_of(lone).count(), 0);
   }
 
   #[test]

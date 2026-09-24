@@ -20,7 +20,7 @@ use db::Store;
 use layout::{LayoutConfig, Slot};
 
 use crate::{
-  canvas::{CanvasScene, RenderEdge, RenderNode},
+  canvas::{Camera, CameraRequest, CanvasScene, RenderEdge, RenderNode},
   keymap::{self, Command},
   theme::{self, Theme},
 };
@@ -36,8 +36,8 @@ pub struct AppState {
   pub name_draft:   String,
   /// Editable name buffer for the active quest, shown in the switcher.
   pub quest_draft:  String,
-  /// Bumped to ask the canvas to refit/centre the graph.
-  recenter_epoch:   u64,
+  /// The latest request for the canvas camera (fit, reveal a node).
+  camera:           Camera,
   /// Current width of the side panel, in logical pixels.
   panel_width:      f64,
   /// Panel width when the current divider drag started, so drags measure
@@ -141,7 +141,10 @@ impl AppState {
       active_quest:     None,
       name_draft:       String::new(),
       quest_draft:      String::new(),
-      recenter_epoch:   0,
+      camera:           Camera {
+        epoch:   0,
+        request: CameraRequest::Fit,
+      },
       panel_width:      PANEL_WIDTH,
       panel_width_base: PANEL_WIDTH,
       linking:          false,
@@ -339,11 +342,26 @@ impl AppState {
     })
   }
 
-  /// The current recenter epoch handed to the canvas view.
-  pub fn recenter_epoch(&self) -> u64 { self.recenter_epoch }
+  /// The latest camera request, handed to the canvas view.
+  pub fn camera(&self) -> Camera { self.camera }
+
+  /// Ask the canvas camera to do something on the next rebuild.
+  fn aim(&mut self, request: CameraRequest) {
+    self.camera = Camera {
+      epoch: self.camera.epoch + 1,
+      request,
+    };
+  }
 
   /// Ask the canvas to refit/centre the whole graph on the next frame.
-  pub fn recenter(&mut self) { self.recenter_epoch += 1; }
+  pub fn recenter(&mut self) { self.aim(CameraRequest::Fit); }
+
+  /// Select `node` and bring it into view on the canvas: the "go to" used
+  /// by lists that name nodes.
+  pub fn go_to(&mut self, node: NodeId) {
+    self.select(Some(node));
+    self.aim(CameraRequest::Reveal(node));
+  }
 
   /// The side panel's current width in logical pixels.
   pub fn panel_width(&self) -> f64 { self.panel_width }
@@ -1090,6 +1108,21 @@ mod tests {
     assert!(!Arc::ptr_eq(&s1, &state.scene()));
     state.undo();
     assert!(!Arc::ptr_eq(&d1, &derivations(&state)));
+  }
+
+  #[test]
+  fn camera_requests_bump_the_epoch_every_time() {
+    let mut state = AppState::new(demo_store());
+    let start = state.camera().epoch;
+    state.recenter();
+    state.recenter();
+    assert_eq!(state.camera().epoch, start + 2, "a repeat still acts");
+    assert_eq!(state.camera().request, CameraRequest::Fit);
+
+    let backend = node_named(&state, "Build backend");
+    state.go_to(backend);
+    assert_eq!(state.selected, Some(backend));
+    assert_eq!(state.camera().request, CameraRequest::Reveal(backend));
   }
 
   #[test]

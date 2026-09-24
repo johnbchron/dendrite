@@ -30,7 +30,7 @@ use xilem::{
 };
 
 use crate::{
-  canvas::{CanvasAction, canvas},
+  canvas::{CanvasAction, Insets, canvas},
   divider::{DividerAction, divider},
   field::field,
   focus::FieldKey,
@@ -300,7 +300,8 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let canvas_view = canvas(
     data.scene(),
     data.theme(),
-    data.recenter_epoch(),
+    data.camera(),
+    Insets::default(),
     |s: &mut AppState, action| match action {
       // While a link is armed this builds an edge instead of selecting.
       CanvasAction::Select(id) => s.canvas_click(id),
@@ -693,7 +694,7 @@ fn actionable_region(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
         format!("→ {name}"),
         theme,
         false,
-        move |s: &mut AppState| s.select(Some(id)),
+        move |s: &mut AppState| s.go_to(id),
       )
       .into_any_flex()
     })

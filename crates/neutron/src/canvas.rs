@@ -60,6 +60,9 @@ const ZOOM_MAX: f64 = 4.0;
 /// settles in roughly a fifth of a second and rapid notches blend together
 /// rather than stepping.
 const ZOOM_RATE: f64 = 16.0;
+/// Screen pixels kept clear around the graph when fitting it, and around a
+/// node revealed by [`CameraRequest::Reveal`].
+const VIEW_MARGIN: f64 = 48.0;
 /// Screen pixels beyond the viewport that still count as on screen when
 /// culling, so a selection outline or an edge's stroke that pokes past a
 /// box is never cut off at the window edge.
@@ -110,6 +113,40 @@ pub struct CanvasScene {
   pub arrangement: Arrangement,
 }
 
+/// How much of the canvas the chrome floating over it covers on each side,
+/// in logical pixels. Fitting and revealing aim at the area left uncovered.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Insets {
+  /// Covered from the top edge.
+  pub top:    f64,
+  /// Covered from the right edge.
+  pub right:  f64,
+  /// Covered from the bottom edge.
+  pub bottom: f64,
+  /// Covered from the left edge.
+  pub left:   f64,
+}
+
+/// Something the app asks the canvas's camera to do.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CameraRequest {
+  /// Fit the whole graph into the uncovered area.
+  Fit,
+  /// Pan, easing, until the node is inside the uncovered area. A node that
+  /// is already comfortably in view does not move.
+  Reveal(NodeId),
+}
+
+/// The latest camera request, tagged with a counter the app bumps for each
+/// new one, so repeating the same request (Fit twice) still acts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Camera {
+  /// Bumped per request.
+  pub epoch:   u64,
+  /// What to do.
+  pub request: CameraRequest,
+}
+
 /// Something the user did on the canvas that the app must react to.
 #[derive(Clone, Debug)]
 pub enum CanvasAction {
@@ -136,6 +173,13 @@ pub struct CanvasWidget {
   zoom_target:  f64,
   /// Screen point the animated zoom is anchored on (the last wheel position).
   zoom_anchor:  Point,
+  /// The translation an eased pan is heading for, if one is in flight.
+  pan_target:   Option<Vec2>,
+  /// A node to reveal once it has been placed (the request can arrive in the
+  /// same rebuild as the scene that adds it).
+  reveal:       Option<NodeId>,
+  /// How much of the canvas the chrome covers.
+  insets:       Insets,
   /// Pointer position at the last `Down`, for click-vs-pan discrimination.
   press_origin: Option<Point>,
   /// Previous pointer position while dragging, for incremental panning.
@@ -173,6 +217,9 @@ impl CanvasWidget {
       zoom: 1.0,
       zoom_target: 1.0,
       zoom_anchor: Point::ORIGIN,
+      pan_target: None,
+      reveal: None,
+      insets: Insets::default(),
       press_origin: None,
       last_pointer: None,
       panned: false,
@@ -275,41 +322,46 @@ impl CanvasWidget {
     self.routes = route_edges(&self.scene.edges, &self.rects, &placed.channels);
   }
 
-  /// Fit the whole scene into `viewport`, centred, with a margin. Never
-  /// zooms in past 1:1, so a small graph stays readable rather than filling
-  /// the window with a couple of giant boxes.
-  fn fit_to(&mut self, viewport: masonry::kurbo::Size) {
-    let mut union: Option<Rect> = None;
-    for &r in self.rects.values() {
-      union = Some(match union {
-        Some(u) => u.union(r),
-        None => r,
-      });
-    }
-    let Some(bounds) = union else { return };
-    if viewport.width <= 0.0 || viewport.height <= 0.0 {
+  /// Fit the whole scene into the part of `viewport` the chrome leaves
+  /// uncovered.
+  fn fit_to(&mut self, viewport: Size) {
+    let Some(bounds) = self.rects.values().copied().reduce(|a, b| a.union(b))
+    else {
       return;
-    }
-
-    let margin = 48.0;
-    let avail_w = (viewport.width - 2.0 * margin).max(1.0);
-    let avail_h = (viewport.height - 2.0 * margin).max(1.0);
-    let zoom = (avail_w / bounds.width().max(1.0))
-      .min(avail_h / bounds.height().max(1.0))
-      .min(1.0)
-      .clamp(ZOOM_MIN, ZOOM_MAX);
-
+    };
+    let Some((zoom, pan)) = fit(bounds, uncovered(viewport, self.insets))
+    else {
+      return;
+    };
     self.zoom = zoom;
-    // A fit replaces the view outright, so drop any zoom still in flight.
+    self.pan = pan;
+    // A fit replaces the view outright, so drop any motion still in flight.
     self.zoom_target = zoom;
-    let center = bounds.center();
-    // Place the content centre at the viewport centre.
-    self.pan = Vec2::new(viewport.width / 2.0, viewport.height / 2.0)
-      - zoom * Vec2::new(center.x, center.y);
+    self.pan_target = None;
   }
 
-  /// Request that the next paint refit the graph.
-  fn request_fit(&mut self) { self.needs_fit = true; }
+  /// Act on a camera request from the app.
+  fn apply(&mut self, request: CameraRequest) {
+    match request {
+      CameraRequest::Fit => self.needs_fit = true,
+      CameraRequest::Reveal(node) => self.reveal = Some(node),
+    }
+  }
+
+  /// Start panning towards a pending [`Self::reveal`], if its node is placed
+  /// and not already in view. Returns whether it resolved the request.
+  fn start_reveal(&mut self) -> bool {
+    let (Some(node), Some(size)) = (self.reveal, self.last_size) else {
+      return false;
+    };
+    let Some(&rect) = self.rects.get(&node) else {
+      return false;
+    };
+    self.reveal = None;
+    let view = uncovered(size, self.insets);
+    self.pan_target = reveal_pan(rect, self.zoom, self.pan, view);
+    true
+  }
 
   /// Zoom about a screen anchor, keeping the world point under it fixed.
   fn zoom_about(&mut self, anchor: Point, factor: f64) {
@@ -358,6 +410,7 @@ impl Widget for CanvasWidget {
             self.panned = true;
           }
           if self.panned {
+            self.pan_target = None;
             self.pan += p - last;
             ctx.request_render();
           }
@@ -392,6 +445,7 @@ impl Widget for CanvasWidget {
           self.zoom_target =
             (self.zoom_target * (dy * 0.1).exp()).clamp(ZOOM_MIN, ZOOM_MAX);
           self.zoom_anchor = p;
+          self.pan_target = None;
           ctx.request_anim_frame();
         }
       }
@@ -408,15 +462,28 @@ impl Widget for CanvasWidget {
     // Ease in log space, so zooming in and out feel the same speed. A long
     // stall (the first frame, or a hitch) is capped so it cannot overshoot.
     let dt = (interval as f64 / 1e9).min(0.1);
+    let ease = 1.0 - (-ZOOM_RATE * dt).exp();
+    self.start_reveal();
+
     let gap = (self.zoom_target / self.zoom).ln();
-    let step = if gap.abs() < 1e-3 {
-      gap
-    } else {
-      gap * (1.0 - (-ZOOM_RATE * dt).exp())
-    };
+    let step = if gap.abs() < 1e-3 { gap } else { gap * ease };
     self.zoom_about(self.zoom_anchor, step.exp());
+    let mut moving = (self.zoom_target / self.zoom).ln().abs() >= 1e-3;
+
+    // Pans ease the same way, in screen pixels.
+    if let Some(target) = self.pan_target {
+      let gap = target - self.pan;
+      if gap.hypot() < 0.5 {
+        self.pan = target;
+        self.pan_target = None;
+      } else {
+        self.pan += gap * ease;
+        moving = true;
+      }
+    }
+
     ctx.request_render();
-    if (self.zoom_target / self.zoom).ln().abs() >= 1e-3 {
+    if moving || self.reveal.is_some() {
       ctx.request_anim_frame();
     }
   }
@@ -455,7 +522,7 @@ impl Widget for CanvasWidget {
     let size = bc.constrain((w, h));
     // A resize leaves the graph off-centre, so refit on the next paint.
     if self.last_size.is_some_and(|prev| prev != size) {
-      self.request_fit();
+      self.needs_fit = true;
     }
     self.last_size = Some(size);
     size
@@ -850,6 +917,51 @@ fn paint_edge(
   scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
 }
 
+/// The part of a `viewport`-sized canvas the chrome leaves uncovered, in
+/// screen coordinates. Never inverted, however large the insets.
+fn uncovered(viewport: Size, insets: Insets) -> Rect {
+  let x0 = insets.left.min(viewport.width);
+  let y0 = insets.top.min(viewport.height);
+  Rect::new(
+    x0,
+    y0,
+    (viewport.width - insets.right).max(x0),
+    (viewport.height - insets.bottom).max(y0),
+  )
+}
+
+/// The zoom and pan that fit world-space `bounds` into screen-space `view`,
+/// centred with a [`VIEW_MARGIN`]. Never zooms in past 1:1, so a small graph
+/// stays readable rather than filling the window with a few giant boxes.
+/// `None` for an empty view.
+fn fit(bounds: Rect, view: Rect) -> Option<(f64, Vec2)> {
+  if view.width() <= 0.0 || view.height() <= 0.0 {
+    return None;
+  }
+  let avail_w = (view.width() - 2.0 * VIEW_MARGIN).max(1.0);
+  let avail_h = (view.height() - 2.0 * VIEW_MARGIN).max(1.0);
+  let zoom = (avail_w / bounds.width().max(1.0))
+    .min(avail_h / bounds.height().max(1.0))
+    .min(1.0)
+    .clamp(ZOOM_MIN, ZOOM_MAX);
+  let pan = view.center().to_vec2() - zoom * bounds.center().to_vec2();
+  Some((zoom, pan))
+}
+
+/// The pan that brings world-space `node` into screen-space `view` at
+/// `zoom`: `None` if it is already inside `view` with a [`VIEW_MARGIN`] to
+/// spare, else the pan that centres it.
+fn reveal_pan(node: Rect, zoom: f64, pan: Vec2, view: Rect) -> Option<Vec2> {
+  let on_screen = Affine::translate(pan) * Affine::scale(zoom);
+  let shown = on_screen.transform_rect_bbox(node);
+  let comfortable = view.inset(-VIEW_MARGIN);
+  let inside = comfortable.width() > 0.0
+    && comfortable.height() > 0.0
+    && comfortable.contains(shown.origin())
+    && comfortable.contains(Point::new(shown.x1, shown.y1));
+  (!inside).then(|| view.center().to_vec2() - zoom * node.center().to_vec2())
+}
+
 /// The world-space area the viewport shows under `tf`, plus
 /// [`CULL_MARGIN`].
 fn visible_world(tf: Affine, size: Size) -> Rect {
@@ -867,14 +979,15 @@ pub struct Canvas<F> {
   scene:     Arc<CanvasScene>,
   /// The palette the widget paints with.
   theme:     &'static Theme,
-  /// A monotonically increasing token; whenever it changes, the widget
-  /// refits the graph into the viewport (drives the "Recenter" button).
-  fit_epoch: u64,
+  /// The latest camera request; acted on when its epoch changes.
+  camera:    Camera,
+  /// How much of the canvas the chrome covers.
+  insets:    Insets,
   on_action: F,
 }
 
-/// Construct a canvas view from a scene, a fit epoch, and an action handler.
-/// Bump `fit_epoch` to recentre the view on the next rebuild.
+/// Construct a canvas view from a scene, the latest camera request, the
+/// area the chrome covers, and an action handler.
 ///
 /// The handler's return value is wrapped in [`MessageResult::Action`], which
 /// is what tells the Xilem driver to re-run `app_logic` against the mutated
@@ -883,7 +996,8 @@ pub struct Canvas<F> {
 pub fn canvas<State, Action, F>(
   scene: Arc<CanvasScene>,
   theme: &'static Theme,
-  fit_epoch: u64,
+  camera: Camera,
+  insets: Insets,
   on_action: F,
 ) -> Canvas<impl Fn(&mut State, CanvasAction) -> MessageResult<Action>>
 where
@@ -892,7 +1006,8 @@ where
   Canvas {
     scene,
     theme,
-    fit_epoch,
+    camera,
+    insets,
     on_action: move |state: &mut State, action| {
       MessageResult::Action(on_action(state, action))
     },
@@ -908,7 +1023,7 @@ where
   Action: 'static,
 {
   type Element = Pod<CanvasWidget>;
-  /// The last fit epoch we applied, so we only refit when it changes.
+  /// The last camera epoch applied, so each request acts once.
   type ViewState = u64;
 
   fn build(
@@ -919,9 +1034,11 @@ where
     let pod = ctx.with_action_widget(|ctx| {
       let mut w = CanvasWidget::new(self.theme);
       w.set_scene(self.scene.clone());
+      w.insets = self.insets;
       ctx.create_pod(w)
     });
-    (pod, self.fit_epoch)
+    // The canvas fits itself on first paint, whatever the request says.
+    (pod, self.camera.epoch)
   }
 
   fn rebuild(
@@ -945,10 +1062,14 @@ where
       element.widget.set_theme(self.theme);
       element.ctx.request_render();
     }
-    if *last_epoch != self.fit_epoch {
-      element.widget.request_fit();
-      *last_epoch = self.fit_epoch;
+    if self.insets != prev.insets {
+      element.widget.insets = self.insets;
+    }
+    if *last_epoch != self.camera.epoch {
+      *last_epoch = self.camera.epoch;
+      element.widget.apply(self.camera.request);
       element.ctx.request_render();
+      element.ctx.request_anim_frame();
     }
   }
 
@@ -1172,5 +1293,66 @@ mod tests {
     );
     // A view that only sees the detour still keeps the edge.
     assert!(b.overlaps(Rect::new(290.0, 150.0, 310.0, 160.0)));
+  }
+
+  /// Fitting aims at the uncovered area: the graph's centre lands on its
+  /// centre, not the window's.
+  #[test]
+  fn fit_centres_the_graph_in_the_uncovered_area() {
+    let viewport = Size::new(1000.0, 800.0);
+    let insets = Insets {
+      top:    40.0,
+      right:  320.0,
+      bottom: 0.0,
+      left:   0.0,
+    };
+    let view = uncovered(viewport, insets);
+    assert_eq!(view, Rect::new(0.0, 40.0, 680.0, 800.0));
+    let bounds = Rect::new(-100.0, -50.0, 100.0, 50.0);
+    let (zoom, pan) = fit(bounds, view).unwrap();
+    assert_eq!(zoom, 1.0, "a small graph is not blown up");
+    let centre = Affine::translate(pan) * Affine::scale(zoom) * bounds.center();
+    assert_eq!(centre, view.center());
+
+    // A big graph shrinks to fit inside the margins (down to the minimum
+    // zoom, which this one does not reach).
+    let big = Rect::new(0.0, 0.0, 2000.0, 1000.0);
+    let (zoom, pan) = fit(big, view).unwrap();
+    let shown =
+      (Affine::translate(pan) * Affine::scale(zoom)).transform_rect_bbox(big);
+    assert!(shown.x0 >= view.x0 + VIEW_MARGIN - 1e-9);
+    assert!(shown.x1 <= view.x1 - VIEW_MARGIN + 1e-9);
+  }
+
+  /// Insets larger than the canvas leave an empty view, not an inverted one,
+  /// and fitting into it does nothing.
+  #[test]
+  fn oversized_insets_leave_an_empty_view() {
+    let insets = Insets {
+      top:    0.0,
+      right:  900.0,
+      bottom: 0.0,
+      left:   200.0,
+    };
+    let view = uncovered(Size::new(1000.0, 800.0), insets);
+    assert_eq!(view.width(), 0.0);
+    assert!(fit(Rect::new(0.0, 0.0, 10.0, 10.0), view).is_none());
+  }
+
+  /// Revealing leaves a node that is already comfortably in view alone, and
+  /// centres one that is off screen or under the chrome.
+  #[test]
+  fn reveal_only_moves_for_hidden_nodes() {
+    let view = Rect::new(0.0, 40.0, 680.0, 800.0);
+    let (zoom, pan) = (1.0, Vec2::ZERO);
+    let visible = Rect::new(200.0, 200.0, 350.0, 250.0);
+    assert_eq!(reveal_pan(visible, zoom, pan, view), None);
+
+    // Under the inspector card, off to the right of the view.
+    let covered = Rect::new(700.0, 200.0, 850.0, 250.0);
+    let target = reveal_pan(covered, zoom, pan, view).unwrap();
+    let centre =
+      Affine::translate(target) * Affine::scale(zoom) * covered.center();
+    assert_eq!(centre, view.center());
   }
 }

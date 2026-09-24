@@ -22,7 +22,7 @@ use masonry::{
     PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
     RegisterCtx, StyleProperty, UpdateCtx, Widget, render_text,
   },
-  kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Size, Vec2},
+  kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Size, Vec2},
   parley::{Layout as TextLayout, LineHeight},
   peniko::{Brush, Color, Fill},
   vello::Scene,
@@ -150,6 +150,9 @@ pub struct CanvasWidget {
   /// Every node's box in world coordinates, placed in the layout pass from
   /// the scene's arrangement and the measured labels.
   rects:        HashMap<NodeId, Rect>,
+  /// Where each of the scene's edges attaches, index-aligned with
+  /// `scene.edges`; routed alongside `rects`.
+  routes:       Vec<Option<Route>>,
   /// Whether [`font::install`] has pointed the default family at the app
   /// face yet.
   font_ready:   bool,
@@ -172,6 +175,7 @@ impl CanvasWidget {
       theme,
       text_cache: HashMap::new(),
       rects: HashMap::new(),
+      routes: Vec::new(),
       font_ready: false,
     }
   }
@@ -261,6 +265,7 @@ impl CanvasWidget {
         Some((n.id, Rect::from_center_size((c.x, c.y), (size.w, size.h))))
       })
       .collect();
+    self.routes = route_edges(&self.scene.edges, &self.rects);
   }
 
   /// Fit the whole scene into `viewport`, centred, with a margin. Never
@@ -477,13 +482,10 @@ impl Widget for CanvasWidget {
     );
 
     // Edges under nodes.
-    for edge in &self.scene.edges {
-      let (Some(&from), Some(&to)) =
-        (self.rects.get(&edge.from), self.rects.get(&edge.to))
-      else {
-        continue;
-      };
-      paint_edge(scene, tf, edge, from, to, self.theme);
+    for (edge, route) in self.scene.edges.iter().zip(&self.routes) {
+      if let Some(route) = *route {
+        paint_edge(scene, tf, edge, route, self.theme);
+      }
     }
 
     // Nodes on top.
@@ -606,53 +608,165 @@ fn stroke(
   );
 }
 
-/// Distance from a node centre to its box border along the unit vector
-/// `dir`, for a box of half-extents `half`: the smaller of the two slab
-/// crossings.
-fn border_offset(dir: Vec2, half: Vec2) -> f64 {
-  let tx = if dir.x.abs() > 1e-9 {
-    half.x / dir.x.abs()
-  } else {
-    f64::INFINITY
-  };
-  let ty = if dir.y.abs() > 1e-9 {
-    half.y / dir.y.abs()
-  } else {
-    f64::INFINITY
-  };
-  tx.min(ty)
+/// Arrowhead length and half-width, in world units.
+const HEAD_LEN: f64 = 9.0;
+const HEAD_HALF_W: f64 = 4.5;
+/// Space left between an arrowhead's tip and the node it points at.
+const TIP_GAP: f64 = 2.0;
+/// Spacing between edge endpoints that share one side of a node.
+const PORT_PITCH: f64 = 16.0;
+/// Fraction of a side's length that endpoints may spread across.
+const PORT_SPAN: f64 = 0.7;
+
+/// Where an edge leaves its dependent and enters its requirement, and which
+/// way it travels there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Route {
+  /// On the border of the `from` node.
+  start: Point,
+  /// On the border of the `to` node, where the arrowhead's tip goes.
+  end:   Point,
+  /// Unit direction the edge leaves `start` and arrives at `end` along:
+  /// down or up between rows, sideways within one.
+  axis:  Vec2,
 }
 
-/// Paint one edge as a line plus an arrowhead at the requirement end.
+/// The side of a box an edge attaches to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Side {
+  Top,
+  Bottom,
+  Left,
+  Right,
+}
+
+/// Route every edge between the boxes in `rects`, index-aligned with
+/// `edges` (`None` where an end is not placed).
+///
+/// Edges run bottom-to-top between rows — leaving the lower side of the
+/// node above and entering the upper side of the node below, whichever way
+/// the arrow points — and side-to-side within a row. Where several edges
+/// share one side of a node, their endpoints are spread along it in the
+/// order of their far ends, so they fan out instead of converging on a
+/// single point and their curves do not cross at the node.
+fn route_edges(
+  edges: &[RenderEdge],
+  rects: &HashMap<NodeId, Rect>,
+) -> Vec<Option<Route>> {
+  // First pass: sides and axes, plus who attaches where.
+  let mut sides: Vec<Option<(Side, Side, Vec2)>> = Vec::new();
+  let mut ports: HashMap<(NodeId, Side), Vec<(f64, usize, bool)>> =
+    HashMap::new();
+  for (i, edge) in edges.iter().enumerate() {
+    let (Some(a), Some(b)) = (rects.get(&edge.from), rects.get(&edge.to))
+    else {
+      sides.push(None);
+      continue;
+    };
+    let (from_side, to_side, axis) = if b.y0 >= a.y1 {
+      (Side::Bottom, Side::Top, Vec2::new(0.0, 1.0))
+    } else if b.y1 <= a.y0 {
+      (Side::Top, Side::Bottom, Vec2::new(0.0, -1.0))
+    } else if b.center().x >= a.center().x {
+      (Side::Right, Side::Left, Vec2::new(1.0, 0.0))
+    } else {
+      (Side::Left, Side::Right, Vec2::new(-1.0, 0.0))
+    };
+    // Ports along a side are ordered by where the other end lies along it.
+    let along = |r: &Rect| {
+      if axis.x == 0.0 {
+        r.center().x
+      } else {
+        r.center().y
+      }
+    };
+    ports
+      .entry((edge.from, from_side))
+      .or_default()
+      .push((along(b), i, true));
+    ports
+      .entry((edge.to, to_side))
+      .or_default()
+      .push((along(a), i, false));
+    sides.push(Some((from_side, to_side, axis)));
+  }
+
+  let mut starts: Vec<Option<Point>> = vec![None; edges.len()];
+  let mut ends: Vec<Option<Point>> = vec![None; edges.len()];
+  for ((node, side), mut list) in ports {
+    let rect = rects[&node];
+    list.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
+    let n = list.len();
+    for (k, &(_, i, is_start)) in list.iter().enumerate() {
+      let p = port(rect, side, k, n);
+      if is_start {
+        starts[i] = Some(p);
+      } else {
+        ends[i] = Some(p);
+      }
+    }
+  }
+
+  sides
+    .iter()
+    .enumerate()
+    .map(|(i, s)| {
+      let (_, _, axis) = (*s)?;
+      Some(Route {
+        start: starts[i]?,
+        end: ends[i]?,
+        axis,
+      })
+    })
+    .collect()
+}
+
+/// The `k`th of `n` evenly spaced endpoints on `side` of `rect`, centred on
+/// the side and never spreading past [`PORT_SPAN`] of it.
+fn port(rect: Rect, side: Side, k: usize, n: usize) -> Point {
+  let len = match side {
+    Side::Top | Side::Bottom => rect.width(),
+    Side::Left | Side::Right => rect.height(),
+  };
+  let span = (PORT_PITCH * n.saturating_sub(1) as f64).min(len * PORT_SPAN);
+  let offset = if n > 1 {
+    -span / 2.0 + span * k as f64 / (n - 1) as f64
+  } else {
+    0.0
+  };
+  let c = rect.center();
+  match side {
+    Side::Top => Point::new(c.x + offset, rect.y0),
+    Side::Bottom => Point::new(c.x + offset, rect.y1),
+    Side::Left => Point::new(rect.x0, c.y + offset),
+    Side::Right => Point::new(rect.x1, c.y + offset),
+  }
+}
+
+/// The curve an edge is drawn along: a cubic that leaves `start` and meets
+/// the arrowhead's base both square to their node, so edges bend smoothly
+/// between rows the way Mermaid draws them. Returns the curve and the tip.
+fn edge_curve(route: Route) -> (BezPath, Point) {
+  let Route { start, end, axis } = route;
+  let tip = end - axis * TIP_GAP;
+  let base = tip - axis * HEAD_LEN;
+  // Handles reach halfway along the travel axis, with a floor so a short
+  // hop between close rows still bends rather than kinking.
+  let reach = ((base - start).dot(axis).abs() / 2.0).max(24.0);
+  let mut path = BezPath::new();
+  path.move_to(start);
+  path.curve_to(start + axis * reach, base - axis * reach, base);
+  (path, tip)
+}
+
+/// Paint one edge as a curve plus an arrowhead at the requirement end.
 fn paint_edge(
   scene: &mut Scene,
   tf: Affine,
   edge: &RenderEdge,
-  from: Rect,
-  to: Rect,
+  route: Route,
   theme: &Theme,
 ) {
-  let a0 = from.center();
-  let b0 = to.center();
-  let half = |r: Rect| Vec2::new(r.width() / 2.0, r.height() / 2.0);
-  // Pull the endpoints back to the node borders so the line and arrowhead
-  // are not hidden under the boxes. The inset has to follow the box: nodes
-  // are far wider than they are tall, so a fixed radius left the arrowhead
-  // buried inside the node on anything but a near-vertical edge.
-  let delta = b0 - a0;
-  let len = delta.hypot();
-  if len <= 1e-9 {
-    return;
-  }
-  let dir = delta / len;
-  let inset_a = border_offset(dir, half(from)) + 2.0;
-  let inset_b = border_offset(dir, half(to)) + 2.0;
-  if len <= inset_a + inset_b {
-    // The boxes touch or overlap: the whole edge would sit under them.
-    return;
-  }
-  let a = a0 + dir * inset_a;
-  let b = b0 - dir * inset_b;
   let color = if edge.reversed {
     theme.cycle
   } else {
@@ -662,21 +776,18 @@ fn paint_edge(
     EdgeKind::Dependency => masonry::kurbo::Stroke::new(1.5),
     _ => masonry::kurbo::Stroke::new(1.5),
   };
-  scene.stroke(
-    &stroke_style,
-    tf,
-    &Brush::Solid(color),
-    None,
-    &Line::new(a, b),
-  );
+  let (curve, tip) = edge_curve(route);
+  scene.stroke(&stroke_style, tf, &Brush::Solid(color), None, &curve);
 
-  // Arrowhead pointing at `b`.
-  let back = b - dir * 12.0;
-  let perp = Vec2::new(-dir.y, dir.x) * 5.0;
+  // Arrowhead along the travel axis: the curve arrives square to the node,
+  // so the head lines up with it exactly.
+  let axis = route.axis;
+  let base = tip - axis * HEAD_LEN;
+  let perp = Vec2::new(-axis.y, axis.x) * HEAD_HALF_W;
   let mut head = BezPath::new();
-  head.move_to((b.x, b.y));
-  head.line_to((back.x + perp.x, back.y + perp.y));
-  head.line_to((back.x - perp.x, back.y - perp.y));
+  head.move_to(tip);
+  head.line_to(base + perp);
+  head.line_to(base - perp);
   head.close_path();
   scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
 }
@@ -795,28 +906,90 @@ where
 mod tests {
   use super::*;
 
-  /// Edge endpoints must stop on the node box, not on a fixed radius: the
-  /// boxes are far wider than tall, so a radius that suited a vertical edge
-  /// left the arrowhead buried inside the node on a diagonal one.
-  #[test]
-  fn border_offset_lands_on_the_box_edge() {
-    let (half_w, half_h) = (NODE_W / 2.0, 23.0);
-    for d in [
-      Vec2::new(1.0, 0.0),
-      Vec2::new(0.0, 1.0),
-      Vec2::new(1.0, 1.0),
-      Vec2::new(-3.0, 1.0),
-      Vec2::new(2.0, -5.0),
-    ] {
-      let dir = d.normalize();
-      let p = dir * border_offset(dir, Vec2::new(half_w, half_h));
-      // Inside both slabs, and touching at least one of them.
-      assert!(p.x.abs() <= half_w + 1e-9, "{p:?} escapes the box");
-      assert!(p.y.abs() <= half_h + 1e-9, "{p:?} escapes the box");
-      assert!(
-        (p.x.abs() - half_w).abs() < 1e-9 || (p.y.abs() - half_h).abs() < 1e-9,
-        "{p:?} stops short of the box"
-      );
+  fn edge(from: u128, to: u128) -> RenderEdge {
+    RenderEdge {
+      from:     NodeId::from_u128(from),
+      to:       NodeId::from_u128(to),
+      kind:     EdgeKind::Dependency,
+      reversed: false,
     }
+  }
+
+  fn boxes(list: &[(u128, Rect)]) -> HashMap<NodeId, Rect> {
+    list
+      .iter()
+      .map(|(id, r)| (NodeId::from_u128(*id), *r))
+      .collect()
+  }
+
+  /// Between rows, an edge leaves the bottom of the upper node and enters
+  /// the top of the lower one — whichever way the arrow points, so a
+  /// reversed cycle edge climbs back up rather than cutting through boxes.
+  #[test]
+  fn edges_attach_to_the_facing_sides() {
+    let upper = Rect::new(0.0, 0.0, 150.0, 50.0);
+    let lower = Rect::new(0.0, 100.0, 150.0, 150.0);
+    let rects = boxes(&[(1, upper), (2, lower)]);
+
+    let down = route_edges(&[edge(1, 2)], &rects)[0].unwrap();
+    assert_eq!(down.start, Point::new(75.0, 50.0));
+    assert_eq!(down.end, Point::new(75.0, 100.0));
+    assert_eq!(down.axis, Vec2::new(0.0, 1.0));
+
+    let up = route_edges(&[edge(2, 1)], &rects)[0].unwrap();
+    assert_eq!(up.start, Point::new(75.0, 100.0));
+    assert_eq!(up.end, Point::new(75.0, 50.0));
+    assert_eq!(up.axis, Vec2::new(0.0, -1.0));
+  }
+
+  /// Edges sharing a side fan out in the order of their far ends, so they
+  /// neither converge on one point nor cross at the node.
+  #[test]
+  fn shared_sides_spread_endpoints_in_order() {
+    let parent = Rect::new(100.0, 0.0, 250.0, 50.0);
+    let left = Rect::new(0.0, 100.0, 150.0, 150.0);
+    let right = Rect::new(200.0, 100.0, 350.0, 150.0);
+    let rects = boxes(&[(1, parent), (2, left), (3, right)]);
+    // Listed right-first, to show order comes from geometry.
+    let routes = route_edges(&[edge(1, 3), edge(1, 2)], &rects);
+    let (to_right, to_left) = (routes[0].unwrap(), routes[1].unwrap());
+    assert!(to_left.start.x < to_right.start.x);
+    assert_eq!(to_right.start.x - to_left.start.x, PORT_PITCH);
+    // Centred on the side as a group.
+    assert_eq!((to_left.start.x + to_right.start.x) / 2.0, 175.0);
+  }
+
+  /// However many edges share a side, they stay within its middle span.
+  #[test]
+  fn ports_never_leave_the_side() {
+    let r = Rect::new(0.0, 0.0, 150.0, 50.0);
+    for n in 1..30 {
+      for k in 0..n {
+        let p = port(r, Side::Top, k, n);
+        assert!(p.x >= 75.0 - 75.0 * PORT_SPAN - 1e-9);
+        assert!(p.x <= 75.0 + 75.0 * PORT_SPAN + 1e-9);
+        assert_eq!(p.y, 0.0);
+      }
+    }
+  }
+
+  /// The curve leaves and arrives square to its nodes, and stops short of
+  /// the tip by the arrowhead's length so the head caps it cleanly.
+  #[test]
+  fn curve_meets_the_arrowhead_square_on() {
+    let route = Route {
+      start: Point::new(0.0, 0.0),
+      end:   Point::new(80.0, 100.0),
+      axis:  Vec2::new(0.0, 1.0),
+    };
+    let (curve, tip) = edge_curve(route);
+    assert_eq!(tip, Point::new(80.0, 100.0 - TIP_GAP));
+    let els = curve.elements();
+    let masonry::kurbo::PathEl::CurveTo(c1, c2, base) = els[1] else {
+      panic!("expected a cubic, got {els:?}");
+    };
+    assert_eq!(c1.x, 0.0, "leaves straight down");
+    assert_eq!(c2.x, base.x, "arrives straight down");
+    assert_eq!(base, Point::new(80.0, tip.y - HEAD_LEN));
   }
 }

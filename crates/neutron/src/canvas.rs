@@ -216,13 +216,12 @@ pub struct CanvasWidget {
   zoom_target:   f64,
   /// Screen point the animated zoom is anchored on (the last wheel position).
   zoom_anchor:   Point,
-  /// The translation an eased pan is heading for, if one is in flight.
-  pan_target:    Option<Vec2>,
   /// A requested fit not yet started: it starts on the next animation
   /// frame that has placed boxes to fit.
   fit_pending:   bool,
-  /// The zoom and pan an eased fit is heading for, if one is in flight.
-  fit_target:    Option<(f64, Vec2)>,
+  /// The zoom and pan an eased fit or reveal is heading for, if one is in
+  /// flight.
+  glide:         Option<(f64, Vec2)>,
   /// A node to reveal once it has been placed (the request can arrive in the
   /// same rebuild as the scene that adds it).
   reveal:        Option<NodeId>,
@@ -272,9 +271,8 @@ impl CanvasWidget {
       zoom: 1.0,
       zoom_target: 1.0,
       zoom_anchor: Point::ORIGIN,
-      pan_target: None,
       fit_pending: false,
-      fit_target: None,
+      glide: None,
       reveal: None,
       insets: Insets::default(),
       reported_zoom: 100,
@@ -397,8 +395,7 @@ impl CanvasWidget {
     self.pan = pan;
     // A fit replaces the view outright, so drop any motion still in flight.
     self.zoom_target = zoom;
-    self.pan_target = None;
-    self.fit_target = None;
+    self.glide = None;
   }
 
   /// Act on a camera request from the app.
@@ -417,8 +414,7 @@ impl CanvasWidget {
         .clamp(ZOOM_MIN, ZOOM_MAX);
         let size = self.last_size.unwrap_or_default();
         self.zoom_anchor = uncovered(size, self.insets).center();
-        self.pan_target = None;
-        self.fit_target = None;
+        self.glide = None;
       }
     }
   }
@@ -446,13 +442,13 @@ impl CanvasWidget {
     };
     self.fit_pending = false;
     if let Some(target) = fit(bounds, uncovered(size, self.insets)) {
-      self.fit_target = Some(target);
-      self.pan_target = None;
+      self.glide = Some(target);
     }
   }
 
-  /// Start panning towards a pending [`Self::reveal`], if its node is placed
-  /// and not already in view. Returns whether it resolved the request.
+  /// Start easing towards a pending [`Self::reveal`], if its node is placed
+  /// and not already in view: a pan at the zoom of the moment, which stops
+  /// any zoom still in flight. Returns whether it resolved the request.
   fn start_reveal(&mut self) -> bool {
     let (Some(node), Some(size)) = (self.reveal, self.last_size) else {
       return false;
@@ -462,7 +458,9 @@ impl CanvasWidget {
     };
     self.reveal = None;
     let view = uncovered(size, self.insets);
-    self.pan_target = reveal_pan(rect, self.zoom, self.pan, view);
+    if let Some(pan) = reveal_pan(rect, self.zoom, self.pan, view) {
+      self.glide = Some((self.zoom, pan));
+    }
     true
   }
 
@@ -513,8 +511,7 @@ impl Widget for CanvasWidget {
             self.panned = true;
           }
           if self.panned {
-            self.pan_target = None;
-            self.fit_target = None;
+            self.glide = None;
             self.pan += p - last;
             ctx.request_render();
           }
@@ -567,8 +564,7 @@ impl Widget for CanvasWidget {
           self.zoom_target =
             (self.zoom_target * (dy * 0.1).exp()).clamp(ZOOM_MIN, ZOOM_MAX);
           self.zoom_anchor = p;
-          self.pan_target = None;
-          self.fit_target = None;
+          self.glide = None;
           ctx.request_anim_frame();
         }
       }
@@ -590,16 +586,16 @@ impl Widget for CanvasWidget {
     self.start_fit();
 
     let mut moving = false;
-    if let Some((zoom, pan)) = self.fit_target {
-      // A fit moves zoom and pan together, straight to the fitted view; the
-      // anchored zoom below would drag the pan off course.
+    if let Some((zoom, pan)) = self.glide {
+      // A fit or reveal moves zoom and pan together, straight to its view;
+      // the anchored zoom below would drag the pan off course.
       let (next_zoom, next_pan, arrived) =
         ease_camera((self.zoom, self.pan), (zoom, pan), ease);
       self.zoom = next_zoom;
       self.pan = next_pan;
       self.zoom_target = next_zoom;
       if arrived {
-        self.fit_target = None;
+        self.glide = None;
       } else {
         moving = true;
       }
@@ -608,18 +604,6 @@ impl Widget for CanvasWidget {
       let step = if gap.abs() < 1e-3 { gap } else { gap * ease };
       self.zoom_about(self.zoom_anchor, step.exp());
       moving = (self.zoom_target / self.zoom).ln().abs() >= 1e-3;
-    }
-
-    // Pans ease the same way, in screen pixels.
-    if let Some(target) = self.pan_target {
-      let gap = target - self.pan;
-      if gap.hypot() < 0.5 {
-        self.pan = target;
-        self.pan_target = None;
-      } else {
-        self.pan += gap * ease;
-        moving = true;
-      }
     }
 
     if let Some(percent) = self.zoom_change() {

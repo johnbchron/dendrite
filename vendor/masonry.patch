@@ -1,0 +1,55 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -174,6 +174,9 @@
+ wildcard_dependencies = "warn"
+ 
+ [lints.rust]
++# Neutron patch: crates.io builds cap this crate's lints; as a path
++# dependency it would warn about expectations newer rustc no longer meets.
++unfulfilled_lint_expectations = "allow"
+ elided_lifetimes_in_paths = "warn"
+ keyword_idents_2024 = "forbid"
+ missing_debug_implementations = "warn"
+--- a/src/widgets/text_area.rs
++++ b/src/widgets/text_area.rs
+@@ -630,7 +630,10 @@
+                             drv.move_right();
+                         }
+                     }
+-                    Key::Named(NamedKey::ArrowUp) => {
++                    // Neutron patch: in text without line breaks there is no
++                    // line to move to, so leave Up and Down unhandled for the
++                    // widgets above (a list whose highlight they move).
++                    Key::Named(NamedKey::ArrowUp) if self.editor.raw_text().contains('\n') => {
+                         let mut drv = self.editor.driver(fctx, lctx);
+                         if shift {
+                             drv.select_up();
+@@ -638,7 +641,7 @@
+                             drv.move_up();
+                         }
+                     }
+-                    Key::Named(NamedKey::ArrowDown) => {
++                    Key::Named(NamedKey::ArrowDown) if self.editor.raw_text().contains('\n') => {
+                         let mut drv = self.editor.driver(fctx, lctx);
+                         if shift {
+                             drv.select_down();
+@@ -694,7 +697,9 @@
+ 
+                         edited = true;
+                     }
+-                    Key::Character(sp) if EDITABLE && sp.as_str() == " " => {
++                    // Neutron patch: a chord with the command modifier is a
++                    // shortcut, not text; leave it unhandled for the app.
++                    Key::Character(sp) if EDITABLE && !action_mod && sp.as_str() == " " => {
+                         self.editor
+                             .driver(fctx, lctx)
+                             .insert_or_replace_selection(" ");
+@@ -724,7 +729,7 @@
+                         // Note that this doesn't allow input of the tab character; we need to be more clever here at some point
+                         return;
+                     }
+-                    Key::Character(text) if EDITABLE => {
++                    Key::Character(text) if EDITABLE && !action_mod => {
+                         self.editor
+                             .driver(fctx, lctx)
+                             .insert_or_replace_selection(text);

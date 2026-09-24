@@ -561,8 +561,20 @@ impl AppState {
   }
 
   /// Add an edge `from -> to` (from requires to).
+  ///
+  /// A no-op if `from` already requires `to`, by an edge of any kind: every
+  /// kind gates the same way (PLAN §2), so a second edge would add nothing
+  /// but a duplicate row in the panel and a second arrow on the canvas.
   pub fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) {
     if from == to {
+      return;
+    }
+    let exists = self
+      .lock()
+      .graph()
+      .requirements_of(from)
+      .any(|e| e.to == to);
+    if exists {
       return;
     }
     self.commit(vec![Event::EdgeAdded {
@@ -962,6 +974,29 @@ mod tests {
     state.canvas_click(None);
     assert!(!state.is_linking());
     assert_eq!(state.selected, Some(backend));
+  }
+
+  #[test]
+  fn linking_an_existing_requirement_adds_no_second_edge() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    let schema = node_named(&state, "Design schema");
+    state.select(Some(backend));
+    let edges_before = state.lock().graph().edges().count();
+    let undoable_before = state.lock().can_undo();
+
+    // The canvas path: arm, then click a node already required.
+    state.begin_link();
+    state.canvas_click(Some(schema));
+    // And the direct path.
+    state.add_edge(backend, schema, EdgeKind::Dependency);
+
+    assert_eq!(state.lock().graph().edges().count(), edges_before);
+    assert_eq!(state.selected_info().unwrap().requirements.len(), 1);
+    // Nothing was committed, so undo still targets the seed.
+    assert_eq!(state.lock().can_undo(), undoable_before);
+    state.undo();
+    assert_eq!(state.lock().graph().node_count(), 0);
   }
 
   #[test]

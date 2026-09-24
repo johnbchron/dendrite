@@ -22,6 +22,8 @@ pub enum FieldKey {
   LinkSearch,
   /// The command palette's search.
   PaletteSearch,
+  /// The active quest's name, in the quest switcher.
+  QuestName,
   /// The quest switcher's search.
   QuestSearch,
 }

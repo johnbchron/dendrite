@@ -49,8 +49,10 @@ pub enum PaletteAct {
   Theme(&'static str),
   /// The selection's primary action (complete, reopen, satisfy...).
   Primary,
-  /// Arm link mode for the selection.
+  /// Arm link mode for the selection, in the requirement search.
   Require,
+  /// Put the cursor in the selection's name.
+  Rename,
   /// Delete the selection.
   Delete,
 }
@@ -199,6 +201,11 @@ impl AppState {
         ));
       }
       rows.push(command(
+        PaletteAct::Rename,
+        format!("Rename {name}"),
+        key("Enter"),
+      ));
+      rows.push(command(
         PaletteAct::Require,
         format!("Add a requirement to {name}"),
         key("R"),
@@ -343,7 +350,11 @@ impl AppState {
       PaletteAct::OpenQuests => self.toggle_picker(),
       PaletteAct::Theme(id) => self.set_theme(id),
       PaletteAct::Primary => self.toggle_selected(),
-      PaletteAct::Require => self.begin_link(),
+      PaletteAct::Require => {
+        self.begin_link();
+        self.focus_requests.request(FieldKey::LinkSearch);
+      }
+      PaletteAct::Rename => self.focus_requests.request(FieldKey::Title),
       PaletteAct::Delete => self.delete_selected(),
     }
   }

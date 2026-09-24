@@ -84,6 +84,7 @@ pub(super) fn switcher(
         s.rename_active_quest_to(v);
       })
       .size(text::BODY)
+      .focus_key(FieldKey::QuestName)
       .on_enter(|s: &mut AppState, _| s.finish_rename_quest()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)

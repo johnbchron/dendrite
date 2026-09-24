@@ -1289,7 +1289,10 @@ impl AppState {
     }]);
     self.set_active_quest(Some(id));
     if unnamed {
+      // Straight into naming it (this replaces the switcher's own request
+      // for its search field).
       self.open_picker();
+      self.focus_requests.request(FieldKey::QuestName);
     }
   }
 
@@ -1936,6 +1939,25 @@ mod tests {
     state.run(Command::New { condition: false });
     assert_eq!(requests.take(), Some(FieldKey::Title));
     assert_eq!(requests.take(), None, "served once");
+  }
+
+  #[test]
+  fn palette_commands_and_new_quests_ask_for_the_right_field() {
+    let mut state = AppState::new(demo_store());
+    let requests = state.focus_requests();
+    state.select(Some(node_named(&state, "Build backend")));
+    state.run_palette(palette::PaletteAct::Rename);
+    assert_eq!(requests.take(), Some(FieldKey::Title));
+    state.run_palette(palette::PaletteAct::Require);
+    assert!(state.is_linking());
+    assert_eq!(requests.take(), Some(FieldKey::LinkSearch));
+    // An unnamed quest opens the switcher on its name, not its search.
+    state.new_quest_named(String::new());
+    assert!(state.picker_open());
+    assert_eq!(requests.take(), Some(FieldKey::QuestName));
+    // A named one needs neither.
+    state.new_quest_named("Named".into());
+    assert_eq!(requests.take(), None);
   }
 
   #[test]

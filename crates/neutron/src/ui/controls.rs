@@ -12,8 +12,8 @@ use xilem::{
   FontWeight, WidgetView,
   style::Style as _,
   view::{
-    CrossAxisAlignment, FlexExt as _, FlexSequence, Label, button, flex_col,
-    flex_row, sized_box,
+    CrossAxisAlignment, FlexExt as _, FlexItem, FlexSequence, Label, button,
+    flex_col, flex_row, sized_box,
   },
 };
 
@@ -196,6 +196,14 @@ where
     .active_background_color(theme.rule)
     .border_color(Color::TRANSPARENT)
     .hovered_border_color(theme.accent)
+}
+
+/// Flexible empty space in a row: pushes what follows it to the far end.
+/// (A flex factor on a label only allots it room; the label stays as wide
+/// as its text, so it cannot push anything.)
+pub(super) fn spacer()
+-> FlexItem<impl WidgetView<AppState> + use<>, AppState, ()> {
+  sized_box(flex_col(())).expand_width().flex(1.0)
 }
 
 /// A small round swatch of `color`, for previews such as the palette list.

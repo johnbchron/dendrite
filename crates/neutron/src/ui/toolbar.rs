@@ -12,7 +12,7 @@ use xilem::{
 };
 
 use super::controls::{
-  body, group, icon_btn, row_button, section, seg, swatch,
+  body, group, icon_btn, row_button, section, seg, spacer, swatch,
 };
 use crate::{
   canvas::ZoomStep,
@@ -139,9 +139,9 @@ pub(super) fn top_bar(
   );
 
   let row = flex_row((
+    super::lens::pill(data),
     create,
-    // Pushes everything after it to the right-hand end.
-    sized_box(flex_col(())).expand_width().flex(1.0),
+    spacer(),
     history,
     camera,
     settings,
@@ -183,9 +183,11 @@ pub(super) fn settings_popover(
             swatch(t.ready.1, active),
           ))
           .gap(space::XS.px()),
-          body(t.name, active).flex(1.0),
+          body(t.name, active),
+          spacer(),
           chosen.then(|| icon(Icon::Check, text::BODY, active.accent)),
         ))
+        .must_fill_major_axis(true)
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .gap(space::S.px()),
         move |s: &mut AppState| s.set_theme(id),

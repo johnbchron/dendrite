@@ -25,6 +25,7 @@ use crate::{
     ZoomStep,
   },
   keymap::{self, Command},
+  query::{self, Query},
   theme::{self, Theme},
   tokens::{size, space},
 };
@@ -53,8 +54,10 @@ pub struct AppState {
   /// Filter text for the requirement picker — the fallback path for targets
   /// that are not on the canvas (e.g. outside the active quest's scope).
   pub link_filter:  String,
-  /// Whether the quest switcher is expanded in the panel's lens bar.
+  /// Whether the quest switcher popover is open.
   picker_open:      bool,
+  /// What has been typed into the quest switcher, and its highlight.
+  quest_query:      Query,
   /// The palette every painted surface reads its colours from.
   theme:            &'static Theme,
   /// Whether the settings popover (the palette picker) is open.
@@ -111,6 +114,28 @@ const LINK_PICKER_MAX: usize = 6;
 /// Most rows the pinned actionable list will ever show, for the same reason.
 const ACTIONABLE_MAX: usize = 6;
 
+/// What a quest switcher row does when chosen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuestChoice {
+  /// Leave the lens: show every node.
+  All,
+  /// Switch to this quest.
+  Quest(QuestId),
+  /// Create a quest, named by the query if there is one.
+  New,
+}
+
+/// One row of the quest switcher.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuestRow {
+  /// What choosing it does.
+  pub choice:  QuestChoice,
+  /// What it says.
+  pub label:   String,
+  /// Whether it is the lens in use now.
+  pub current: bool,
+}
+
 /// One edge incident to the selected node, as the side panel shows it. Carries
 /// the [`EdgeId`] so a row can delete the edge it stands for.
 pub struct EdgeRow {
@@ -156,6 +181,7 @@ impl AppState {
       linking:          false,
       link_filter:      String::new(),
       picker_open:      false,
+      quest_query:      Query::default(),
       theme:            theme::DEFAULT,
       settings_open:    false,
       zoom_percent:     100,
@@ -481,9 +507,18 @@ impl AppState {
 
   /// Expand or collapse the quest switcher.
   pub fn toggle_picker(&mut self) {
-    let open = !self.picker_open;
+    if self.picker_open {
+      self.close_popovers();
+    } else {
+      self.open_picker();
+    }
+  }
+
+  /// Open the quest switcher with an empty query.
+  fn open_picker(&mut self) {
     self.close_popovers();
-    self.picker_open = open;
+    self.quest_query = Query::default();
+    self.picker_open = true;
   }
 
   /// Add a dependency requirement from the selected node to `target`.
@@ -492,16 +527,58 @@ impl AppState {
     self.add_edge(id, target, EdgeKind::Dependency);
   }
 
-  /// All quests as `(id, name, is_active)`, sorted by name.
-  pub fn quest_list(&self) -> Vec<(QuestId, String, bool)> {
+  /// The quest switcher's rows for the current query: "All nodes", the
+  /// quests that match (best match first, then by name), and "New quest",
+  /// which takes the query as its name.
+  pub fn quest_rows(&self) -> Vec<QuestRow> {
+    let text = self.quest_query.text.trim();
+    let mut rows = Vec::new();
+    if query::score(text, "All nodes").is_some() {
+      rows.push(QuestRow {
+        choice:  QuestChoice::All,
+        label:   "All nodes".into(),
+        current: self.active_quest.is_none(),
+      });
+    }
     let store = self.lock();
-    let mut v: Vec<_> = store
+    let mut quests: Vec<(u32, String, QuestId)> = store
       .graph()
       .quests()
-      .map(|q| (q.id, q.name.clone(), self.active_quest == Some(q.id)))
+      .filter_map(|q| {
+        query::score(text, &q.name).map(|sc| (sc, q.name.clone(), q.id))
+      })
       .collect();
-    v.sort_by(|a, b| a.1.cmp(&b.1));
-    v
+    quests.sort();
+    rows.extend(quests.into_iter().map(|(_, name, id)| QuestRow {
+      choice:  QuestChoice::Quest(id),
+      label:   name,
+      current: self.active_quest == Some(id),
+    }));
+    rows.push(QuestRow {
+      choice:  QuestChoice::New,
+      label:   if text.is_empty() {
+        "New quest".into()
+      } else {
+        format!("New quest \u{201c}{text}\u{201d}")
+      },
+      current: false,
+    });
+    rows
+  }
+
+  /// The quest switcher's query, for its search box and highlight.
+  pub fn quest_query(&self) -> &Query { &self.quest_query }
+
+  /// Act on a quest switcher row.
+  pub fn choose_quest(&mut self, choice: QuestChoice) {
+    match choice {
+      QuestChoice::All => self.set_active_quest(None),
+      QuestChoice::Quest(id) => self.set_active_quest(Some(id)),
+      QuestChoice::New => {
+        let name = self.quest_query.text.trim().to_string();
+        self.new_quest_named(name);
+      }
+    }
   }
 
   /// The actionable frontier for the active quest, or all Ready nodes in the
@@ -548,6 +625,7 @@ impl AppState {
   pub fn key_flags(&self) -> keymap::Flags {
     keymap::Flags {
       selection: self.selected.is_some(),
+      query:     self.picker_open,
     }
   }
 
@@ -558,6 +636,24 @@ impl AppState {
       Command::Redo => self.redo(),
       Command::Delete => self.delete_selected(),
       Command::Escape => self.escape(),
+      Command::Query(edit) => {
+        if self.picker_open {
+          self.quest_query.edit(&edit);
+        }
+      }
+      Command::Move(by) => {
+        if self.picker_open {
+          let len = self.quest_rows().len();
+          self.quest_query.move_highlight(by, len);
+        }
+      }
+      Command::Accept => {
+        if self.picker_open {
+          let rows = self.quest_rows();
+          let pick = rows[self.quest_query.highlighted(rows.len())].choice;
+          self.choose_quest(pick);
+        }
+      }
     }
   }
 
@@ -737,18 +833,19 @@ impl AppState {
     }]);
   }
 
-  /// Create a new quest and make it the active lens.
-  ///
-  /// The switcher stays open afterwards: a new quest is called "New quest"
-  /// until it is renamed, and the rename field lives in the switcher.
-  pub fn new_quest(&mut self) {
+  /// Create a quest called `name` and make it the lens. A blank name gives
+  /// "New quest", and leaves the switcher open on its rename field.
+  pub fn new_quest_named(&mut self, name: String) {
     let id = QuestId::new();
+    let unnamed = name.trim().is_empty();
     self.commit(vec![Event::QuestCreated {
       quest: id,
-      name:  "New quest".into(),
+      name:  if unnamed { "New quest".into() } else { name },
     }]);
     self.set_active_quest(Some(id));
-    self.picker_open = true;
+    if unnamed {
+      self.open_picker();
+    }
   }
 
   /// Switch the active quest lens (or clear it for the global view), and
@@ -879,6 +976,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::query::QueryEdit;
 
   /// A store holding the small demo graph the app used to seed on first run:
   ///
@@ -948,7 +1046,7 @@ mod tests {
   fn renaming_a_quest_commits_trims_and_undoes() {
     let store = Store::open_in_memory().unwrap();
     let mut state = AppState::new(store);
-    state.new_quest();
+    state.new_quest_named(String::new());
     let id = state.active_quest.expect("new quest became the lens");
     assert_eq!(
       state.quest_draft, "New quest",
@@ -985,14 +1083,11 @@ mod tests {
   fn renaming_a_quest_in_the_global_view_is_a_no_op() {
     let store = Store::open_in_memory().unwrap();
     let mut state = AppState::new(store);
-    state.new_quest();
+    state.new_quest_named(String::new());
     state.set_active_quest(None);
     state.rename_active_quest_to("Ship v1".into());
     assert!(
-      state
-        .quest_list()
-        .iter()
-        .all(|(_, name, _)| name == "New quest"),
+      state.lock().graph().quests().all(|q| q.name == "New quest"),
       "no quest was renamed from the global view"
     );
   }
@@ -1158,6 +1253,43 @@ mod tests {
     state.go_to(backend);
     assert_eq!(state.selected, Some(backend));
     assert_eq!(state.camera().request, CameraRequest::Reveal(backend));
+  }
+
+  /// The switcher is driven from the keyboard: typing filters, the arrows
+  /// move the highlight, Enter chooses, and a query no quest matches
+  /// becomes the name of a new one.
+  #[test]
+  fn the_quest_switcher_filters_and_chooses_by_keyboard() {
+    let mut state = AppState::new(demo_store());
+    state.toggle_picker();
+    assert!(state.key_flags().query);
+    let labels = |s: &AppState| {
+      s.quest_rows()
+        .into_iter()
+        .map(|r| r.label)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(labels(&state), ["All nodes", "v1 Launch", "New quest"]);
+    assert!(state.quest_rows()[0].current, "the global view is current");
+
+    for c in ["l", "a", "u"] {
+      state.run(Command::Query(QueryEdit::Insert(c.into())));
+    }
+    assert_eq!(labels(&state), [
+      "v1 Launch",
+      "New quest \u{201c}lau\u{201d}"
+    ]);
+    state.run(Command::Accept);
+    assert!(!state.picker_open(), "choosing closes the switcher");
+    assert_eq!(state.active_quest_summary().unwrap().0, "v1 Launch");
+
+    // A new quest from the query, chosen with the arrow keys.
+    state.toggle_picker();
+    state.run(Command::Query(QueryEdit::Insert("Garden".into())));
+    state.run(Command::Move(5)); // clamps to the last row
+    state.run(Command::Accept);
+    assert_eq!(state.active_quest_summary().unwrap().0, "Garden");
+    assert!(!state.picker_open(), "a named quest needs no rename");
   }
 
   #[test]

@@ -29,10 +29,13 @@ use xilem::{
   },
 };
 
-use crate::focus::{self, FieldKey};
+use crate::{
+  focus::{self, FieldKey},
+  query::QueryEdit,
+};
 
 /// Something the app does in response to a key.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
   /// Undo the last change.
   Undo,
@@ -43,10 +46,16 @@ pub enum Command {
   /// Back out of whatever is open: link mode, then a popover, then the
   /// selection.
   Escape,
+  /// Edit the open query (the quest switcher's search).
+  Query(QueryEdit),
+  /// Move the open query's highlight up (negative) or down.
+  Move(isize),
+  /// Act on the open query's highlighted result.
+  Accept,
 }
 
 /// What a key does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Binding {
   /// Run a command.
   Run(Command),
@@ -59,6 +68,9 @@ pub enum Binding {
 pub struct Flags {
   /// Whether a node is selected.
   pub selection: bool,
+  /// Whether a popover with a typed query is open: typing, Backspace, the
+  /// arrows and Enter then drive the query.
+  pub query:     bool,
 }
 
 /// How the command modifier is written on this platform, for hints.
@@ -88,6 +100,12 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
   };
   let plain = !cmd && !m.alt() && !m.meta() && !m.ctrl();
 
+  if flags.query
+    && let Some(binding) = resolve_query(&key.key, plain, cmd || m.alt())
+  {
+    return Some(binding);
+  }
+
   match &key.key {
     Key::Named(NamedKey::Escape) => Some(Run(Command::Escape)),
     Key::Named(NamedKey::Delete | NamedKey::Backspace)
@@ -104,6 +122,23 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
       Some('y') => Some(Run(Command::Redo)),
       _ => None,
     },
+    _ => None,
+  }
+}
+
+/// What `key` means to an open query, if it is one of the keys a query
+/// takes over. `plain` is no modifiers but Shift; `word` is the modifier
+/// that makes Backspace delete a word.
+fn resolve_query(key: &Key, plain: bool, word: bool) -> Option<Binding> {
+  use Binding::Run;
+  let edit = |e| Some(Run(Command::Query(e)));
+  match key {
+    Key::Named(NamedKey::ArrowUp) => Some(Run(Command::Move(-1))),
+    Key::Named(NamedKey::ArrowDown) => Some(Run(Command::Move(1))),
+    Key::Named(NamedKey::Enter) => Some(Run(Command::Accept)),
+    Key::Named(NamedKey::Backspace) if word => edit(QueryEdit::DeleteWord),
+    Key::Named(NamedKey::Backspace) => edit(QueryEdit::Backspace),
+    Key::Character(s) if plain => edit(QueryEdit::Insert(s.clone())),
     _ => None,
   }
 }
@@ -144,10 +179,15 @@ impl Widget for KeymapWidget {
     _props: &mut PropertiesMut<'_>,
     event: &TextEvent,
   ) {
-    let TextEvent::Keyboard(key) = event else {
-      return;
+    let binding = match event {
+      TextEvent::Keyboard(key) => resolve(key, self.flags),
+      // Pasting into an open query types the pasted text.
+      TextEvent::ClipboardPaste(text) if self.flags.query => Some(
+        Binding::Run(Command::Query(QueryEdit::Insert(text.clone()))),
+      ),
+      _ => None,
     };
-    match resolve(key, self.flags) {
+    match binding {
       Some(Binding::Run(command)) => {
         ctx.submit_action::<Command>(command);
         ctx.set_handled();
@@ -349,7 +389,53 @@ mod tests {
     Modifiers::CONTROL
   };
 
-  const SELECTED: Flags = Flags { selection: true };
+  const SELECTED: Flags = Flags {
+    selection: true,
+    query:     false,
+  };
+  const QUERY: Flags = Flags {
+    selection: true,
+    query:     true,
+  };
+
+  fn character(s: &str, m: Modifiers) -> KeyboardEvent {
+    down(Key::Character(s.into()), Code::Unidentified, m)
+  }
+
+  /// With a query open, typing and the list keys drive it, even though a
+  /// node is selected and those keys would otherwise delete or rename it.
+  #[test]
+  fn an_open_query_takes_typing_and_list_keys() {
+    use Command::{Accept, Move, Query};
+    assert_eq!(
+      resolve(&character("S", Modifiers::SHIFT), QUERY),
+      Some(Binding::Run(Query(QueryEdit::Insert("S".into()))))
+    );
+    assert_eq!(
+      resolve(&named(NamedKey::Backspace), QUERY),
+      Some(Binding::Run(Query(QueryEdit::Backspace)))
+    );
+    let word = down(Key::Named(NamedKey::Backspace), Code::Backspace, CMD);
+    assert_eq!(
+      resolve(&word, QUERY),
+      Some(Binding::Run(Query(QueryEdit::DeleteWord)))
+    );
+    assert_eq!(
+      resolve(&named(NamedKey::ArrowDown), QUERY),
+      Some(Binding::Run(Move(1)))
+    );
+    assert_eq!(
+      resolve(&named(NamedKey::Enter), QUERY),
+      Some(Binding::Run(Accept))
+    );
+    // Escape still backs out, and chords still reach the rest of the map.
+    assert_eq!(
+      resolve(&named(NamedKey::Escape), QUERY),
+      Some(Binding::Run(Command::Escape))
+    );
+    let undo = down(Key::Character("z".into()), Code::KeyZ, CMD);
+    assert_eq!(resolve(&undo, QUERY), Some(Binding::Run(Command::Undo)));
+  }
 
   #[test]
   fn undo_and_redo_use_the_command_modifier() {

@@ -10,6 +10,7 @@
 //! covers, so fitting and revealing aim at the part still visible.
 
 mod controls;
+mod lens;
 mod panel;
 mod toolbar;
 
@@ -57,12 +58,25 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     )
   });
 
+  let quests = data.picker_open().then(|| {
+    zstack_item(
+      sized_box(lens::switcher(data)).padding(Padding {
+        top:    size::TOP_BAR + space::XS,
+        right:  0.0,
+        bottom: 0.0,
+        left:   space::M,
+      }),
+      UnitPoint::TOP_LEFT,
+    )
+  });
+
   let window = zstack((
     canvas_view,
     zstack_item(panel::side_card(data), UnitPoint::TOP_RIGHT),
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
     backdrop,
     settings,
+    quests,
   ))
   .alignment(UnitPoint::TOP_LEFT);
 

@@ -12,6 +12,8 @@ mod focus;
 mod font;
 mod icons;
 mod keymap;
+mod query;
+mod query_field;
 mod state;
 mod surface;
 mod theme;

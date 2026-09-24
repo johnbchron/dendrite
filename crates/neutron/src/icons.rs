@@ -23,7 +23,7 @@ use xilem::{
 pub const DATA: &[u8] = include_bytes!("../assets/lucide-subset.ttf");
 
 /// The family name [`DATA`] registers under.
-const FAMILY: &str = "lucide";
+pub const FAMILY: &str = "lucide";
 
 /// Declare [`Icon`] from `Variant = codepoint` pairs, and the list the
 /// font-coverage test walks.
@@ -53,12 +53,18 @@ macro_rules! icons {
 icons! {
   /// A satisfied requirement; the active choice in a list.
   Check = 0xe06c,
+  /// Opens a menu.
+  ChevronDown = 0xe06d,
   /// Fit the graph to the window.
   Fit = 0xe257,
   /// The quest lens.
   Flag = 0xe0d1,
+  /// Create something.
+  Plus = 0xe13d,
   /// Redo.
   Redo = 0xe2a0,
+  /// Search boxes.
+  Search = 0xe151,
   /// Settings.
   Settings = 0xe154,
   /// An unsatisfied requirement.

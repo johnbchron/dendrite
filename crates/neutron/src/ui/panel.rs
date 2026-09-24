@@ -10,7 +10,7 @@
 use base::NodeState;
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
-  FontWeight, WidgetView,
+  WidgetView,
   style::Style as _,
   view::{
     Axis, CrossAxisAlignment, FlexExt as _, flex, flex_col, flex_row, portal,
@@ -20,7 +20,7 @@ use xilem::{
 
 use super::controls::{
   body, btn, chip, group, icon_btn, label, muted, row_btn, rule, section, seg,
-  state_str,
+  spacer, state_str,
 };
 use crate::{
   divider::{DividerAction, divider},
@@ -51,11 +51,13 @@ fn edge_list(
       let edge = row.edge;
       flex_row((
         icon(mark, text::BODY, tint),
-        body(row.name.clone(), theme).flex(1.0),
+        body(row.name.clone(), theme),
+        spacer(),
         icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
           s.remove_edge(edge)
         }),
       ))
+      .must_fill_major_axis(true)
       .cross_axis_alignment(CrossAxisAlignment::Center)
       .gap(space::S.px())
       .into_any_flex()
@@ -78,8 +80,6 @@ pub(super) fn side_card(
   let theme = data.theme();
   let regions = sized_box(
     flex_col((
-      lens_bar(data),
-      rule(theme),
       // `expand_height` makes the portal fill its flex allocation rather than
       // shrinking to its content — otherwise the pinned bottom region would
       // drift up and down with the inspector's height, which is the
@@ -119,89 +119,6 @@ pub(super) fn side_card(
     bottom: space::M,
     left:   0.0,
   })
-}
-
-/// The active quest lens as a single always-visible line, expanding into the
-/// full switcher on demand. The lens is a mode, so it needs to be readable at
-/// a glance rather than inferred from an arrow in a scrollable list.
-fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
-  let theme = data.theme();
-  let summary = data.active_quest_summary();
-  let scoped = summary.is_some();
-  let (name, claims) = match summary {
-    Some((n, c)) => (n, Some(c)),
-    None => ("All (global)".to_string(), None),
-  };
-  let open = data.picker_open();
-
-  let head = flex_row((
-    icon(
-      Icon::Flag,
-      text::BODY,
-      if scoped { theme.accent } else { theme.muted },
-    ),
-    label(name)
-      .text_size(text::BODY)
-      .weight(FontWeight::BOLD)
-      .color(theme.text)
-      .flex(1.0),
-    claims.map(|c| muted(format!("{c} claimed"), theme)),
-    btn(
-      if open { "Close" } else { "Change" },
-      theme,
-      |s: &mut AppState| s.toggle_picker(),
-    ),
-  ))
-  .cross_axis_alignment(CrossAxisAlignment::Center)
-  .gap(space::S.px());
-
-  let picker = open.then(|| {
-    let mut rows: Vec<_> = Vec::new();
-    // Renaming lives in the switcher, not in the head line: the head is a
-    // status line the user reads at a glance, and an always-live field there
-    // would invite stray edits to the mode they are currently working in.
-    if data.active_quest.is_some() {
-      rows.push(
-        // Commits as it is typed; Enter only tidies the draft.
-        field(data.quest_draft.clone(), theme, |s: &mut AppState, v| {
-          s.rename_active_quest_to(v);
-        })
-        .on_enter(|s: &mut AppState, _| s.finish_rename_quest())
-        .into_any_flex(),
-      );
-    }
-    rows.push(
-      row_btn("All (global)", theme, !scoped, |s: &mut AppState| {
-        s.set_active_quest(None)
-      })
-      .into_any_flex(),
-    );
-    for (id, quest_name, active) in data.quest_list() {
-      rows.push(
-        row_btn(quest_name, theme, active, move |s: &mut AppState| {
-          s.set_active_quest(Some(id))
-        })
-        .into_any_flex(),
-      );
-    }
-    rows.push(
-      row_btn("+ New quest", theme, false, |s: &mut AppState| {
-        s.new_quest()
-      })
-      .into_any_flex(),
-    );
-    flex(Axis::Vertical, rows)
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::HAIR.px())
-  });
-
-  sized_box(
-    flex_col((head, picker))
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::S.px()),
-  )
-  .expand_width()
-  .padding(Padding::from_vh(space::S, space::M))
 }
 
 /// Properties of the selected node, or a hint when nothing is selected. This

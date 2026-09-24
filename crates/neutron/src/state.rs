@@ -204,15 +204,13 @@ impl AppState {
       if !visible.contains(&node.id) {
         continue;
       }
-      let center = lay.pos(node.id).unwrap_or(layout::Pos { x: 0.0, y: 0.0 });
       nodes.push(RenderNode {
-        id: node.id,
-        center,
-        label: node.name.clone(),
-        kind: node.kind.clone(),
-        state: derived.state(node.id).unwrap_or(NodeState::Blocked),
+        id:       node.id,
+        label:    node.name.clone(),
+        kind:     node.kind.clone(),
+        state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
         selected: self.selected == Some(node.id),
-        dimmed: scoped && !claimed.contains(&node.id),
+        dimmed:   scoped && !claimed.contains(&node.id),
       });
     }
 
@@ -221,19 +219,22 @@ impl AppState {
       if !visible.contains(&edge.from) || !visible.contains(&edge.to) {
         continue;
       }
-      let (Some(from), Some(to)) = (lay.pos(edge.from), lay.pos(edge.to))
-      else {
-        continue;
-      };
       edges.push(RenderEdge {
-        from,
-        to,
-        kind: edge.kind,
+        from:     edge.from,
+        to:       edge.to,
+        kind:     edge.kind,
         reversed: lay.is_reversed(edge.id),
       });
     }
 
-    CanvasScene { nodes, edges }
+    // Out-of-scope nodes give up their slots, so a lens shows its nodes
+    // packed together rather than scattered among gaps.
+    let arrangement = lay.arrangement.retain(|n| visible.contains(&n));
+    CanvasScene {
+      nodes,
+      edges,
+      arrangement,
+    }
   }
 
   /// Details of the selected node for the side panel.

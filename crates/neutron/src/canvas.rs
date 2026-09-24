@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use base::{EdgeKind, NodeId, NodeKind, NodeState};
-use layout::Pos;
+use layout::{Arrangement, LayoutConfig};
 use masonry::{
   accesskit::{Node as AccessNode, Role},
   core::{
@@ -23,7 +23,7 @@ use masonry::{
     RegisterCtx, StyleProperty, UpdateCtx, Widget, render_text,
   },
   kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Size, Vec2},
-  parley::Layout as TextLayout,
+  parley::{Layout as TextLayout, LineHeight},
   peniko::{Brush, Color, Fill},
   vello::Scene,
 };
@@ -37,9 +37,18 @@ use crate::{
   theme::{self, Theme},
 };
 
-// Node box size in world (graph) coordinates.
+/// Width of every node box in world (graph) units, and so the width its
+/// label wraps at. Height follows the label (see [`node_size`]).
 const NODE_W: f64 = 150.0;
-const NODE_H: f64 = 46.0;
+/// Space between a node's border and its label.
+const PAD_X: f64 = 10.0;
+const PAD_Y: f64 = 8.0;
+/// Label type size, and line height as a multiple of it.
+const LABEL_SIZE: f32 = 13.0;
+const LABEL_LINE: f32 = 1.3;
+/// Lines of label every box leaves room for, however short its text: a
+/// one-word node is not a sliver, and a two-line label does not grow its box.
+const MIN_LINES: f64 = 2.0;
 /// Pixels the pointer may travel between press and release and still count as
 /// a click rather than a pan.
 const CLICK_SLOP: f64 = 4.0;
@@ -59,8 +68,6 @@ const ZOOM_RATE: f64 = 16.0;
 pub struct RenderNode {
   /// Which node this is (returned in [`CanvasAction::Select`]).
   pub id:       NodeId,
-  /// Centre position in world coordinates (from `layout`).
-  pub center:   Pos,
   /// Display text.
   pub label:    String,
   /// Task vs. condition — selects the shape.
@@ -74,13 +81,13 @@ pub struct RenderNode {
   pub dimmed:   bool,
 }
 
-/// One edge as a pair of world-space endpoints plus styling flags.
+/// One edge between two rendered nodes, plus styling flags.
 #[derive(Clone, Debug)]
 pub struct RenderEdge {
-  /// Endpoint at the dependent / parent.
-  pub from:     Pos,
-  /// Endpoint at the requirement / child (the arrow points here).
-  pub to:       Pos,
+  /// The dependent / parent end.
+  pub from:     NodeId,
+  /// The requirement / child end (the arrow points here).
+  pub to:       NodeId,
   /// Dependency (solid) vs. subtask (dashed).
   pub kind:     EdgeKind,
   /// Whether the cycle-cut reversed this edge (a backward cycle edge).
@@ -91,9 +98,12 @@ pub struct RenderEdge {
 #[derive(Clone, Debug, Default)]
 pub struct CanvasScene {
   /// Nodes, painted on top of edges.
-  pub nodes: Vec<RenderNode>,
+  pub nodes:       Vec<RenderNode>,
   /// Edges, painted underneath.
-  pub edges: Vec<RenderEdge>,
+  pub edges:       Vec<RenderEdge>,
+  /// The rows and order the nodes are placed in. Coordinates are assigned
+  /// by the widget, which is the only place label sizes are known.
+  pub arrangement: Arrangement,
 }
 
 /// Something the user did on the canvas that the app must react to.
@@ -137,6 +147,9 @@ pub struct CanvasWidget {
   /// Cached per-node text layouts, keyed by id, invalidated when the label
   /// text changes.
   text_cache:   HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  /// Every node's box in world coordinates, placed in the layout pass from
+  /// the scene's arrangement and the measured labels.
+  rects:        HashMap<NodeId, Rect>,
   /// Whether [`font::install`] has pointed the default family at the app
   /// face yet.
   font_ready:   bool,
@@ -158,11 +171,13 @@ impl CanvasWidget {
       last_size: None,
       theme,
       text_cache: HashMap::new(),
+      rects: HashMap::new(),
       font_ready: false,
     }
   }
 
-  /// Replace the scene and request a repaint.
+  /// Replace the scene. The caller must request a layout, which re-measures
+  /// and re-places the nodes.
   fn set_scene(&mut self, scene: CanvasScene) {
     // Drop cached text for nodes that vanished.
     let live: std::collections::HashSet<NodeId> =
@@ -185,11 +200,6 @@ impl CanvasWidget {
     self.transform().inverse() * screen
   }
 
-  /// The world-space rectangle of a node centred at `center`.
-  fn node_rect(center: Pos) -> Rect {
-    Rect::from_center_size((center.x, center.y), (NODE_W, NODE_H))
-  }
-
   /// Topmost node whose box contains `world`, searched front-to-back.
   fn hit_test(&self, world: Point) -> Option<NodeId> {
     self
@@ -197,8 +207,60 @@ impl CanvasWidget {
       .nodes
       .iter()
       .rev()
-      .find(|n| Self::node_rect(n.center).contains(world))
+      .find(|n| self.rects.get(&n.id).is_some_and(|r| r.contains(world)))
       .map(|n| n.id)
+  }
+
+  /// Shape any label not already cached, then size and place every node.
+  fn measure(&mut self, ctx: &mut LayoutCtx<'_>) {
+    // Masonry's *shared* text contexts, not a private pair: a private
+    // `FontContext` resolves against its own font set, so canvas labels
+    // would not match the panel and would miss any font the app registers.
+    let (font_cx, layout_cx) = ctx.text_contexts();
+    for node in &self.scene.nodes {
+      let fresh = self
+        .text_cache
+        .get(&node.id)
+        .is_some_and(|(text, _)| text == &node.label);
+      if fresh {
+        continue;
+      }
+      let mut builder =
+        layout_cx.ranged_builder(font_cx, &node.label, 1.0, true);
+      builder.push_default(StyleProperty::FontSize(LABEL_SIZE));
+      builder.push_default(StyleProperty::LineHeight(
+        LineHeight::FontSizeRelative(LABEL_LINE),
+      ));
+      // A hand-rolled widget has to ask for the app face itself, or parley
+      // picks its own default and the canvas ends up in a different typeface
+      // to the panel.
+      builder.push_default(StyleProperty::FontStack(font::STACK));
+      let mut text = TextLayout::new();
+      builder.build_into(&mut text, &node.label);
+      text.break_all_lines(Some((NODE_W - 2.0 * PAD_X) as f32));
+      self.text_cache.insert(node.id, (node.label.clone(), text));
+    }
+
+    let sizes: HashMap<NodeId, layout::Size> = self
+      .text_cache
+      .iter()
+      .map(|(id, (_, text))| (*id, node_size(text)))
+      .collect();
+    let cfg = LayoutConfig::default();
+    let centres = self
+      .scene
+      .arrangement
+      .place(&cfg, |id| sizes.get(&id).copied().unwrap_or(cfg.node_size));
+    self.rects = self
+      .scene
+      .nodes
+      .iter()
+      .filter_map(|n| {
+        let c = centres.get(&n.id)?;
+        let size = sizes.get(&n.id)?;
+        Some((n.id, Rect::from_center_size((c.x, c.y), (size.w, size.h))))
+      })
+      .collect();
   }
 
   /// Fit the whole scene into `viewport`, centred, with a margin. Never
@@ -206,8 +268,7 @@ impl CanvasWidget {
   /// the window with a couple of giant boxes.
   fn fit_to(&mut self, viewport: masonry::kurbo::Size) {
     let mut union: Option<Rect> = None;
-    for n in &self.scene.nodes {
-      let r = Self::node_rect(n.center);
+    for &r in self.rects.values() {
       union = Some(match union {
         Some(u) => u.union(r),
         None => r,
@@ -369,6 +430,7 @@ impl Widget for CanvasWidget {
       let (font_cx, _) = ctx.text_contexts();
       self.font_ready = font::install(font_cx);
     }
+    self.measure(ctx);
     // Fill whatever the parent offers; fall back to a sane size if
     // unconstrained.
     let max = bc.max();
@@ -416,14 +478,19 @@ impl Widget for CanvasWidget {
 
     // Edges under nodes.
     for edge in &self.scene.edges {
-      paint_edge(scene, tf, edge, self.theme);
+      let (Some(&from), Some(&to)) =
+        (self.rects.get(&edge.from), self.rects.get(&edge.to))
+      else {
+        continue;
+      };
+      paint_edge(scene, tf, edge, from, to, self.theme);
     }
 
-    // Nodes on top. Split borrows: pull the caches out so `self` methods
-    // that only need shaping can take &mut while we iterate a snapshot.
-    let nodes = self.scene.nodes.clone();
-    for node in &nodes {
-      self.paint_node(ctx, scene, tf, node);
+    // Nodes on top.
+    for node in &self.scene.nodes {
+      if let Some(&rect) = self.rects.get(&node.id) {
+        self.paint_node(scene, tf, node, rect);
+      }
     }
   }
 
@@ -441,15 +508,14 @@ impl Widget for CanvasWidget {
 }
 
 impl CanvasWidget {
-  /// Paint a single node: shape, fill, border and (cached) label text.
+  /// Paint a single node: shape, fill, border and label text.
   fn paint_node(
-    &mut self,
-    ctx: &mut PaintCtx<'_>,
+    &self,
     scene: &mut Scene,
     tf: Affine,
     node: &RenderNode,
+    rect: Rect,
   ) {
-    let rect = Self::node_rect(node.center);
     let (fill, border) = self.theme.for_state(node.state);
     let fill = if node.dimmed { theme::dim(fill) } else { fill };
 
@@ -466,55 +532,31 @@ impl CanvasWidget {
       }
     }
 
-    self.paint_label(ctx, scene, tf, node, rect);
-  }
-
-  /// Shape and paint the node label, caching the parley layout per node.
-  fn paint_label(
-    &mut self,
-    ctx: &mut PaintCtx<'_>,
-    scene: &mut Scene,
-    tf: Affine,
-    node: &RenderNode,
-    rect: Rect,
-  ) {
-    let needs_build = self
-      .text_cache
-      .get(&node.id)
-      .map(|(txt, _)| txt != &node.label)
-      .unwrap_or(true);
-    if needs_build {
-      // Masonry's *shared* text contexts, not a private pair: a private
-      // `FontContext` resolves against its own font set, so canvas labels
-      // would not match the panel and would miss any font the app registers.
-      let (font_cx, layout_cx) = ctx.text_contexts();
-      let mut builder =
-        layout_cx.ranged_builder(font_cx, &node.label, 1.0, true);
-      builder.push_default(StyleProperty::FontSize(13.0));
-      // A hand-rolled widget has to ask for the app face itself, or parley
-      // picks its own default and the canvas ends up in a different typeface
-      // to the panel.
-      builder.push_default(StyleProperty::FontStack(font::STACK));
-      let mut layout = TextLayout::new();
-      builder.build_into(&mut layout, &node.label);
-      layout.break_all_lines(Some((NODE_W - 16.0) as f32));
-      self
-        .text_cache
-        .insert(node.id, (node.label.clone(), layout));
+    // Labels are shaped in the layout pass; one is only missing if this
+    // paint raced a scene change, and the next frame will have it.
+    if let Some((_, text)) = self.text_cache.get(&node.id) {
+      // Centred vertically, so a box held open at `MIN_LINES` does not
+      // leave a one-line label stuck to its top.
+      let text_h = text.height() as f64;
+      let origin = Point::new(rect.x0 + PAD_X, rect.center().y - text_h / 2.0);
+      render_text(
+        scene,
+        tf * Affine::translate(origin.to_vec2()),
+        text,
+        &[Brush::Solid(self.theme.text)],
+        true,
+      );
     }
-    let (_, layout) = self.text_cache.get(&node.id).unwrap();
+  }
+}
 
-    // Centre the first line vertically; left-pad horizontally.
-    let text_h = layout.height() as f64;
-    let origin = Point::new(rect.x0 + 8.0, rect.center().y - text_h / 2.0);
-    let text_tf = tf * Affine::translate((origin.x, origin.y));
-    render_text(
-      scene,
-      text_tf,
-      layout,
-      &[Brush::Solid(self.theme.text)],
-      true,
-    );
+/// A node's box size for its shaped label: the fixed width, and tall enough
+/// for every line of the label but never fewer than [`MIN_LINES`].
+fn node_size(text: &TextLayout<BrushIndex>) -> layout::Size {
+  let min_text = MIN_LINES * f64::from(LABEL_SIZE * LABEL_LINE);
+  layout::Size {
+    w: NODE_W,
+    h: (text.height() as f64).max(min_text) + 2.0 * PAD_Y,
   }
 }
 
@@ -565,15 +607,16 @@ fn stroke(
 }
 
 /// Distance from a node centre to its box border along the unit vector
-/// `dir`: the smaller of the two slab crossings.
-fn border_offset(dir: Vec2) -> f64 {
+/// `dir`, for a box of half-extents `half`: the smaller of the two slab
+/// crossings.
+fn border_offset(dir: Vec2, half: Vec2) -> f64 {
   let tx = if dir.x.abs() > 1e-9 {
-    (NODE_W / 2.0) / dir.x.abs()
+    half.x / dir.x.abs()
   } else {
     f64::INFINITY
   };
   let ty = if dir.y.abs() > 1e-9 {
-    (NODE_H / 2.0) / dir.y.abs()
+    half.y / dir.y.abs()
   } else {
     f64::INFINITY
   };
@@ -581,9 +624,17 @@ fn border_offset(dir: Vec2) -> f64 {
 }
 
 /// Paint one edge as a line plus an arrowhead at the requirement end.
-fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge, theme: &Theme) {
-  let a0 = Point::new(edge.from.x, edge.from.y);
-  let b0 = Point::new(edge.to.x, edge.to.y);
+fn paint_edge(
+  scene: &mut Scene,
+  tf: Affine,
+  edge: &RenderEdge,
+  from: Rect,
+  to: Rect,
+  theme: &Theme,
+) {
+  let a0 = from.center();
+  let b0 = to.center();
+  let half = |r: Rect| Vec2::new(r.width() / 2.0, r.height() / 2.0);
   // Pull the endpoints back to the node borders so the line and arrowhead
   // are not hidden under the boxes. The inset has to follow the box: nodes
   // are far wider than they are tall, so a fixed radius left the arrowhead
@@ -594,13 +645,14 @@ fn paint_edge(scene: &mut Scene, tf: Affine, edge: &RenderEdge, theme: &Theme) {
     return;
   }
   let dir = delta / len;
-  let inset = border_offset(dir) + 2.0;
-  if len <= 2.0 * inset {
+  let inset_a = border_offset(dir, half(from)) + 2.0;
+  let inset_b = border_offset(dir, half(to)) + 2.0;
+  if len <= inset_a + inset_b {
     // The boxes touch or overlap: the whole edge would sit under them.
     return;
   }
-  let a = a0 + dir * inset;
-  let b = b0 - dir * inset;
+  let a = a0 + dir * inset_a;
+  let b = b0 - dir * inset_b;
   let color = if edge.reversed {
     theme.cycle
   } else {
@@ -707,6 +759,8 @@ where
     // can compare against `_prev.scene`.
     element.widget.set_scene(self.scene.clone());
     element.widget.set_theme(self.theme);
+    // Labels may have changed, and with them node sizes and placement.
+    element.ctx.request_layout();
     if *last_epoch != self.fit_epoch {
       element.widget.request_fit();
       *last_epoch = self.fit_epoch;
@@ -746,8 +800,7 @@ mod tests {
   /// left the arrowhead buried inside the node on a diagonal one.
   #[test]
   fn border_offset_lands_on_the_box_edge() {
-    let half_w = NODE_W / 2.0;
-    let half_h = NODE_H / 2.0;
+    let (half_w, half_h) = (NODE_W / 2.0, 23.0);
     for d in [
       Vec2::new(1.0, 0.0),
       Vec2::new(0.0, 1.0),
@@ -756,7 +809,7 @@ mod tests {
       Vec2::new(2.0, -5.0),
     ] {
       let dir = d.normalize();
-      let p = dir * border_offset(dir);
+      let p = dir * border_offset(dir, Vec2::new(half_w, half_h));
       // Inside both slabs, and touching at least one of them.
       assert!(p.x.abs() <= half_w + 1e-9, "{p:?} escapes the box");
       assert!(p.y.abs() <= half_h + 1e-9, "{p:?} escapes the box");

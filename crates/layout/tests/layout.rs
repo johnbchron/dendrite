@@ -1,7 +1,7 @@
 //! Tests for the Sugiyama layout pipeline (PLAN §4, Milestone 4).
 
 use base::{Edge, EdgeId, EdgeKind, Graph, NodeId, NodeKind};
-use layout::{LayoutConfig, layout};
+use layout::{LayoutConfig, Size, layout};
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
 
@@ -122,7 +122,8 @@ fn ranks_are_centred_on_a_shared_axis() {
     .map(|i| l.pos(nid(*i)).unwrap().x)
     .collect();
   row.sort_by(f64::total_cmp);
-  assert_eq!(row, vec![-cfg.x_spacing, 0.0, cfg.x_spacing]);
+  let pitch = cfg.node_size.w + cfg.x_gap;
+  assert_eq!(row, vec![-pitch, 0.0, pitch]);
 
   // A single-node rank is centred too, so the goal sits above the middle
   // requirement rather than above the leftmost one.
@@ -138,7 +139,50 @@ fn even_count_rank_straddles_the_axis() {
   let l = layout(&g, &cfg);
   let (x1, x2) = (l.pos(nid(1)).unwrap().x, l.pos(nid(2)).unwrap().x);
   assert_eq!(x1 + x2, 0.0, "row straddles the axis");
-  assert_eq!((x2 - x1).abs(), cfg.x_spacing);
+  assert_eq!((x2 - x1).abs(), cfg.node_size.w + cfg.x_gap);
+}
+
+#[test]
+fn placement_follows_node_sizes() {
+  // Rank 0: node 0. Rank 1: nodes 1 (wide) and 2 (tall). Rank 2: node 3.
+  let g = build(4, &[(10, 0, 1), (11, 0, 2), (12, 1, 3)]);
+  let cfg = LayoutConfig::default();
+  let l = layout(&g, &cfg);
+  let size = |n: NodeId| match n {
+    n if n == nid(1) => Size { w: 300.0, h: 40.0 },
+    n if n == nid(2) => Size { w: 100.0, h: 90.0 },
+    _ => Size { w: 100.0, h: 40.0 },
+  };
+  let pos = l.arrangement.place(&cfg, size);
+  let (p1, p2) = (pos[&nid(1)], pos[&nid(2)]);
+
+  // Neighbours in a row are exactly one gap apart, box edge to box edge,
+  // and the row as a whole stays centred on the axis.
+  let (left, right) = if p1.x < p2.x { (p1, p2) } else { (p2, p1) };
+  let (lw, rw) = if p1.x < p2.x {
+    (300.0, 100.0)
+  } else {
+    (100.0, 300.0)
+  };
+  let gap = (right.x - rw / 2.0) - (left.x + lw / 2.0);
+  assert!((gap - cfg.x_gap).abs() < 1e-9, "gap was {gap}");
+  let row_mid = ((left.x - lw / 2.0) + (right.x + rw / 2.0)) / 2.0;
+  assert!(row_mid.abs() < 1e-9, "row centred on the axis");
+
+  // A row is as tall as its tallest node: both share its midline, and the
+  // next row starts one gap below the tall node's bottom.
+  assert_eq!(p1.y, p2.y);
+  let top_of_3 = pos[&nid(3)].y - 20.0;
+  let bottom_of_2 = p2.y + 45.0;
+  assert!((top_of_3 - bottom_of_2 - cfg.y_gap).abs() < 1e-9);
+}
+
+#[test]
+fn retain_drops_hidden_nodes_and_empty_rows() {
+  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 0, 3)]);
+  let l = layout(&g, &LayoutConfig::default());
+  let only = l.arrangement.retain(|n| n != nid(1) && n != nid(3));
+  assert_eq!(only.rows, vec![vec![nid(0)], vec![nid(2)]]);
 }
 
 #[test]

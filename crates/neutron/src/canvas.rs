@@ -20,7 +20,7 @@ use masonry::{
   core::{
     AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx,
     PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, StyleProperty, Widget, render_text,
+    RegisterCtx, StyleProperty, UpdateCtx, Widget, render_text,
   },
   kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Size, Vec2},
   parley::Layout as TextLayout,
@@ -43,6 +43,14 @@ const NODE_H: f64 = 46.0;
 /// Pixels the pointer may travel between press and release and still count as
 /// a click rather than a pan.
 const CLICK_SLOP: f64 = 4.0;
+/// How far the view zooms in and out.
+const ZOOM_MIN: f64 = 0.15;
+const ZOOM_MAX: f64 = 4.0;
+/// How quickly an animated zoom closes on its target, per second: the gap
+/// shrinks by a factor of `e` every `1 / ZOOM_RATE` seconds, so a wheel notch
+/// settles in roughly a fifth of a second and rapid notches blend together
+/// rather than stepping.
+const ZOOM_RATE: f64 = 16.0;
 
 // --- render data --------------------------------------------------------
 
@@ -105,6 +113,11 @@ pub struct CanvasWidget {
   pan:          Vec2,
   /// World→screen scale.
   zoom:         f64,
+  /// The scale the view is animating towards; wheel input moves this, and
+  /// each animation frame eases [`Self::zoom`] after it.
+  zoom_target:  f64,
+  /// Screen point the animated zoom is anchored on (the last wheel position).
+  zoom_anchor:  Point,
   /// Pointer position at the last `Down`, for click-vs-pan discrimination.
   press_origin: Option<Point>,
   /// Previous pointer position while dragging, for incremental panning.
@@ -136,6 +149,8 @@ impl CanvasWidget {
       scene: CanvasScene::default(),
       pan: Vec2::new(60.0, 60.0),
       zoom: 1.0,
+      zoom_target: 1.0,
+      zoom_anchor: Point::ORIGIN,
       press_origin: None,
       last_pointer: None,
       panned: false,
@@ -209,9 +224,11 @@ impl CanvasWidget {
     let zoom = (avail_w / bounds.width().max(1.0))
       .min(avail_h / bounds.height().max(1.0))
       .min(1.0)
-      .clamp(0.15, 4.0);
+      .clamp(ZOOM_MIN, ZOOM_MAX);
 
     self.zoom = zoom;
+    // A fit replaces the view outright, so drop any zoom still in flight.
+    self.zoom_target = zoom;
     let center = bounds.center();
     // Place the content centre at the viewport centre.
     self.pan = Vec2::new(viewport.width / 2.0, viewport.height / 2.0)
@@ -224,7 +241,7 @@ impl CanvasWidget {
   /// Zoom about a screen anchor, keeping the world point under it fixed.
   fn zoom_about(&mut self, anchor: Point, factor: f64) {
     let world = self.to_world(anchor);
-    self.zoom = (self.zoom * factor).clamp(0.15, 4.0);
+    self.zoom = (self.zoom * factor).clamp(ZOOM_MIN, ZOOM_MAX);
     // Solve pan so that transform(world) == anchor again.
     self.pan =
       Vec2::new(anchor.x, anchor.y) - self.zoom * Vec2::new(world.x, world.y);
@@ -297,12 +314,37 @@ impl Widget for CanvasWidget {
           _ => 0.0,
         };
         if dy != 0.0 {
-          // Scroll up (positive) zooms in.
-          self.zoom_about(p, (dy * 0.1).exp());
-          ctx.request_render();
+          // Scroll up (positive) zooms in. Only the target moves here; the
+          // animation frames ease the view after it.
+          self.zoom_target =
+            (self.zoom_target * (dy * 0.1).exp()).clamp(ZOOM_MIN, ZOOM_MAX);
+          self.zoom_anchor = p;
+          ctx.request_anim_frame();
         }
       }
       _ => {}
+    }
+  }
+
+  fn on_anim_frame(
+    &mut self,
+    ctx: &mut UpdateCtx<'_>,
+    _props: &mut PropertiesMut<'_>,
+    interval: u64,
+  ) {
+    // Ease in log space, so zooming in and out feel the same speed. A long
+    // stall (the first frame, or a hitch) is capped so it cannot overshoot.
+    let dt = (interval as f64 / 1e9).min(0.1);
+    let gap = (self.zoom_target / self.zoom).ln();
+    let step = if gap.abs() < 1e-3 {
+      gap
+    } else {
+      gap * (1.0 - (-ZOOM_RATE * dt).exp())
+    };
+    self.zoom_about(self.zoom_anchor, step.exp());
+    ctx.request_render();
+    if (self.zoom_target / self.zoom).ln().abs() >= 1e-3 {
+      ctx.request_anim_frame();
     }
   }
 

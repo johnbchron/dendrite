@@ -12,7 +12,7 @@
 //! exactly once (the `std` mutex is not re-entrant).
 
 use std::{
-  collections::HashSet,
+  collections::{HashMap, HashSet},
   sync::{Arc, Mutex, MutexGuard},
 };
 
@@ -27,7 +27,7 @@ use crate::{
     Camera, CameraRequest, CanvasScene, Insets, LinkMode, RenderEdge,
     RenderNode, ZoomStep,
   },
-  keymap::{self, Command},
+  keymap::{self, Command, Direction},
   query::{self, Query},
   theme::{self, Theme},
   tokens::{size, space},
@@ -952,6 +952,19 @@ impl AppState {
           self.choose_quest(pick);
         }
       }
+      Command::New { condition } => {
+        if condition {
+          self.add_condition();
+        } else {
+          self.add_task();
+        }
+      }
+      Command::Primary => self.toggle_selected(),
+      Command::Nav(direction) => self.navigate(direction),
+      Command::Zoom(step) => self.zoom(step),
+      Command::Fit => self.recenter(),
+      Command::Quests => self.toggle_picker(),
+      Command::Now => self.toggle_now(),
       Command::Palette { nodes_only } => {
         if self.palette_open {
           self.close_popovers();
@@ -959,6 +972,61 @@ impl AppState {
           self.open_palette(nodes_only);
         }
       }
+    }
+  }
+
+  /// Move the selection to a neighbour, as the canvas draws the graph: up
+  /// to a node that requires it, down to one it requires (the nearest in
+  /// its row, if several), or left and right along its row. Stays put at an
+  /// edge.
+  pub fn navigate(&mut self, direction: Direction) {
+    let Some(from) = self.selected else { return };
+    let scene = self.scene();
+    // Row and position of every drawn node.
+    let mut at: HashMap<NodeId, (usize, usize)> = HashMap::new();
+    let mut rows: Vec<Vec<NodeId>> = Vec::new();
+    for (r, row) in scene.arrangement.rows.iter().enumerate() {
+      let nodes: Vec<NodeId> = row
+        .iter()
+        .filter_map(|slot| match slot {
+          Slot::Node(n) => Some(*n),
+          Slot::Bend { .. } => None,
+        })
+        .collect();
+      for (c, n) in nodes.iter().enumerate() {
+        at.insert(*n, (r, c));
+      }
+      rows.push(nodes);
+    }
+    let Some(&(row, col)) = at.get(&from) else {
+      return;
+    };
+    let nearest = |candidates: Vec<NodeId>| {
+      candidates
+        .into_iter()
+        .filter(|n| at.contains_key(n))
+        .min_by_key(|n| {
+          let (r, c) = at[n];
+          (r.abs_diff(row), c.abs_diff(col), *n)
+        })
+    };
+    let target = match direction {
+      Direction::Left => col.checked_sub(1).map(|c| rows[row][c]),
+      Direction::Right => rows[row].get(col + 1).copied(),
+      Direction::Up | Direction::Down => {
+        let store = self.lock();
+        let graph = store.graph();
+        let candidates = if direction == Direction::Up {
+          graph.dependents_of(from).map(|e| e.from).collect()
+        } else {
+          graph.requirements_of(from).map(|e| e.to).collect()
+        };
+        drop(store);
+        nearest(candidates)
+      }
+    };
+    if let Some(target) = target {
+      self.go_to(target);
     }
   }
 
@@ -1936,6 +2004,46 @@ mod tests {
     // Escape closes it.
     state.run(Command::Escape);
     assert!(!state.palette_open());
+  }
+
+  #[test]
+  fn arrow_keys_walk_the_graph_as_drawn() {
+    let mut state = AppState::new(demo_store());
+    let ship = node_named(&state, "Ship v1");
+    let backend = node_named(&state, "Build backend");
+    let frontend = node_named(&state, "Build frontend");
+    let schema = node_named(&state, "Design schema");
+    state.select(Some(backend));
+    state.run(Command::Nav(Direction::Up));
+    assert_eq!(state.selected, Some(ship), "up: what requires it");
+    assert_eq!(state.camera().request, CameraRequest::Reveal(ship));
+    state.run(Command::Nav(Direction::Up));
+    assert_eq!(state.selected, Some(ship), "nothing above a goal");
+    state.select(Some(backend));
+    state.run(Command::Nav(Direction::Down));
+    assert_eq!(state.selected, Some(schema), "down: what it requires");
+    // Along the row, and stopping at its ends.
+    state.select(Some(backend));
+    let row: Vec<NodeId> = {
+      let scene = state.scene();
+      let r = scene
+        .arrangement
+        .rows
+        .iter()
+        .find(|r| r.contains(&Slot::Node(backend)))
+        .unwrap()
+        .iter()
+        .filter_map(|s| match s {
+          Slot::Node(n) => Some(*n),
+          _ => None,
+        })
+        .collect();
+      r
+    };
+    assert!(row.contains(&frontend));
+    let i = row.iter().position(|n| *n == backend).unwrap();
+    state.run(Command::Nav(Direction::Right));
+    assert_eq!(state.selected, row.get(i + 1).copied().or(Some(backend)));
   }
 
   #[test]

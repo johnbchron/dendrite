@@ -34,10 +34,13 @@ pub(super) fn top_bar(
   // With a selection, new nodes become its requirements; say so.
   let (task_tip, condition_tip) = match data.attach_point() {
     Some(name) => (
-      format!("New task required by {name}"),
-      format!("New condition required by {name}"),
+      format!("New task required by {name} \u{b7} N"),
+      format!("New condition required by {name} \u{b7} Shift+N"),
     ),
-    None => ("New task".to_string(), "New condition".to_string()),
+    None => (
+      "New task \u{b7} N".to_string(),
+      "New condition \u{b7} Shift+N".to_string(),
+    ),
   };
   let create = group(
     theme,
@@ -104,7 +107,7 @@ pub(super) fn top_bar(
     theme,
     (
       tooltip(
-        "Zoom out",
+        format!("Zoom out \u{b7} {}", chord("-")),
         theme,
         Anchor::Center,
         icon_btn(Icon::ZoomOut, theme, false, true, |s: &mut AppState| {
@@ -113,7 +116,7 @@ pub(super) fn top_bar(
       ),
       // The level doubles as the reset button.
       tooltip(
-        "Reset to 100%",
+        format!("Reset to 100% \u{b7} {}", chord("0")),
         theme,
         Anchor::Center,
         seg(
@@ -125,7 +128,7 @@ pub(super) fn top_bar(
         ),
       ),
       tooltip(
-        "Zoom in",
+        format!("Zoom in \u{b7} {}", chord("=")),
         theme,
         Anchor::Center,
         icon_btn(Icon::ZoomIn, theme, false, true, |s: &mut AppState| {
@@ -133,7 +136,7 @@ pub(super) fn top_bar(
         }),
       ),
       tooltip(
-        "Fit the graph",
+        "Fit the graph \u{b7} F",
         theme,
         Anchor::Center,
         icon_btn(Icon::Fit, theme, false, true, |s: &mut AppState| {

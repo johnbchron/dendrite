@@ -30,6 +30,7 @@ use xilem::{
 };
 
 use crate::{
+  canvas::ZoomStep,
   focus::{self, FieldKey},
   query::QueryEdit,
 };
@@ -52,11 +53,42 @@ pub enum Command {
   Move(isize),
   /// Act on the open query's highlighted result.
   Accept,
+  /// Create a node (a condition with `condition`), attached to the
+  /// selection if there is one.
+  New {
+    /// A condition rather than a task.
+    condition: bool,
+  },
+  /// The selection's primary action (complete, reopen, satisfy...).
+  Primary,
+  /// Move the selection to a neighbour on the canvas.
+  Nav(Direction),
+  /// Step the canvas zoom.
+  Zoom(ZoomStep),
+  /// Fit the graph into view.
+  Fit,
+  /// Open or close the quest switcher.
+  Quests,
+  /// Open or close the Now tray.
+  Now,
   /// Open (or close) the command palette; `nodes_only` to search nodes.
   Palette {
     /// Search nodes only (opened with `/`).
     nodes_only: bool,
   },
+}
+
+/// A direction on the canvas, for moving the selection with the arrows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+  /// To a node that requires this one (the row above).
+  Up,
+  /// To a node this one requires (the row below).
+  Down,
+  /// To the previous node in the same row.
+  Left,
+  /// To the next node in the same row.
+  Right,
 }
 
 /// What a key does.
@@ -111,8 +143,44 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
     return Some(binding);
   }
 
+  let selected = flags.selection;
+  let letter_is = |c: &str, l: &str| c.eq_ignore_ascii_case(l);
   match &key.key {
     Key::Named(NamedKey::Escape) => Some(Run(Command::Escape)),
+    Key::Named(NamedKey::ArrowUp) if plain && selected => {
+      Some(Run(Command::Nav(Direction::Up)))
+    }
+    Key::Named(NamedKey::ArrowDown) if plain && selected => {
+      Some(Run(Command::Nav(Direction::Down)))
+    }
+    Key::Named(NamedKey::ArrowLeft) if plain && selected => {
+      Some(Run(Command::Nav(Direction::Left)))
+    }
+    Key::Named(NamedKey::ArrowRight) if plain && selected => {
+      Some(Run(Command::Nav(Direction::Right)))
+    }
+    Key::Character(c) if plain && selected && c == " " => {
+      Some(Run(Command::Primary))
+    }
+    Key::Character(c) if plain && letter_is(c, "n") => {
+      Some(Run(Command::New {
+        condition: m.shift(),
+      }))
+    }
+    Key::Character(c) if plain && letter_is(c, "f") => Some(Run(Command::Fit)),
+    Key::Character(c) if plain && letter_is(c, "q") => {
+      Some(Run(Command::Quests))
+    }
+    Key::Character(c) if plain && letter_is(c, "a") => Some(Run(Command::Now)),
+    Key::Character(c) if cmd && (c == "=" || c == "+") => {
+      Some(Run(Command::Zoom(ZoomStep::In)))
+    }
+    Key::Character(c) if cmd && c == "-" => {
+      Some(Run(Command::Zoom(ZoomStep::Out)))
+    }
+    Key::Character(c) if cmd && c == "0" => {
+      Some(Run(Command::Zoom(ZoomStep::Reset)))
+    }
     Key::Named(NamedKey::Delete | NamedKey::Backspace)
       if plain && flags.selection =>
     {
@@ -536,6 +604,46 @@ mod tests {
     assert_eq!(
       resolve(&slash, QUERY),
       Some(Binding::Run(Command::Query(QueryEdit::Insert("/".into()))))
+    );
+  }
+
+  #[test]
+  fn single_letters_and_chords_run_their_commands() {
+    let plain = |s: &str| character(s, Modifiers::empty());
+    let run = |c| Some(Binding::Run(c));
+    let none = Flags::default();
+    assert_eq!(
+      resolve(&plain("n"), none),
+      run(Command::New { condition: false })
+    );
+    assert_eq!(
+      resolve(&character("N", Modifiers::SHIFT), none),
+      run(Command::New { condition: true })
+    );
+    assert_eq!(resolve(&plain("f"), none), run(Command::Fit));
+    assert_eq!(resolve(&plain("q"), none), run(Command::Quests));
+    assert_eq!(resolve(&plain("a"), none), run(Command::Now));
+    // Space and the arrows act on a selection only.
+    assert_eq!(resolve(&plain(" "), none), None);
+    assert_eq!(resolve(&plain(" "), SELECTED), run(Command::Primary));
+    assert_eq!(resolve(&named(NamedKey::ArrowLeft), none), None);
+    assert_eq!(
+      resolve(&named(NamedKey::ArrowLeft), SELECTED),
+      run(Command::Nav(Direction::Left))
+    );
+    let zoom =
+      |s: &str| down(Key::Character(s.into()), Code::Unidentified, CMD);
+    assert_eq!(resolve(&zoom("="), none), run(Command::Zoom(ZoomStep::In)));
+    assert_eq!(resolve(&zoom("+"), none), run(Command::Zoom(ZoomStep::In)));
+    assert_eq!(resolve(&zoom("-"), none), run(Command::Zoom(ZoomStep::Out)));
+    assert_eq!(
+      resolve(&zoom("0"), none),
+      run(Command::Zoom(ZoomStep::Reset))
+    );
+    // With a Ctrl chord, a letter is not its plain command.
+    assert_eq!(
+      resolve(&down(Key::Character("n".into()), Code::KeyN, CMD), none),
+      None
     );
   }
 

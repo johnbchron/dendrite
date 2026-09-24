@@ -709,10 +709,57 @@ impl AppState {
 mod tests {
   use super::*;
 
+  /// A store holding the small demo graph the app used to seed on first run:
+  ///
+  /// - "Ship v1" requires "Build backend" and "Build frontend";
+  /// - "Build backend" requires "Design schema" (completed);
+  /// - "Build frontend" requires the condition "Design signed off";
+  /// - the quest "v1 Launch" claims "Ship v1".
+  fn demo_store() -> Store {
+    let mut store = Store::open_in_memory().unwrap();
+    let ship = NodeId::new();
+    let backend = NodeId::new();
+    let frontend = NodeId::new();
+    let schema = NodeId::new();
+    let signoff = NodeId::new();
+    let quest = QuestId::new();
+
+    let edge = |from, to| Event::EdgeAdded {
+      edge: EdgeId::new(),
+      kind: EdgeKind::Dependency,
+      from,
+      to,
+    };
+    let node = |node, name: &str, kind| Event::NodeAdded {
+      node,
+      kind,
+      name: name.into(),
+      order_hint: 0.0,
+    };
+    store
+      .commit(vec![
+        node(ship, "Ship v1", NodeKind::task()),
+        node(backend, "Build backend", NodeKind::task()),
+        node(frontend, "Build frontend", NodeKind::task()),
+        node(schema, "Design schema", NodeKind::Task { completed: true }),
+        node(signoff, "Design signed off", NodeKind::condition()),
+        edge(ship, backend),
+        edge(ship, frontend),
+        edge(backend, schema),
+        edge(frontend, signoff),
+        Event::QuestCreated {
+          quest,
+          name: "v1 Launch".into(),
+        },
+        Event::QuestClaimed { quest, node: ship },
+      ])
+      .unwrap();
+    store
+  }
+
   #[test]
   fn scene_reflects_seeded_graph() {
-    let store = Store::open_in_memory().unwrap();
-    let state = AppState::new(store);
+    let state = AppState::new(demo_store());
     let scene = state.scene();
     // 4 tasks + 1 condition were seeded.
     assert_eq!(scene.nodes.len(), 5);
@@ -837,8 +884,7 @@ mod tests {
 
   #[test]
   fn selection_shows_both_edge_directions() {
-    let store = Store::open_in_memory().unwrap();
-    let mut state = AppState::new(store);
+    let mut state = AppState::new(demo_store());
     let backend = node_named(&state, "Build backend");
     state.select(Some(backend));
 
@@ -847,7 +893,7 @@ mod tests {
     assert_eq!(info.requirements.len(), 1);
     assert_eq!(info.requirements[0].name, "Design schema");
     assert!(info.requirements[0].satisfied);
-    // ...and "Ship v1" requires it, via the seeded subtask edge.
+    // ...and "Ship v1" requires it.
     assert_eq!(info.dependents.len(), 1);
     assert_eq!(info.dependents[0].name, "Ship v1");
     assert!(!info.dependents[0].satisfied);
@@ -855,8 +901,7 @@ mod tests {
 
   #[test]
   fn removing_an_edge_undoes_cleanly() {
-    let store = Store::open_in_memory().unwrap();
-    let mut state = AppState::new(store);
+    let mut state = AppState::new(demo_store());
     let backend = node_named(&state, "Build backend");
     state.select(Some(backend));
 
@@ -878,8 +923,7 @@ mod tests {
 
   #[test]
   fn canvas_click_links_while_armed_and_selects_otherwise() {
-    let store = Store::open_in_memory().unwrap();
-    let mut state = AppState::new(store);
+    let mut state = AppState::new(demo_store());
     let backend = node_named(&state, "Build backend");
     let frontend = node_named(&state, "Build frontend");
 
@@ -972,8 +1016,7 @@ mod tests {
 
   #[test]
   fn requirement_picker_is_bounded_and_filterable() {
-    let store = Store::open_in_memory().unwrap();
-    let mut state = AppState::new(store);
+    let mut state = AppState::new(demo_store());
     let backend = node_named(&state, "Build backend");
     for _ in 0..20 {
       state.add_task();
@@ -1020,8 +1063,7 @@ mod tests {
 
   #[test]
   fn actionable_tracks_the_ready_frontier() {
-    let store = Store::open_in_memory().unwrap();
-    let mut state = AppState::new(store);
+    let mut state = AppState::new(demo_store());
     // Global view: schema is done, so backend is ready; signoff pending is
     // actionable; frontend/ship blocked.
     let names: Vec<String> = state

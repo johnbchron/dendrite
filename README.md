@@ -42,12 +42,13 @@ fontconfig, wayland/xkb, …):
 
 ```sh
 nix develop        # or: direnv allow
-cargo test         # 34 tests across the workspace
+cargo test         # 61 tests across the workspace
 cargo run -p neutron
 ```
 
-The app opens or creates `neutron.db` in the working directory (override with
-`NEUTRON_DB=/path/to.db`) and seeds a small demo graph on first run.
+The app opens or creates `neutron/neutron.db` in the platform data directory
+(e.g. `~/.local/share` on Linux; override with `NEUTRON_DB=/path/to.db`). A new
+database starts empty.
 
 ### Using it
 

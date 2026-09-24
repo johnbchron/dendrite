@@ -273,37 +273,39 @@ pub const FROST: Theme = Theme {
   chip_cyclic:  Color::from_rgb8(90, 59, 57),
 };
 
-/// The daylight inverse: paper ground, ink text, saturated borders doing the
-/// state work — blue for Ready, purple for the selection.
+/// The daylight inverse: paper ground, ink text, tinted fills and saturated
+/// borders doing the state work — blue for Ready, purple for the selection.
+/// Blocked sits a shade below the ground, Pending a shade above it, so the
+/// two waiting states stay apart.
 pub const MERIDIAN: Theme = Theme {
   id:   "meridian",
   name: "Meridian",
 
-  bg:     Color::from_rgb8(237, 240, 243),
-  edge:   Color::from_rgb8(139, 150, 164),
+  bg:     Color::from_rgb8(236, 240, 243),
+  edge:   Color::from_rgb8(128, 139, 154),
   cycle:  Color::from_rgb8(192, 71, 58),
   text:   Color::from_rgb8(27, 32, 41),
   accent: Color::from_rgb8(126, 70, 196),
 
   done:    (
-    Color::from_rgb8(219, 238, 226),
-    Color::from_rgb8(47, 138, 95),
+    Color::from_rgb8(208, 235, 218),
+    Color::from_rgb8(38, 131, 86),
   ),
   ready:   (
-    Color::from_rgb8(219, 232, 251),
-    Color::from_rgb8(47, 111, 208),
+    Color::from_rgb8(208, 226, 251),
+    Color::from_rgb8(38, 102, 204),
   ),
   blocked: (
-    Color::from_rgb8(228, 232, 238),
-    Color::from_rgb8(139, 150, 164),
+    Color::from_rgb8(221, 226, 232),
+    Color::from_rgb8(134, 144, 160),
   ),
   pending: (
-    Color::from_rgb8(228, 232, 238),
-    Color::from_rgb8(110, 122, 137),
+    Color::from_rgb8(239, 242, 245),
+    Color::from_rgb8(97, 109, 125),
   ),
   cyclic:  (
-    Color::from_rgb8(250, 223, 217),
-    Color::from_rgb8(192, 71, 58),
+    Color::from_rgb8(250, 215, 208),
+    Color::from_rgb8(189, 62, 49),
   ),
 
   sunken: Color::from_rgb8(240, 243, 246),
@@ -317,10 +319,10 @@ pub const MERIDIAN: Theme = Theme {
   shadow:         Color::from_rgba8(24, 32, 48, 46),
   on_accent:      Color::from_rgb8(255, 255, 255),
 
-  chip_ready:   Color::from_rgb8(207, 224, 248),
-  chip_done:    Color::from_rgb8(210, 235, 219),
-  chip_blocked: Color::from_rgb8(221, 226, 233),
-  chip_cyclic:  Color::from_rgb8(247, 214, 207),
+  chip_ready:   Color::from_rgb8(198, 218, 248),
+  chip_done:    Color::from_rgb8(199, 232, 211),
+  chip_blocked: Color::from_rgb8(216, 222, 230),
+  chip_cyclic:  Color::from_rgb8(248, 206, 198),
 };
 
 /// Every palette the picker offers, in the order it shows them.

@@ -117,6 +117,30 @@ pub enum Event {
 }
 
 impl Event {
+  /// Whether applying `self` right after `earlier` leaves the graph exactly
+  /// as applying `self` alone would: both overwrite the same single field of
+  /// the same target, so `earlier` has no lasting effect.
+  ///
+  /// This lets a live edit (a rename typed one keystroke at a time) replace
+  /// its previous event in the log rather than pile up one per character.
+  pub fn supersedes(&self, earlier: &Event) -> bool {
+    match (self, earlier) {
+      (
+        Event::NodeRenamed { node: a, .. },
+        Event::NodeRenamed { node: b, .. },
+      ) => a == b,
+      (
+        Event::QuestRenamed { quest: a, .. },
+        Event::QuestRenamed { quest: b, .. },
+      ) => a == b,
+      (
+        Event::OrderHintChanged { node: a, .. },
+        Event::OrderHintChanged { node: b, .. },
+      ) => a == b,
+      _ => false,
+    }
+  }
+
   /// Fold this event into `graph`, mutating it in place.
   ///
   /// Application is total and best-effort: an event that targets a missing

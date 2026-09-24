@@ -433,3 +433,93 @@ fn revision_moves_with_every_graph_change_and_only_then() {
   store.commit(vec![]).unwrap();
   assert_eq!(store.revision(), r);
 }
+
+#[test]
+fn a_typed_rename_is_logged_once() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  let mut store = Store::open(&path).unwrap();
+  store.commit(sample_batch()).unwrap();
+  let before = store.event_count().unwrap();
+
+  let rename = |name: &str| Event::NodeRenamed {
+    node: nid(1),
+    name: name.into(),
+  };
+  store.commit(vec![rename("S")]).unwrap();
+  for typed in ["Sh", "Shi", "Ship"] {
+    store.commit_amend(vec![rename(typed)]).unwrap();
+  }
+  assert_eq!(
+    store.event_count().unwrap(),
+    before + 1,
+    "one row, rewritten"
+  );
+  assert_eq!(store.graph().node(nid(1)).unwrap().name, "Ship");
+
+  // One undo still restores the name from before the edit.
+  store.undo().unwrap();
+  assert_eq!(store.graph().node(nid(1)).unwrap().name, "root");
+  store.redo().unwrap();
+  drop(store);
+
+  // And the log replays to the same end state.
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "Ship");
+}
+
+#[test]
+fn history_is_never_rewritten() {
+  let mut store = Store::open_in_memory().unwrap();
+  store.commit(sample_batch()).unwrap();
+  let rename = |name: &str| Event::NodeRenamed {
+    node: nid(1),
+    name: name.into(),
+  };
+  store.commit(vec![rename("a")]).unwrap();
+  store.undo().unwrap();
+  store.redo().unwrap();
+  // The group is history now (its events were undone and redone), so an
+  // amend appends rather than overwriting the redo's row.
+  let before = store.event_count().unwrap();
+  store.commit_amend(vec![rename("b")]).unwrap();
+  assert_eq!(store.event_count().unwrap(), before + 1);
+
+  // An amend that does not supersede the tail appends too.
+  let before = store.event_count().unwrap();
+  store
+    .commit_amend(vec![Event::NodeRenamed {
+      node: nid(2),
+      name: "other".into(),
+    }])
+    .unwrap();
+  assert_eq!(store.event_count().unwrap(), before + 1);
+}
+
+#[test]
+fn rewriting_a_snapshotted_row_refreshes_the_snapshot() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("neutron.db");
+  let rename = |name: &str| Event::NodeRenamed {
+    node: nid(1),
+    name: name.into(),
+  };
+  let mut store = Store::open(&path).unwrap();
+  store.commit(sample_batch()).unwrap();
+  // Pad the log so the next commit lands exactly on a snapshot.
+  let pad = db::SNAPSHOT_EVERY - 1 - store.event_count().unwrap() as i64;
+  for _ in 0..pad {
+    store
+      .commit(vec![Event::OrderHintChanged {
+        node:       nid(2),
+        order_hint: 1.0,
+      }])
+      .unwrap();
+  }
+  store.commit(vec![rename("first")]).unwrap(); // snapshot taken here
+  store.commit_amend(vec![rename("final")]).unwrap(); // rewrites that row
+  std::mem::forget(store); // no snapshot on close
+
+  let reopened = Store::open(&path).unwrap();
+  assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "final");
+}

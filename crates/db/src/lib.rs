@@ -14,7 +14,11 @@
 //!   is missing or unreadable, opening falls back to a full replay.
 //! - **Undo never deletes history.** Undoing a group appends the inverse events
 //!   to the log (keeping it monotonic — the log doubles as an audit trail)
-//!   while walking the in-memory graph backwards (PLAN §3).
+//!   while walking the in-memory graph backwards (PLAN §3). The one rewrite is
+//!   inside a group still being built: when [`Store::commit_amend`] adds an
+//!   event that [supersedes](base::Event::supersedes) the group's last one —
+//!   the next keystroke of a rename — it replaces that row, so a typed name is
+//!   logged once rather than once per character.
 //!
 //! On [`Store::open`] the snapshot is loaded and the rest of the log is
 //! replayed in `seq` order on top of it.
@@ -66,6 +70,10 @@ pub struct Store {
   revision:     u64,
   /// `seq` the snapshot tables reflect.
   snapshot_seq: i64,
+  /// The last event of the newest undo group and its `seq`, while that
+  /// group can still be amended; cleared by undo and redo, whose events
+  /// are history and must never be rewritten.
+  tail:         Option<(i64, Event)>,
 }
 
 impl Store {
@@ -97,6 +105,7 @@ impl Store {
       last_seq: 0,
       revision: 0,
       snapshot_seq: 0,
+      tail: None,
     };
     store.migrate()?;
     let (graph, from) = store.load_snapshot()?.unwrap_or_default();
@@ -344,6 +353,7 @@ impl Store {
     self.persist(&events)?;
     self.undo.push(inverse);
     self.redo.clear();
+    self.tail = events.last().map(|e| (self.last_seq, e.clone()));
     Ok(())
   }
 
@@ -356,6 +366,13 @@ impl Store {
   pub fn commit_amend(&mut self, events: Vec<Event>) -> Result<(), DbError> {
     if events.is_empty() {
       return Ok(());
+    }
+    if self.can_undo()
+      && let [event] = events.as_slice()
+      && let Some((seq, last)) = &self.tail
+      && event.supersedes(last)
+    {
+      return self.replace_tail(*seq, event.clone());
     }
     let Some(prev) = self.undo.pop() else {
       return self.commit(events);
@@ -371,6 +388,36 @@ impl Store {
     inverse.extend(prev);
     self.undo.push(inverse);
     self.redo.clear();
+    self.tail = events.last().map(|e| (self.last_seq, e.clone()));
+    Ok(())
+  }
+
+  /// Apply `event`, which supersedes the logged event at `seq`, by
+  /// overwriting that row instead of appending.
+  ///
+  /// The group's inverse needs no change: it already restores the field to
+  /// its value from before the group, and `event` only moves the same
+  /// field again.
+  fn replace_tail(&mut self, seq: i64, event: Event) -> Result<(), DbError> {
+    let payload = serde_json::to_string(&event)?;
+    event.apply(&mut self.graph);
+    self.revision += 1;
+    let tx = self.conn.transaction()?;
+    tx.execute(
+      "UPDATE events SET payload = ?1 WHERE seq = ?2",
+      (&payload, seq),
+    )?;
+    // A snapshot taken since the row was first written holds its old value.
+    let stale = seq <= self.snapshot_seq;
+    if stale {
+      Self::write_snapshot(&tx, &self.graph, self.last_seq)?;
+    }
+    tx.commit()?;
+    if stale {
+      self.snapshot_seq = self.last_seq;
+    }
+    self.redo.clear();
+    self.tail = Some((seq, event));
     Ok(())
   }
 
@@ -382,6 +429,7 @@ impl Store {
     let Some(inverse) = self.undo.pop() else {
       return Ok(());
     };
+    self.tail = None;
     let redo = base::apply_batch(&mut self.graph, &inverse);
     self.revision += 1;
     self.persist(&inverse)?;
@@ -394,6 +442,7 @@ impl Store {
     let Some(forward) = self.redo.pop() else {
       return Ok(());
     };
+    self.tail = None;
     let inverse = base::apply_batch(&mut self.graph, &forward);
     self.revision += 1;
     self.persist(&forward)?;

@@ -27,6 +27,7 @@ use crate::{
     Camera, CameraRequest, CanvasScene, Insets, LinkMode, RenderEdge,
     RenderNode, ZoomStep,
   },
+  focus::{FieldKey, FocusRequests},
   keymap::{self, Command, Direction},
   query::{self, Query},
   theme::{self, Theme},
@@ -81,6 +82,8 @@ pub struct AppState {
   palette_nodes_only:   bool,
   /// Recently selected nodes, newest first, for the empty palette.
   recent:               Vec<NodeId>,
+  /// Fields to focus once the views catch up (see [`FocusRequests`]).
+  focus_requests:       FocusRequests,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
   zoom_percent:         u32,
   /// The field whose keystrokes are currently being committed, if the last
@@ -298,6 +301,7 @@ impl AppState {
       palette_query:        Query::default(),
       palette_nodes_only:   false,
       recent:               Vec::new(),
+      focus_requests:       FocusRequests::default(),
       zoom_percent:         100,
       live_edit:            None,
       derivations:          Mutex::new(None),
@@ -1117,7 +1121,12 @@ impl AppState {
     }
     self.commit(events);
     self.go_to(id);
+    // Straight into naming it; the name is selected, so typing replaces it.
+    self.focus_requests.request(FieldKey::Title);
   }
+
+  /// The handle the driver serves focus requests through.
+  pub fn focus_requests(&self) -> FocusRequests { self.focus_requests.clone() }
 
   /// The name of the node new nodes would attach to, for the create
   /// buttons' tooltips.
@@ -1913,6 +1922,16 @@ mod tests {
     let second = state.toast().unwrap().id;
     state.dismiss_toast(second);
     assert!(state.toast().is_none());
+  }
+
+  #[test]
+  fn a_new_node_asks_for_its_name_field() {
+    let mut state = AppState::new(demo_store());
+    let requests = state.focus_requests();
+    assert_eq!(requests.take(), None);
+    state.run(Command::New { condition: false });
+    assert_eq!(requests.take(), Some(FieldKey::Title));
+    assert_eq!(requests.take(), None, "served once");
   }
 
   #[test]

@@ -10,6 +10,7 @@ layout = { path = "../layout" }
 
 dirs = "7"
 masonry = "0.4"
+masonry_winit = "0.4"
 tokio = { version = "1", features = ["time"] }
 xilem = "0.4"
 

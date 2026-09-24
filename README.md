@@ -80,7 +80,7 @@ Single letters work while no text field has focus. Ctrl is Cmd on macOS.
 |-----|--------|
 | Ctrl+K | Command palette: nodes, commands, quests |
 | / | Palette, nodes only |
-| N / Shift+N | New task / condition (a requirement of the selection) |
+| N / Shift+N | New task / condition (a requirement of the selection), with its name selected to type over |
 | R | Add a requirement (link mode) |
 | Space | The selection's primary action |
 | Enter or F2 | Rename the selection |

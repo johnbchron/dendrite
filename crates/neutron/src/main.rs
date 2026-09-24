@@ -8,6 +8,7 @@
 mod appear;
 mod canvas;
 mod divider;
+mod driver;
 mod field;
 mod focus;
 mod font;
@@ -26,9 +27,12 @@ mod ui;
 
 use std::path::PathBuf;
 
-use xilem::{EventLoop, WindowOptions, Xilem, winit::error::EventLoopError};
+use xilem::{
+  EventLoop, WindowOptions, Xilem, masonry::theme::default_property_set,
+  winit::error::EventLoopError,
+};
 
-use crate::state::AppState;
+use crate::{driver::FocusDriver, state::AppState};
 
 fn main() -> Result<(), EventLoopError> {
   // One database for the whole global graph (PLAN §3). Defaults to a file in
@@ -50,10 +54,24 @@ fn main() -> Result<(), EventLoopError> {
     }
   };
   let state = AppState::new(store);
+  let focus_requests = state.focus_requests();
 
   let app =
     Xilem::new_simple(state, ui::app_logic, WindowOptions::new("Neutron"))
       .with_font(font::DATA.to_vec())
       .with_font(icons::DATA.to_vec());
-  app.run_in(EventLoop::with_user_event())
+
+  // What `Xilem::run_in` does, with xilem's driver wrapped so the app can
+  // focus fields created by an action (see `driver`).
+  let event_loop = EventLoop::with_user_event().build()?;
+  let proxy = event_loop.create_proxy();
+  let (xilem_driver, windows) = app.into_driver_and_windows(move |event| {
+    proxy.send_event(event).map_err(|err| err.0)
+  });
+  masonry_winit::app::run_with(
+    event_loop,
+    windows,
+    FocusDriver::new(xilem_driver, focus_requests),
+    default_property_set(),
+  )
 }

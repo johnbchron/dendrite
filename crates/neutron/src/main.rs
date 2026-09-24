@@ -19,6 +19,7 @@ mod query_field;
 mod state;
 mod surface;
 mod theme;
+mod timer;
 mod tokens;
 mod tooltip;
 mod ui;

@@ -60,4 +60,6 @@ pub mod motion {
   pub const POPOVER_MS: f64 = 120.0;
   /// The inspector card sliding in.
   pub const CARD_MS: f64 = 160.0;
+  /// How long a toast stays up.
+  pub const TOAST_MS: u64 = 6000;
 }

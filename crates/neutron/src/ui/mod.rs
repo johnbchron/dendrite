@@ -16,6 +16,8 @@ mod lens;
 mod now;
 mod toolbar;
 
+use std::time::Duration;
+
 use masonry::{
   kurbo::Vec2,
   peniko::Color,
@@ -26,6 +28,7 @@ use masonry::{
 };
 use xilem::{
   AnyWidgetView, WidgetView,
+  core::fork,
   style::Style as _,
   view::{
     CrossAxisAlignment, button, flex_col, flex_row, sized_box, zstack,
@@ -39,9 +42,10 @@ use crate::{
   font,
   icons::{Icon, icon},
   keymap::keymap,
-  state::AppState,
+  state::{AppState, Toast},
   surface::{Level, surface},
   theme::Theme,
+  timer::after,
   tokens::{motion, size, space, text},
 };
 
@@ -109,12 +113,15 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     })
   }));
 
+  let toast = layer(data.toast().cloned().map(|t| toast_view(t, data.theme())));
+
   let window = zstack((
     canvas_view,
     zstack_item(card, UnitPoint::TOP_RIGHT),
     zstack_item(tray, UnitPoint::BOTTOM_LEFT),
     zstack_item(toolbar::top_bar(data), UnitPoint::TOP),
     zstack_item(banner, UnitPoint::TOP),
+    zstack_item(toast, UnitPoint::BOTTOM),
     zstack_item(backdrop, UnitPoint::TOP_LEFT),
     zstack_item(settings, UnitPoint::TOP_RIGHT),
     zstack_item(quests, UnitPoint::TOP_LEFT),
@@ -156,6 +163,51 @@ fn link_banner(
     bottom: 0.0,
     left:   0.0,
   })
+}
+
+/// The toast: what just happened, an Undo, and a close button. It takes
+/// itself down after [`motion::TOAST_MS`].
+fn toast_view(
+  toast: Toast,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  let id = toast.id;
+  let card = sized_box(appear(
+    Motion {
+      from:        Vec2::new(0.0, 8.0),
+      duration_ms: motion::POPOVER_MS,
+    },
+    surface(
+      theme,
+      Level::Popover,
+      space::XS,
+      flex_row((
+        sized_box(label(toast.text).text_size(text::BODY).color(theme.text))
+          .padding(Padding::horizontal(space::S)),
+        controls::seg("Undo", theme, false, true, |s: &mut AppState| {
+          s.undo_toast()
+        }),
+        controls::icon_btn(
+          Icon::X,
+          theme,
+          false,
+          true,
+          move |s: &mut AppState| s.dismiss_toast(id),
+        ),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(space::XS.px()),
+    ),
+  ))
+  .padding(Padding::bottom(space::L));
+  fork(
+    card,
+    after(
+      id,
+      Duration::from_millis(motion::TOAST_MS),
+      move |s: &mut AppState| s.dismiss_toast(id),
+    ),
+  )
 }
 
 /// A zstack layer that shows `view` when there is one, and otherwise an

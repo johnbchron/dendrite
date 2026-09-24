@@ -69,6 +69,10 @@ pub struct AppState {
   now_open:             bool,
   /// Whether the inspector's "more actions" list is showing.
   more_open:            bool,
+  /// The notice on screen, if any.
+  toast:                Option<Toast>,
+  /// Counter for [`Toast::id`].
+  toast_serial:         u64,
   /// The canvas zoom as a whole percentage, as last reported by the canvas.
   zoom_percent:         u32,
   /// The field whose keystrokes are currently being committed, if the last
@@ -127,6 +131,20 @@ pub struct NowGroup {
   pub title: Option<String>,
   /// The nodes, by name.
   pub items: Vec<(NodeId, String)>,
+}
+
+/// A short-lived notice with an Undo, shown after an action worth undoing
+/// (deleting a node).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Toast {
+  /// Distinguishes one toast from the next, so a timer for an old one does
+  /// not take down a new one.
+  pub id:   u64,
+  /// What happened.
+  pub text: String,
+  /// The store revision right after the action; Undo is only offered while
+  /// nothing has changed since.
+  revision: u64,
 }
 
 /// What a quest switcher row does when chosen.
@@ -262,6 +280,8 @@ impl AppState {
       settings_open:        false,
       now_open:             false,
       more_open:            false,
+      toast:                None,
+      toast_serial:         0,
       zoom_percent:         100,
       live_edit:            None,
       derivations:          Mutex::new(None),
@@ -1050,10 +1070,43 @@ impl AppState {
 
   /// Delete the selected node (its incident edges and claims cascade; a
   /// single `NodeRemoved` event carries a complete inverse for undo).
+  ///
+  /// There is no confirmation: a toast offers Undo instead.
   pub fn delete_selected(&mut self) {
     let Some(id) = self.selected else { return };
+    let name = self.lock().graph().node(id).map(|n| n.name.clone());
     self.commit(vec![Event::NodeRemoved { node: id }]);
     self.select(None);
+    let revision = self.lock().revision();
+    self.toast_serial += 1;
+    self.toast = Some(Toast {
+      id: self.toast_serial,
+      text: format!("Deleted {}", name.unwrap_or_default()),
+      revision,
+    });
+  }
+
+  /// The toast to show, if any: only while undoing would still undo what
+  /// it names (nothing has changed the graph since).
+  pub fn toast(&self) -> Option<&Toast> {
+    let revision = self.lock().revision();
+    self.toast.as_ref().filter(|t| t.revision == revision)
+  }
+
+  /// The toast's Undo button.
+  pub fn undo_toast(&mut self) {
+    if self.toast().is_some() {
+      self.undo();
+    }
+    self.toast = None;
+  }
+
+  /// Take the toast down: its timer ran out, or it was closed. `id` guards
+  /// against a stale timer taking down a newer toast.
+  pub fn dismiss_toast(&mut self, id: u64) {
+    if self.toast.as_ref().is_some_and(|t| t.id == id) {
+      self.toast = None;
+    }
   }
 
   /// Remove an incident edge, from either the requirements or the dependents
@@ -1697,6 +1750,45 @@ mod tests {
         .iter()
         .any(|r| r.other == schema)
     );
+  }
+
+  #[test]
+  fn deleting_offers_undo_until_something_else_changes() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    state.select(Some(backend));
+    state.delete_selected();
+    let toast = state.toast().cloned().expect("a toast after deleting");
+    assert_eq!(toast.text, "Deleted Build backend");
+    state.undo_toast();
+    assert!(state.lock().graph().node(backend).is_some());
+    assert!(state.toast().is_none());
+
+    // Another change makes Undo mean something else: the toast goes.
+    state.select(Some(backend));
+    state.delete_selected();
+    state.add_task();
+    assert!(state.toast().is_none());
+    state.undo_toast();
+    assert!(
+      state.lock().graph().node(backend).is_none(),
+      "the stale toast undid nothing"
+    );
+
+    // A timer for an old toast does not take down a newer one.
+    let schema = node_named(&state, "Design schema");
+    state.select(Some(schema));
+    state.delete_selected();
+    let first = state.toast().unwrap().id;
+    state.undo();
+    let signoff = node_named(&state, "Design signed off");
+    state.select(Some(signoff));
+    state.delete_selected();
+    state.dismiss_toast(first);
+    assert!(state.toast().is_some());
+    let second = state.toast().unwrap().id;
+    state.dismiss_toast(second);
+    assert!(state.toast().is_none());
   }
 
   #[test]

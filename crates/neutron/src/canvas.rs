@@ -23,7 +23,7 @@ use masonry::{
     RegisterCtx, StyleProperty, Widget, render_text,
   },
   kurbo::{Affine, BezPath, Line, Point, Rect, RoundedRect, Size, Vec2},
-  parley::{GenericFamily, Layout as TextLayout},
+  parley::Layout as TextLayout,
   peniko::{Brush, Color, Fill},
   vello::Scene,
 };
@@ -32,7 +32,10 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
-use crate::theme::{self, Theme};
+use crate::{
+  font,
+  theme::{self, Theme},
+};
 
 // Node box size in world (graph) coordinates.
 const NODE_W: f64 = 150.0;
@@ -121,6 +124,9 @@ pub struct CanvasWidget {
   /// Cached per-node text layouts, keyed by id, invalidated when the label
   /// text changes.
   text_cache:   HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  /// Whether [`font::install`] has pointed the default family at the app
+  /// face yet.
+  font_ready:   bool,
 }
 
 impl CanvasWidget {
@@ -137,6 +143,7 @@ impl CanvasWidget {
       last_size: None,
       theme,
       text_cache: HashMap::new(),
+      font_ready: false,
     }
   }
 
@@ -312,6 +319,14 @@ impl Widget for CanvasWidget {
     if ctx.fonts_changed() {
       self.text_cache.clear();
     }
+    // The canvas is the one widget of ours with a layout pass, so it is where
+    // the default family gets remapped. The bundled face only appears once
+    // the driver registers it, which flags `fonts_changed` for this same pass
+    // — so the text inputs laid out after us reshape in the right face.
+    if !self.font_ready {
+      let (font_cx, _) = ctx.text_contexts();
+      self.font_ready = font::install(font_cx);
+    }
     // Fill whatever the parent offers; fall back to a sane size if
     // unconstrained.
     let max = bc.max();
@@ -434,10 +449,10 @@ impl CanvasWidget {
       let mut builder =
         layout_cx.ranged_builder(font_cx, &node.label, 1.0, true);
       builder.push_default(StyleProperty::FontSize(13.0));
-      // Masonry's widgets get this from `theme::default_text_styles`; a
-      // hand-rolled widget has to ask for it, or parley picks its own default
-      // family and the canvas ends up in a different typeface to the panel.
-      builder.push_default(GenericFamily::SystemUi);
+      // A hand-rolled widget has to ask for the app face itself, or parley
+      // picks its own default and the canvas ends up in a different typeface
+      // to the panel.
+      builder.push_default(StyleProperty::FontStack(font::STACK));
       let mut layout = TextLayout::new();
       builder.build_into(&mut layout, &node.label);
       layout.break_all_lines(Some((NODE_W - 16.0) as f32));

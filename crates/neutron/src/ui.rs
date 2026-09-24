@@ -15,19 +15,23 @@
 //! recenter, node creation — live in the toolbar above both panes.
 
 use base::NodeState;
-use masonry::properties::{Padding, types::AsUnit};
+use masonry::{
+  core::ArcStr,
+  properties::{Padding, types::AsUnit},
+};
 use xilem::{
   FontWeight, WidgetView,
   style::Style as _,
   view::{
-    Axis, CrossAxisAlignment, FlexExt as _, button, flex, flex_col, flex_row,
-    label, portal, sized_box, text_input,
+    Axis, CrossAxisAlignment, FlexExt as _, Label, button, flex, flex_col,
+    flex_row, portal, sized_box, text_input,
   },
 };
 
 use crate::{
   canvas::{CanvasAction, canvas},
   divider::{DividerAction, divider},
+  font,
   state::{AppState, EdgeRow},
   theme::Theme,
 };
@@ -46,6 +50,13 @@ const SIZE_BTN: f32 = 12.5;
 const SIZE_MUTED: f32 = 12.0;
 const SIZE_CHIP: f32 = 10.5;
 const SIZE_SECTION: f32 = 10.0;
+
+/// Every label in the panel, in the app's typeface. This shadows xilem's
+/// `label` on purpose: that one sets an empty font stack, which throws away
+/// even Masonry's default family (see [`font`]).
+fn label(text: impl Into<ArcStr>) -> Label {
+  xilem::view::label(text).font(font::STACK)
+}
 
 /// A button whose label follows the scale above, in the palette's colours.
 ///

@@ -7,6 +7,7 @@
 
 mod canvas;
 mod divider;
+mod font;
 mod state;
 mod theme;
 mod ui;
@@ -34,6 +35,7 @@ fn main() -> Result<(), EventLoopError> {
   let state = AppState::new(store);
 
   let app =
-    Xilem::new_simple(state, ui::app_logic, WindowOptions::new("Neutron"));
+    Xilem::new_simple(state, ui::app_logic, WindowOptions::new("Neutron"))
+      .with_font(font::DATA.to_vec());
   app.run_in(EventLoop::with_user_event())
 }

@@ -218,6 +218,11 @@ pub struct CanvasWidget {
   zoom_anchor:   Point,
   /// The translation an eased pan is heading for, if one is in flight.
   pan_target:    Option<Vec2>,
+  /// A requested fit not yet started: it starts on the next animation
+  /// frame that has placed boxes to fit.
+  fit_pending:   bool,
+  /// The zoom and pan an eased fit is heading for, if one is in flight.
+  fit_target:    Option<(f64, Vec2)>,
   /// A node to reveal once it has been placed (the request can arrive in the
   /// same rebuild as the scene that adds it).
   reveal:        Option<NodeId>,
@@ -268,6 +273,8 @@ impl CanvasWidget {
       zoom_target: 1.0,
       zoom_anchor: Point::ORIGIN,
       pan_target: None,
+      fit_pending: false,
+      fit_target: None,
       reveal: None,
       insets: Insets::default(),
       reported_zoom: 100,
@@ -391,12 +398,15 @@ impl CanvasWidget {
     // A fit replaces the view outright, so drop any motion still in flight.
     self.zoom_target = zoom;
     self.pan_target = None;
+    self.fit_target = None;
   }
 
   /// Act on a camera request from the app.
   fn apply(&mut self, request: CameraRequest) {
     match request {
-      CameraRequest::Fit => self.needs_fit = true,
+      // Eased, like a wheel zoom; the fits at startup and on a resize
+      // (`needs_fit`) stay instant.
+      CameraRequest::Fit => self.fit_pending = true,
       CameraRequest::Reveal(node) => self.reveal = Some(node),
       CameraRequest::Zoom(step) => {
         self.zoom_target = match step {
@@ -408,6 +418,7 @@ impl CanvasWidget {
         let size = self.last_size.unwrap_or_default();
         self.zoom_anchor = uncovered(size, self.insets).center();
         self.pan_target = None;
+        self.fit_target = None;
       }
     }
   }
@@ -420,6 +431,24 @@ impl CanvasWidget {
       self.reported_zoom = percent;
       percent
     })
+  }
+
+  /// Start easing towards a pending fit, once there are boxes to fit.
+  fn start_fit(&mut self) {
+    if !self.fit_pending {
+      return;
+    }
+    let (Some(bounds), Some(size)) = (
+      self.rects.values().copied().reduce(|a, b| a.union(b)),
+      self.last_size,
+    ) else {
+      return;
+    };
+    self.fit_pending = false;
+    if let Some(target) = fit(bounds, uncovered(size, self.insets)) {
+      self.fit_target = Some(target);
+      self.pan_target = None;
+    }
   }
 
   /// Start panning towards a pending [`Self::reveal`], if its node is placed
@@ -485,6 +514,7 @@ impl Widget for CanvasWidget {
           }
           if self.panned {
             self.pan_target = None;
+            self.fit_target = None;
             self.pan += p - last;
             ctx.request_render();
           }
@@ -538,6 +568,7 @@ impl Widget for CanvasWidget {
             (self.zoom_target * (dy * 0.1).exp()).clamp(ZOOM_MIN, ZOOM_MAX);
           self.zoom_anchor = p;
           self.pan_target = None;
+          self.fit_target = None;
           ctx.request_anim_frame();
         }
       }
@@ -556,11 +587,28 @@ impl Widget for CanvasWidget {
     let dt = (interval as f64 / 1e9).min(0.1);
     let ease = 1.0 - (-ZOOM_RATE * dt).exp();
     self.start_reveal();
+    self.start_fit();
 
-    let gap = (self.zoom_target / self.zoom).ln();
-    let step = if gap.abs() < 1e-3 { gap } else { gap * ease };
-    self.zoom_about(self.zoom_anchor, step.exp());
-    let mut moving = (self.zoom_target / self.zoom).ln().abs() >= 1e-3;
+    let mut moving = false;
+    if let Some((zoom, pan)) = self.fit_target {
+      // A fit moves zoom and pan together, straight to the fitted view; the
+      // anchored zoom below would drag the pan off course.
+      let (next_zoom, next_pan, arrived) =
+        ease_camera((self.zoom, self.pan), (zoom, pan), ease);
+      self.zoom = next_zoom;
+      self.pan = next_pan;
+      self.zoom_target = next_zoom;
+      if arrived {
+        self.fit_target = None;
+      } else {
+        moving = true;
+      }
+    } else {
+      let gap = (self.zoom_target / self.zoom).ln();
+      let step = if gap.abs() < 1e-3 { gap } else { gap * ease };
+      self.zoom_about(self.zoom_anchor, step.exp());
+      moving = (self.zoom_target / self.zoom).ln().abs() >= 1e-3;
+    }
 
     // Pans ease the same way, in screen pixels.
     if let Some(target) = self.pan_target {
@@ -578,7 +626,7 @@ impl Widget for CanvasWidget {
       ctx.submit_action::<CanvasAction>(CanvasAction::Zoomed(percent));
     }
     ctx.request_render();
-    if moving || self.reveal.is_some() {
+    if moving || self.reveal.is_some() || self.fit_pending {
       ctx.request_anim_frame();
     }
   }
@@ -1142,6 +1190,23 @@ fn fit(bounds: Rect, view: Rect) -> Option<(f64, Vec2)> {
   Some((zoom, pan))
 }
 
+/// One animation step of a camera (`(zoom, pan)`) easing towards `target`
+/// by the fraction `ease`: zoom in log space, so zooming in and out feel the
+/// same speed, and pan in screen pixels. Snaps onto the target once within
+/// a hair of it, and says whether it has arrived.
+fn ease_camera(
+  (zoom, pan): (f64, Vec2),
+  (to_zoom, to_pan): (f64, Vec2),
+  ease: f64,
+) -> (f64, Vec2, bool) {
+  let zoom_gap = (to_zoom / zoom).ln();
+  let pan_gap = to_pan - pan;
+  if zoom_gap.abs() < 1e-3 && pan_gap.hypot() < 0.5 {
+    return (to_zoom, to_pan, true);
+  }
+  (zoom * (zoom_gap * ease).exp(), pan + pan_gap * ease, false)
+}
+
 /// The pan that brings world-space `node` into screen-space `view` at
 /// `zoom`: `None` if it is already inside `view` with a [`VIEW_MARGIN`] to
 /// spare, else the pan that centres it.
@@ -1557,5 +1622,28 @@ mod tests {
     let centre =
       Affine::translate(target) * Affine::scale(zoom) * covered.center();
     assert_eq!(centre, view.center());
+  }
+
+  /// An eased fit closes on the fitted view a step at a time, zoom and pan
+  /// together, and lands on it exactly.
+  #[test]
+  fn fits_ease_zoom_and_pan_together() {
+    let target = (1.0, Vec2::new(300.0, 200.0));
+    let mut camera = (3.0, Vec2::new(-500.0, 40.0));
+    let first = ease_camera(camera, target, 0.25);
+    assert!(!first.2);
+    assert!(first.0 < 3.0 && first.0 > 1.0, "zoom moves part of the way");
+    assert!(first.1.x > -500.0 && first.1.x < 300.0, "pan does too");
+    let mut steps = 0;
+    loop {
+      let (zoom, pan, arrived) = ease_camera(camera, target, 0.25);
+      camera = (zoom, pan);
+      steps += 1;
+      if arrived {
+        break;
+      }
+      assert!(steps < 200, "never arrived");
+    }
+    assert_eq!(camera, target, "lands exactly");
   }
 }

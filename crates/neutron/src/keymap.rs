@@ -32,7 +32,6 @@ use xilem::{
 use crate::{
   canvas::ZoomStep,
   focus::{self, FieldKey},
-  query::QueryEdit,
 };
 
 /// Something the app does in response to a key.
@@ -47,8 +46,6 @@ pub enum Command {
   /// Back out of whatever is open: link mode, then a popover, then the
   /// selection.
   Escape,
-  /// Edit the open query (the quest switcher's search).
-  Query(QueryEdit),
   /// Move the open query's highlight up (negative) or down.
   Move(isize),
   /// Act on the open query's highlighted result.
@@ -105,8 +102,9 @@ pub enum Binding {
 pub struct Flags {
   /// Whether a node is selected.
   pub selection: bool,
-  /// Whether a popover with a typed query is open: typing, Backspace, the
-  /// arrows and Enter then drive the query.
+  /// Whether a popover with a search list is open (the palette, the quest
+  /// switcher): the arrows and Enter then drive its list, and single
+  /// letters are not shortcuts.
   pub query:     bool,
 }
 
@@ -137,10 +135,15 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
   };
   let plain = !cmd && !m.alt() && !m.meta() && !m.ctrl();
 
-  if flags.query
-    && let Some(binding) = resolve_query(&key.key, plain, cmd || m.alt())
-  {
-    return Some(binding);
+  if flags.query {
+    if let Some(binding) = resolve_query(&key.key) {
+      return Some(binding);
+    }
+    // Typing belongs to the search field; a letter that reaches here (the
+    // field lost focus) is not a shortcut while the list is up.
+    if plain && matches!(key.key, Key::Character(_)) {
+      return None;
+    }
   }
 
   let selected = flags.selection;
@@ -208,19 +211,14 @@ pub fn resolve(key: &KeyboardEvent, flags: Flags) -> Option<Binding> {
   }
 }
 
-/// What `key` means to an open query, if it is one of the keys a query
-/// takes over. `plain` is no modifiers but Shift; `word` is the modifier
-/// that makes Backspace delete a word.
-fn resolve_query(key: &Key, plain: bool, word: bool) -> Option<Binding> {
+/// What `key` means to an open search list: the keys its single-line
+/// search field lets through.
+fn resolve_query(key: &Key) -> Option<Binding> {
   use Binding::Run;
-  let edit = |e| Some(Run(Command::Query(e)));
   match key {
     Key::Named(NamedKey::ArrowUp) => Some(Run(Command::Move(-1))),
     Key::Named(NamedKey::ArrowDown) => Some(Run(Command::Move(1))),
     Key::Named(NamedKey::Enter) => Some(Run(Command::Accept)),
-    Key::Named(NamedKey::Backspace) if word => edit(QueryEdit::DeleteWord),
-    Key::Named(NamedKey::Backspace) => edit(QueryEdit::Backspace),
-    Key::Character(s) if plain => edit(QueryEdit::Insert(s.clone())),
     _ => None,
   }
 }
@@ -263,10 +261,6 @@ impl Widget for KeymapWidget {
   ) {
     let binding = match event {
       TextEvent::Keyboard(key) => resolve(key, self.flags),
-      // Pasting into an open query types the pasted text.
-      TextEvent::ClipboardPaste(text) if self.flags.query => Some(
-        Binding::Run(Command::Query(QueryEdit::Insert(text.clone()))),
-      ),
       _ => None,
     };
     match binding {
@@ -484,24 +478,11 @@ mod tests {
     down(Key::Character(s.into()), Code::Unidentified, m)
   }
 
-  /// With a query open, typing and the list keys drive it, even though a
-  /// node is selected and those keys would otherwise delete or rename it.
+  /// With a search list open, the keys its field passes through drive the
+  /// list, letters are not shortcuts, and chords still work.
   #[test]
-  fn an_open_query_takes_typing_and_list_keys() {
-    use Command::{Accept, Move, Query};
-    assert_eq!(
-      resolve(&character("S", Modifiers::SHIFT), QUERY),
-      Some(Binding::Run(Query(QueryEdit::Insert("S".into()))))
-    );
-    assert_eq!(
-      resolve(&named(NamedKey::Backspace), QUERY),
-      Some(Binding::Run(Query(QueryEdit::Backspace)))
-    );
-    let word = down(Key::Named(NamedKey::Backspace), Code::Backspace, CMD);
-    assert_eq!(
-      resolve(&word, QUERY),
-      Some(Binding::Run(Query(QueryEdit::DeleteWord)))
-    );
+  fn an_open_search_list_takes_the_list_keys() {
+    use Command::{Accept, Move};
     assert_eq!(
       resolve(&named(NamedKey::ArrowDown), QUERY),
       Some(Binding::Run(Move(1)))
@@ -510,7 +491,8 @@ mod tests {
       resolve(&named(NamedKey::Enter), QUERY),
       Some(Binding::Run(Accept))
     );
-    // Escape still backs out, and chords still reach the rest of the map.
+    // A stray letter does nothing, though a node is selected.
+    assert_eq!(resolve(&character("n", Modifiers::empty()), QUERY), None);
     assert_eq!(
       resolve(&named(NamedKey::Escape), QUERY),
       Some(Binding::Run(Command::Escape))
@@ -576,11 +558,8 @@ mod tests {
       resolve(&r, SELECTED),
       Some(Binding::Focus(FieldKey::LinkSearch))
     );
-    // In an open query it is just a letter.
-    assert_eq!(
-      resolve(&r, QUERY),
-      Some(Binding::Run(Command::Query(QueryEdit::Insert("r".into()))))
-    );
+    // Not while a search list is open.
+    assert_eq!(resolve(&r, QUERY), None);
   }
 
   #[test]
@@ -600,11 +579,8 @@ mod tests {
       resolve(&slash, Flags::default()),
       Some(Binding::Run(Command::Palette { nodes_only: true }))
     );
-    // Typed into a query, a slash is just text.
-    assert_eq!(
-      resolve(&slash, QUERY),
-      Some(Binding::Run(Command::Query(QueryEdit::Insert("/".into()))))
-    );
+    // Not while a search list is open.
+    assert_eq!(resolve(&slash, QUERY), None);
   }
 
   #[test]

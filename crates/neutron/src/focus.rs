@@ -20,6 +20,10 @@ pub enum FieldKey {
   Title,
   /// The inspector's requirement search, which arms link mode.
   LinkSearch,
+  /// The command palette's search.
+  PaletteSearch,
+  /// The quest switcher's search.
+  QuestSearch,
 }
 
 static FIELDS: LazyLock<Mutex<HashMap<FieldKey, WidgetId>>> =

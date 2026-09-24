@@ -16,7 +16,6 @@ mod hover_row;
 mod icons;
 mod keymap;
 mod query;
-mod query_field;
 mod state;
 mod surface;
 mod theme;

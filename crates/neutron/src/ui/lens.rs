@@ -2,8 +2,9 @@
 //! and the switcher popover it opens.
 //!
 //! The lens is a mode, so it is always on screen and readable at a glance.
-//! The switcher filters as you type (the key map feeds its search box), the
-//! arrow keys and Enter pick a row, and a query no quest matches becomes the
+//! The switcher filters as you type in its search field, which it focuses
+//! on opening; the arrow keys (which pass through the field) and Enter pick
+//! a row, and a query no quest matches becomes the
 //! name of a new quest. Renaming the active quest lives in the switcher
 //! rather than on the pill, so the pill cannot be edited by accident.
 
@@ -19,8 +20,8 @@ use xilem::{
 use super::controls::{body, fill, label, muted, row_button, section};
 use crate::{
   field::field,
+  focus::FieldKey,
   icons::{Icon, icon},
-  query_field::query_field,
   state::{AppState, QuestChoice},
   surface::{Level, surface},
   tokens::{radius, size, space, text},
@@ -123,7 +124,12 @@ pub(super) fn switcher(
     Level::Popover,
     space::S,
     flex_col((
-      query_field(query.text, "Find or create a quest", theme),
+      field(query.text, theme, |s: &mut AppState, v| s.set_quest_text(v))
+        .placeholder("Find or create a quest")
+        .focus_key(FieldKey::QuestSearch)
+        .on_enter(|s: &mut AppState, _| s.accept_quest())
+        // Escape leaves the field and closes the switcher in one press.
+        .escape_bubbles(true),
       rename,
       flex_col(list)
         .cross_axis_alignment(CrossAxisAlignment::Fill)

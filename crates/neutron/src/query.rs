@@ -1,21 +1,9 @@
 //! A typed query over a list: the text, which result is highlighted, and
 //! how well an item matches.
 //!
-//! The quest switcher (and the command palette) take their keystrokes from
-//! the key map rather than from a focused text field, because a text field
-//! consumes the arrow keys that move the highlight. So the query's editing
-//! lives here, as plain state the key map's commands act on.
-
-/// An edit to a query's text.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum QueryEdit {
-  /// Append typed or pasted text.
-  Insert(String),
-  /// Delete the last character.
-  Backspace,
-  /// Delete back to the start of the last word.
-  DeleteWord,
-}
+//! The quest switcher and the command palette each type into a search
+//! field; the arrow keys pass through it (it is single-line) to move the
+//! highlight here, via the key map.
 
 /// A query's text and the highlighted result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -27,26 +15,13 @@ pub struct Query {
 }
 
 impl Query {
-  /// Apply an edit. Any change to the text puts the highlight back on the
-  /// first (best) result.
-  pub fn edit(&mut self, edit: &QueryEdit) {
-    match edit {
-      // Control characters (a stray Ctrl chord) are not text.
-      QueryEdit::Insert(s) => {
-        self.text.extend(s.chars().filter(|c| !c.is_control()));
-      }
-      QueryEdit::Backspace => {
-        self.text.pop();
-      }
-      QueryEdit::DeleteWord => {
-        let trimmed = self.text.trim_end().len();
-        let start = self.text[..trimmed]
-          .rfind(char::is_whitespace)
-          .map_or(0, |i| i + 1);
-        self.text.truncate(start);
-      }
+  /// Replace the text, as typed into the search field. A change puts the
+  /// highlight back on the first (best) result.
+  pub fn set_text(&mut self, text: String) {
+    if text != self.text {
+      self.text = text;
+      self.highlight = 0;
     }
-    self.highlight = 0;
   }
 
   /// Move the highlight by `by` among `len` results, stopping at the ends.
@@ -97,31 +72,14 @@ mod tests {
   use super::*;
 
   #[test]
-  fn editing_resets_the_highlight() {
+  fn changing_the_text_resets_the_highlight() {
     let mut q = Query::default();
-    q.edit(&QueryEdit::Insert("ship v".into()));
+    q.set_text("ship".into());
     q.move_highlight(2, 5);
-    assert_eq!(q.highlight, 2);
-    q.edit(&QueryEdit::Insert("1".into()));
-    assert_eq!(q.text, "ship v1");
+    q.set_text("ship".into());
+    assert_eq!(q.highlight, 2, "same text, same highlight");
+    q.set_text("ship v1".into());
     assert_eq!(q.highlight, 0);
-    q.edit(&QueryEdit::Backspace);
-    assert_eq!(q.text, "ship v");
-    q.edit(&QueryEdit::DeleteWord);
-    assert_eq!(q.text, "ship ");
-    q.edit(&QueryEdit::DeleteWord);
-    assert_eq!(q.text, "");
-    // Deleting from nothing is harmless.
-    q.edit(&QueryEdit::Backspace);
-    q.edit(&QueryEdit::DeleteWord);
-    assert_eq!(q.text, "");
-  }
-
-  #[test]
-  fn control_characters_are_not_inserted() {
-    let mut q = Query::default();
-    q.edit(&QueryEdit::Insert("a\u{1a}b".into()));
-    assert_eq!(q.text, "ab");
   }
 
   #[test]

@@ -1,8 +1,8 @@
 //! The command palette: one search over nodes, commands and quests, opened
 //! with Ctrl+K (or `/` for nodes only) or the search button in the top bar.
 //!
-//! Its search box is fed by the key map, like the quest switcher's, so the
-//! arrow keys move the highlight and Enter runs it.
+//! Its search field is focused on opening; the arrow keys pass through it
+//! to move the highlight, and Enter runs the highlighted row.
 
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
@@ -15,9 +15,10 @@ use xilem::{
 
 use super::controls::{body, fill, muted, row_button, state_dot};
 use crate::{
+  field::field,
+  focus::FieldKey,
   icons::{Icon, icon},
   keymap::chord,
-  query_field::query_field,
   state::{AppState, PaletteRow, RowKind},
   surface::{Level, surface},
   theme::Theme,
@@ -77,15 +78,17 @@ pub(super) fn palette(
     Level::Popover,
     space::S,
     flex_col((
-      query_field(
-        query.text,
-        if data.palette_nodes_only() {
-          "Go to a node"
-        } else {
-          "Search nodes, commands and quests"
-        },
-        theme,
-      ),
+      field(query.text, theme, |s: &mut AppState, v| {
+        s.set_palette_text(v)
+      })
+      .placeholder(if data.palette_nodes_only() {
+        "Go to a node"
+      } else {
+        "Search nodes, commands and quests"
+      })
+      .focus_key(FieldKey::PaletteSearch)
+      .on_enter(|s: &mut AppState, _| s.accept_palette())
+      .escape_bubbles(true),
       flex_col(list)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
         .gap(space::HAIR.px()),

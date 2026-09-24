@@ -11,6 +11,7 @@ use base::{NodeId, NodeState, QuestId};
 use super::AppState;
 use crate::{
   canvas::ZoomStep,
+  focus::FieldKey,
   keymap::chord,
   query::{self, Query},
   theme,
@@ -87,6 +88,11 @@ impl AppState {
   /// The palette's query, for its search box and highlight.
   pub fn palette_query(&self) -> &Query { &self.palette_query }
 
+  /// The palette's search field changed.
+  pub fn set_palette_text(&mut self, text: String) {
+    self.palette_query.set_text(text);
+  }
+
   /// Whether the palette was opened to search nodes only (with `/`).
   pub fn palette_nodes_only(&self) -> bool { self.palette_nodes_only }
 
@@ -97,6 +103,7 @@ impl AppState {
     self.palette_query = Query::default();
     self.palette_nodes_only = nodes_only;
     self.palette_open = true;
+    self.focus_requests.request(FieldKey::PaletteSearch);
   }
 
   /// Remember `node` as recently selected, for the empty palette.

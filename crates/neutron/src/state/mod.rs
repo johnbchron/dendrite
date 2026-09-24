@@ -770,6 +770,7 @@ impl AppState {
     self.close_popovers();
     self.quest_query = Query::default();
     self.picker_open = true;
+    self.focus_requests.request(FieldKey::QuestSearch);
   }
 
   /// Add a dependency requirement from the selected node to `target`.
@@ -819,6 +820,18 @@ impl AppState {
 
   /// The quest switcher's query, for its search box and highlight.
   pub fn quest_query(&self) -> &Query { &self.quest_query }
+
+  /// Choose the switcher's highlighted row (Enter).
+  pub fn accept_quest(&mut self) {
+    let rows = self.quest_rows();
+    let pick = rows[self.quest_query.highlighted(rows.len())].choice;
+    self.choose_quest(pick);
+  }
+
+  /// The quest switcher's search field changed.
+  pub fn set_quest_text(&mut self, text: String) {
+    self.quest_query.set_text(text);
+  }
 
   /// Act on a quest switcher row.
   pub fn choose_quest(&mut self, choice: QuestChoice) {
@@ -931,13 +944,6 @@ impl AppState {
       Command::Escape => self.escape(),
       // The palette sits above the quest switcher, so it takes the query
       // keys when both could.
-      Command::Query(edit) => {
-        if self.palette_open {
-          self.palette_query.edit(&edit);
-        } else if self.picker_open {
-          self.quest_query.edit(&edit);
-        }
-      }
       Command::Move(by) => {
         if self.palette_open {
           let len = self.palette_rows().0.len();
@@ -951,9 +957,7 @@ impl AppState {
         if self.palette_open {
           self.accept_palette();
         } else if self.picker_open {
-          let rows = self.quest_rows();
-          let pick = rows[self.quest_query.highlighted(rows.len())].choice;
-          self.choose_quest(pick);
+          self.accept_quest();
         }
       }
       Command::New { condition } => {
@@ -1405,7 +1409,6 @@ impl AppState {
 #[cfg(test)]
 mod tests {
   use super::{palette::PaletteAct, *};
-  use crate::query::QueryEdit;
 
   /// A store holding the small demo graph the app used to seed on first run:
   ///
@@ -1703,7 +1706,8 @@ mod tests {
     assert!(state.quest_rows()[0].current, "the global view is current");
 
     for c in ["l", "a", "u"] {
-      state.run(Command::Query(QueryEdit::Insert(c.into())));
+      let text = format!("{}{c}", state.quest_query().text);
+      state.set_quest_text(text);
     }
     assert_eq!(labels(&state), [
       "v1 Launch",
@@ -1715,7 +1719,7 @@ mod tests {
 
     // A new quest from the query, chosen with the arrow keys.
     state.toggle_picker();
-    state.run(Command::Query(QueryEdit::Insert("Garden".into())));
+    state.set_quest_text("Garden".into());
     state.run(Command::Move(5)); // clamps to the last row
     state.run(Command::Accept);
     assert_eq!(state.active_quest_summary().unwrap().0, "Garden");
@@ -1980,9 +1984,7 @@ mod tests {
     assert!(rows.iter().all(|r| r.kind != RowKind::Quest));
 
     // Typing ranks all three kinds; a quest shows as "Switch to ...".
-    for c in ["l", "a", "u", "n"] {
-      state.run(Command::Query(QueryEdit::Insert(c.into())));
-    }
+    state.set_palette_text("laun".into());
     let (rows, _) = state.palette_rows();
     assert!(rows.iter().any(|r| r.label == "Switch to v1 Launch"));
     // Enter on it switches the lens and closes the palette.
@@ -2016,7 +2018,7 @@ mod tests {
   fn the_slash_palette_lists_nodes_only() {
     let mut state = AppState::new(demo_store());
     state.run(Command::Palette { nodes_only: true });
-    state.run(Command::Query(QueryEdit::Insert("e".into())));
+    state.set_palette_text("e".into());
     let (rows, total) = state.palette_rows();
     assert!(total > 0);
     assert!(rows.iter().all(|r| r.kind == RowKind::Node));

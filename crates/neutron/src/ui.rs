@@ -33,8 +33,10 @@ use crate::{
   canvas::{CanvasAction, canvas},
   divider::{DividerAction, divider},
   field::field,
+  focus::FieldKey,
   font,
   icons::{Icon, icon},
+  keymap::keymap,
   state::{AppState, EdgeRow},
   theme::Theme,
   tokens::{radius, space, text},
@@ -314,9 +316,14 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(0.0.px());
 
-  flex_col((toolbar(data), body.flex(1.0)))
+  let window = flex_col((toolbar(data), body.flex(1.0)))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(0.0.px())
+    .gap(0.0.px());
+  // Outermost, so it is the window's root widget and receives every key
+  // that no focused field handles.
+  keymap(data.key_flags(), window, |s: &mut AppState, command| {
+    s.run(command)
+  })
 }
 
 /// The slim window-wide toolbar. These commands act on the document, not on
@@ -570,6 +577,7 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       s.rename_selected_to(v);
     })
     .size(text::TITLE)
+    .focus_key(FieldKey::Title)
     .on_enter(|s: &mut AppState, _| s.finish_rename_selected()),
     flex_row((
       chip(

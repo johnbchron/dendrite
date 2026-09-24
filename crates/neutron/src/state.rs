@@ -21,6 +21,7 @@ use layout::{LayoutConfig, Slot};
 
 use crate::{
   canvas::{CanvasScene, RenderEdge, RenderNode},
+  keymap::{self, Command},
   theme::{self, Theme},
 };
 
@@ -479,6 +480,36 @@ impl AppState {
   pub fn can_redo(&self) -> bool { self.lock().can_redo() }
 
   // --- commands ---------------------------------------------------------
+
+  /// What the key map needs to know to resolve a key.
+  pub fn key_flags(&self) -> keymap::Flags {
+    keymap::Flags {
+      selection: self.selected.is_some(),
+    }
+  }
+
+  /// Run a command from the key map.
+  pub fn run(&mut self, command: Command) {
+    match command {
+      Command::Undo => self.undo(),
+      Command::Redo => self.redo(),
+      Command::Delete => self.delete_selected(),
+      Command::Escape => self.escape(),
+    }
+  }
+
+  /// Back out one step: cancel link mode, else close an open popover, else
+  /// clear the selection.
+  pub fn escape(&mut self) {
+    if self.linking {
+      self.cancel_link();
+    } else if self.palette_open || self.picker_open {
+      self.palette_open = false;
+      self.picker_open = false;
+    } else {
+      self.select(None);
+    }
+  }
 
   fn commit(&mut self, events: Vec<Event>) {
     self.live_edit = None;
@@ -1059,6 +1090,38 @@ mod tests {
     assert!(!Arc::ptr_eq(&s1, &state.scene()));
     state.undo();
     assert!(!Arc::ptr_eq(&d1, &derivations(&state)));
+  }
+
+  #[test]
+  fn escape_backs_out_one_layer_at_a_time() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    state.select(Some(backend));
+    state.begin_link();
+    state.toggle_picker();
+
+    state.run(Command::Escape);
+    assert!(!state.is_linking(), "link mode goes first");
+    assert!(state.picker_open());
+    state.run(Command::Escape);
+    assert!(!state.picker_open(), "then popovers");
+    assert_eq!(state.selected, Some(backend));
+    state.run(Command::Escape);
+    assert_eq!(state.selected, None, "then the selection");
+    assert!(!state.key_flags().selection);
+  }
+
+  #[test]
+  fn delete_and_undo_commands_round_trip() {
+    let mut state = AppState::new(demo_store());
+    let backend = node_named(&state, "Build backend");
+    state.select(Some(backend));
+    state.run(Command::Delete);
+    assert!(state.lock().graph().node(backend).is_none());
+    state.run(Command::Undo);
+    assert!(state.lock().graph().node(backend).is_some());
+    state.run(Command::Redo);
+    assert!(state.lock().graph().node(backend).is_none());
   }
 
   #[test]

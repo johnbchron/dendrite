@@ -17,8 +17,9 @@ use masonry::{
   accesskit::{Node as AccessNode, Role},
   core::{
     AccessCtx, ArcStr, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    NewWidget, PaintCtx, Properties, PropertiesMut, PropertiesRef, RegisterCtx,
-    StyleProperty, TextEvent, Update, UpdateCtx, Widget, WidgetMut, WidgetPod,
+    NewWidget, PaintCtx, PointerEvent, Properties, PropertiesMut,
+    PropertiesRef, RegisterCtx, StyleProperty, TextEvent, Update, UpdateCtx,
+    Widget, WidgetMut, WidgetPod,
     keyboard::{Key, KeyState, NamedKey},
   },
   kurbo::{Affine, RoundedRect, Size, Stroke},
@@ -34,14 +35,24 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
-use crate::{font, theme::Theme, tokens::radius};
+use crate::{
+  focus::{self, FieldKey},
+  font,
+  theme::Theme,
+  tokens::radius,
+};
 
 /// What the wrapper itself reports, alongside the text area's own
 /// [`TextAction`]s.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldAction {
-  /// The field gained (`true`) or lost (`false`) keyboard focus.
-  Focus(bool),
+  /// The field gained or lost keyboard focus.
+  Focus {
+    /// Whether the field now has focus.
+    focused:    bool,
+    /// Whether a click in the field caused it (rather than the key map).
+    by_pointer: bool,
+  },
 }
 
 // --- the widget ---------------------------------------------------------
@@ -49,8 +60,11 @@ pub enum FieldAction {
 /// Paints the field's frame around a transparent Masonry `TextInput`, and
 /// reports focus changes.
 pub struct FieldWidget {
-  child:  WidgetPod<widgets::TextInput>,
-  colors: Colors,
+  child:   WidgetPod<widgets::TextInput>,
+  colors:  Colors,
+  /// Set between a press inside the field and the focus change it causes,
+  /// so the view can tell a click from keyboard focus.
+  pressed: bool,
 }
 
 /// The frame's colours, all taken from the theme.
@@ -76,6 +90,7 @@ impl FieldWidget {
     Self {
       child: child.to_pod(),
       colors,
+      pressed: false,
     }
   }
 
@@ -107,6 +122,20 @@ impl Widget for FieldWidget {
     }
   }
 
+  fn on_pointer_event(
+    &mut self,
+    _ctx: &mut EventCtx<'_>,
+    _props: &mut PropertiesMut<'_>,
+    event: &PointerEvent,
+  ) {
+    // Presses bubble up from the text area before focus moves to it.
+    match event {
+      PointerEvent::Down(_) => self.pressed = true,
+      PointerEvent::Up(_) | PointerEvent::Cancel(_) => self.pressed = false,
+      _ => {}
+    }
+  }
+
   fn update(
     &mut self,
     ctx: &mut UpdateCtx<'_>,
@@ -114,7 +143,10 @@ impl Widget for FieldWidget {
     event: &Update,
   ) {
     if let Update::ChildFocusChanged(focused) = event {
-      ctx.submit_action::<FieldAction>(FieldAction::Focus(*focused));
+      ctx.submit_action::<FieldAction>(FieldAction::Focus {
+        focused:    *focused,
+        by_pointer: std::mem::take(&mut self.pressed),
+      });
       ctx.request_paint_only();
     }
   }
@@ -203,6 +235,7 @@ where
     placeholder: ArcStr::default(),
     on_changed: Box::new(on_changed),
     on_enter: None,
+    focus_key: None,
   }
 }
 
@@ -215,6 +248,7 @@ pub struct Field<State, Action> {
   placeholder: ArcStr,
   on_changed:  Callback<State, Action, String>,
   on_enter:    Option<Callback<State, Action, String>>,
+  focus_key:   Option<FieldKey>,
 }
 
 impl<State, Action> Field<State, Action> {
@@ -236,6 +270,12 @@ impl<State, Action> Field<State, Action> {
     F: Fn(&mut State, String) -> Action + Send + Sync + 'static,
   {
     self.on_enter = Some(Box::new(f));
+    self
+  }
+
+  /// Let the key map focus this field by `key` (see [`crate::focus`]).
+  pub fn focus_key(mut self, key: FieldKey) -> Self {
+    self.focus_key = Some(key);
     self
   }
 
@@ -274,7 +314,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     .with_placeholder(self.placeholder.clone());
     // The text area's edits are routed to this view, as are the wrapper's
     // focus reports.
-    ctx.record_action(input.area_pod().id());
+    let area_id = input.area_pod().id();
+    ctx.record_action(area_id);
+    if let Some(key) = self.focus_key {
+      focus::register(key, area_id);
+    }
     let input = NewWidget::new_with_props(input, self.input_props());
     let pod = ctx.with_action_widget(|ctx| {
       ctx.create_pod(FieldWidget::new(input, Colors::from_theme(self.theme)))
@@ -332,6 +376,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     {
       let mut input = FieldWidget::child_mut(&mut element);
       let area = widgets::TextInput::text_mut(&mut input);
+      if let Some(key) = self.focus_key {
+        focus::unregister(key, area.ctx.widget_id());
+      }
       ctx.teardown_leaf(area);
     }
     ctx.teardown_leaf(element);
@@ -341,7 +388,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     &self,
     _: &mut (),
     message: &mut MessageContext,
-    _: Mut<'_, Self::Element>,
+    mut element: Mut<'_, Self::Element>,
     app_state: &mut State,
   ) -> MessageResult<Action> {
     if let Some(action) = message.take_message::<TextAction>() {
@@ -355,7 +402,20 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         },
       };
     }
-    match message.take_message::<FieldAction>() {
+    match message.take_message::<FieldAction>().map(|a| *a) {
+      // Focus from the keyboard selects the whole text, so typing replaces
+      // it, as a rename field should; a click keeps the caret where it
+      // landed.
+      Some(FieldAction::Focus {
+        focused: true,
+        by_pointer: false,
+      }) => {
+        let mut input = FieldWidget::child_mut(&mut element);
+        let mut area = widgets::TextInput::text_mut(&mut input);
+        let len: usize = area.widget.text().into_iter().map(str::len).sum();
+        widgets::TextArea::select_byte_range(&mut area, 0, len);
+        MessageResult::Nop
+      }
       Some(_) => MessageResult::Nop,
       None => MessageResult::Stale,
     }

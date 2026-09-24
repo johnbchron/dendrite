@@ -8,8 +8,10 @@
 mod canvas;
 mod divider;
 mod field;
+mod focus;
 mod font;
 mod icons;
+mod keymap;
 mod state;
 mod theme;
 mod tokens;

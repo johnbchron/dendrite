@@ -60,6 +60,10 @@ const ZOOM_MAX: f64 = 4.0;
 /// settles in roughly a fifth of a second and rapid notches blend together
 /// rather than stepping.
 const ZOOM_RATE: f64 = 16.0;
+/// Screen pixels beyond the viewport that still count as on screen when
+/// culling, so a selection outline or an edge's stroke that pokes past a
+/// box is never cut off at the window edge.
+const CULL_MARGIN: f64 = 16.0;
 
 // --- render data --------------------------------------------------------
 
@@ -484,6 +488,7 @@ impl Widget for CanvasWidget {
       self.needs_fit = false;
     }
     let tf = self.transform();
+    let view = visible_world(tf, size);
 
     // Background.
     scene.fill(
@@ -494,16 +499,21 @@ impl Widget for CanvasWidget {
       &Rect::from_origin_size((0.0, 0.0), (size.width, size.height)),
     );
 
-    // Edges under nodes.
+    // Edges under nodes. Only what can be seen is encoded: at scale most of
+    // a big graph is off screen, and each label is a text run to render.
     for (edge, route) in self.scene.edges.iter().zip(&self.routes) {
-      if let Some(route) = route {
+      if let Some(route) = route
+        && route.bounds().overlaps(view)
+      {
         paint_edge(scene, tf, edge, route, self.theme);
       }
     }
 
     // Nodes on top.
     for node in &self.scene.nodes {
-      if let Some(&rect) = self.rects.get(&node.id) {
+      if let Some(&rect) = self.rects.get(&node.id)
+        && rect.overlaps(view)
+      {
         self.paint_node(scene, tf, node, rect);
       }
     }
@@ -630,6 +640,9 @@ const TIP_GAP: f64 = 2.0;
 const PORT_PITCH: f64 = 16.0;
 /// Fraction of a side's length that endpoints may spread across.
 const PORT_SPAN: f64 = 0.7;
+/// Shortest handle on an edge's curves, so a hop between close rows still
+/// bends rather than kinking.
+const MIN_REACH: f64 = 24.0;
 
 /// Where an edge leaves its dependent and enters its requirement, and which
 /// way it travels there.
@@ -646,6 +659,22 @@ struct Route {
   /// skipped row, as `(entry, exit)` in travel order. Following these keeps
   /// the edge in the gap the layout reserved instead of crossing nodes.
   via:   Vec<(Point, Point)>,
+}
+
+impl Route {
+  /// A box containing everything [`paint_edge`] draws for this route: its
+  /// endpoints and channels, grown by how far a curve's handles and the
+  /// arrowhead can reach past them.
+  fn bounds(&self) -> Rect {
+    let mut r = Rect::from_points(self.start, self.end);
+    for &(entry, exit) in &self.via {
+      r = r.union_pt(entry).union_pt(exit);
+    }
+    // Handles reach at most `MIN_REACH` past an endpoint along the axis;
+    // sideways, the curve stays within its endpoints.
+    let pad = MIN_REACH + HEAD_HALF_W;
+    r.inflate(pad, pad)
+  }
 }
 
 /// The side of a box an edge attaches to.
@@ -790,7 +819,7 @@ fn edge_curve(route: &Route) -> (BezPath, Point) {
   // Handles reach halfway along the travel axis, with a floor so a short
   // hop between close rows still bends rather than kinking.
   let bend = |path: &mut BezPath, from: Point, to: Point| {
-    let reach = ((to - from).dot(axis).abs() / 2.0).max(24.0);
+    let reach = ((to - from).dot(axis).abs() / 2.0).max(MIN_REACH);
     path.curve_to(from + axis * reach, to - axis * reach, to);
   };
   let mut path = BezPath::new();
@@ -836,6 +865,14 @@ fn paint_edge(
   head.line_to(base - perp);
   head.close_path();
   scene.fill(Fill::NonZero, tf, &Brush::Solid(color), None, &head);
+}
+
+/// The world-space area the viewport shows under `tf`, plus
+/// [`CULL_MARGIN`].
+fn visible_world(tf: Affine, size: Size) -> Rect {
+  let screen = Rect::from_origin_size(Point::ORIGIN, size)
+    .inflate(CULL_MARGIN, CULL_MARGIN);
+  tf.inverse().transform_rect_bbox(screen)
 }
 
 // --- the view -----------------------------------------------------------
@@ -1107,5 +1144,51 @@ mod tests {
       (Point::new(210.0, 250.0), Point::new(210.0, 200.0)),
       (Point::new(200.0, 150.0), Point::new(200.0, 100.0)),
     ]);
+  }
+
+  /// Culling works in world space: the visible area follows pan and zoom,
+  /// with a margin so outlines at the window edge are kept.
+  #[test]
+  fn visible_world_follows_pan_and_zoom() {
+    let size = Size::new(800.0, 600.0);
+    let m = CULL_MARGIN;
+    let identity = visible_world(Affine::IDENTITY, size);
+    assert_eq!(identity, Rect::new(-m, -m, 800.0 + m, 600.0 + m));
+
+    // Zoomed to 2x and panned: the view covers half the world, offset.
+    let tf = Affine::translate((100.0, 50.0)) * Affine::scale(2.0);
+    let v = visible_world(tf, size);
+    assert_eq!(
+      v,
+      Rect::new(
+        (-m - 100.0) / 2.0,
+        (-m - 50.0) / 2.0,
+        (800.0 + m - 100.0) / 2.0,
+        (600.0 + m - 50.0) / 2.0,
+      )
+    );
+    assert!(Rect::new(0.0, 0.0, 10.0, 10.0).overlaps(v));
+    assert!(!Rect::new(1000.0, 0.0, 1100.0, 50.0).overlaps(v));
+  }
+
+  /// An edge is kept while any of it (curve, channel, arrowhead) could
+  /// show, including a channel far from both ends.
+  #[test]
+  fn route_bounds_cover_the_whole_drawn_edge() {
+    let route = Route {
+      start: Point::new(0.0, 0.0),
+      end:   Point::new(0.0, 400.0),
+      axis:  Vec2::new(0.0, 1.0),
+      via:   vec![(Point::new(300.0, 100.0), Point::new(300.0, 300.0))],
+    };
+    let b = route.bounds();
+    let (curve, tip) = edge_curve(&route);
+    use masonry::kurbo::Shape as _;
+    let drawn = curve.bounding_box().union_pt(tip);
+    assert!(
+      b.contains(drawn.origin()) && b.contains(Point::new(drawn.x1, drawn.y1))
+    );
+    // A view that only sees the detour still keeps the edge.
+    assert!(b.overlaps(Rect::new(290.0, 150.0, 310.0, 160.0)));
   }
 }

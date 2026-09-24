@@ -263,6 +263,22 @@ pub(super) fn swatch(
     .border_width(1.0)
 }
 
+/// A node's state as a small dot in its border colour, as the canvas
+/// draws it.
+pub(super) fn state_dot(
+  state: NodeState,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  let (fill, border) = theme.for_state(state);
+  sized_box(flex_col(()))
+    .width(10.0.px())
+    .height(10.0.px())
+    .corner_radius(radius::PILL)
+    .background_color(fill)
+    .border_color(border)
+    .border_width(2.0)
+}
+
 /// Human-readable label for a derived node state.
 pub(super) fn state_str(state: NodeState) -> &'static str {
   match state {

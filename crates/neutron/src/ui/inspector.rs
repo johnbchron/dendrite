@@ -18,12 +18,13 @@ use xilem::{
 
 use super::controls::{
   body, btn, chip, fill, icon_btn, label, muted, primary_btn, row_btn,
-  row_button, section, spacer, state_str,
+  row_button, section, spacer, state_dot, state_str,
 };
 use crate::{
   divider::{DividerAction, divider},
   field::field,
   focus::FieldKey,
+  hover_row::hover_row,
   icons::{Icon, icon},
   state::{AppState, EdgeRow, Reason},
   surface::{Level, surface},
@@ -32,9 +33,9 @@ use crate::{
   tooltip::{Anchor, tooltip},
 };
 
-/// A list of edges incident to the selection — either direction — one row per
-/// edge with a button that removes it. The mark reflects whether the node at
-/// the far end is satisfied.
+/// A list of edges incident to the selection — either direction — one row
+/// per edge. A row shows the far node's state as a dot and goes to that node
+/// when pressed; its remove button appears while it is hovered.
 fn edge_list(
   rows: &[EdgeRow],
   theme: &'static Theme,
@@ -42,31 +43,41 @@ fn edge_list(
   let mut items: Vec<_> = rows
     .iter()
     .map(|row| {
-      let (mark, tint) = if row.satisfied {
-        (Icon::Check, theme.done.1)
-      } else {
-        (Icon::Square, theme.muted)
-      };
-      let edge = row.edge;
-      flex_row((
-        icon(mark, text::BODY, tint),
-        fill(body(row.name.clone(), theme)),
-        icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
-          s.remove_edge(edge)
-        }),
-      ))
-      .must_fill_major_axis(true)
-      .cross_axis_alignment(CrossAxisAlignment::Center)
-      .gap(space::S.px())
+      let (edge, other) = (row.edge, row.other);
+      hover_row(
+        row_button(
+          theme,
+          false,
+          flex_row((
+            state_dot(row.state, theme),
+            fill(body(row.name.clone(), theme)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| s.go_to(other),
+        ),
+        tooltip(
+          "Remove this link",
+          theme,
+          Anchor::End,
+          icon_btn(Icon::X, theme, false, true, move |s: &mut AppState| {
+            s.remove_edge(edge)
+          }),
+        ),
+      )
       .into_any_flex()
     })
     .collect();
   if items.is_empty() {
-    items.push(muted("(none)", theme).into_any_flex());
+    items.push(
+      sized_box(muted("None", theme))
+        .padding(Padding::from_vh(0.0, space::S))
+        .into_any_flex(),
+    );
   }
   flex(Axis::Vertical, items)
     .cross_axis_alignment(CrossAxisAlignment::Fill)
-    .gap(space::XS.px())
+    .gap(space::HAIR.px())
 }
 
 /// The card, scrolling when the node's details outgrow it.

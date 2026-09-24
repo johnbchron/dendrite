@@ -11,6 +11,7 @@ mod divider;
 mod field;
 mod focus;
 mod font;
+mod hover_row;
 mod icons;
 mod keymap;
 mod query;

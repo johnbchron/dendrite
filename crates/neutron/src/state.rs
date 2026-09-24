@@ -152,11 +152,13 @@ pub struct QuestRow {
 /// the [`EdgeId`] so a row can delete the edge it stands for.
 pub struct EdgeRow {
   /// The edge this row stands for.
-  pub edge:      EdgeId,
-  /// Name of the node at the *other* end of the edge.
-  pub name:      String,
-  /// Whether that node is satisfied (completed task / satisfied condition).
-  pub satisfied: bool,
+  pub edge:  EdgeId,
+  /// The node at the *other* end of the edge.
+  pub other: NodeId,
+  /// Its name.
+  pub name:  String,
+  /// Its derived state.
+  pub state: NodeState,
 }
 
 /// A summary of the selected node for the inspector. The *name* is not here:
@@ -433,7 +435,8 @@ impl AppState {
         .node(other)
         .map(|n| n.name.clone())
         .unwrap_or_default(),
-      satisfied: graph.is_satisfied(other),
+      state: derived.state(other).unwrap_or(NodeState::Blocked),
+      other,
     };
     let mut requirements: Vec<EdgeRow> =
       graph.requirements_of(id).map(|e| row(e.id, e.to)).collect();
@@ -1326,11 +1329,12 @@ mod tests {
     // "Build backend" requires "Design schema", which is seeded completed.
     assert_eq!(info.requirements.len(), 1);
     assert_eq!(info.requirements[0].name, "Design schema");
-    assert!(info.requirements[0].satisfied);
+    assert_eq!(info.requirements[0].state, NodeState::Completed);
     // ...and "Ship v1" requires it.
     assert_eq!(info.dependents.len(), 1);
     assert_eq!(info.dependents[0].name, "Ship v1");
-    assert!(!info.dependents[0].satisfied);
+    assert_eq!(info.dependents[0].state, NodeState::Blocked);
+    assert_eq!(info.dependents[0].other, node_named(&state, "Ship v1"));
   }
 
   #[test]

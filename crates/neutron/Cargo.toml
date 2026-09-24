@@ -11,3 +11,6 @@ layout = { path = "../layout" }
 dirs = "7"
 masonry = "0.4"
 xilem = "0.4"
+
+[dev-dependencies]
+ttf-parser = "0.25"

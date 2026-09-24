@@ -33,6 +33,7 @@ use crate::{
   canvas::{CanvasAction, canvas},
   divider::{DividerAction, divider},
   font,
+  icons::{Icon, icon},
   state::{AppState, EdgeRow},
   theme::Theme,
   tokens::{radius, space, text},
@@ -109,6 +110,24 @@ where
     .disabled_background_color(Color::TRANSPARENT)
     // A transparent border that lights up on hover, so hovering does not
     // shift the label by a pixel.
+    .border_color(Color::TRANSPARENT)
+    .hovered_border_color(theme.accent)
+}
+
+/// A flat icon-only button, sized like a [`seg`].
+fn icon_seg<F>(
+  glyph: Icon,
+  theme: &'static Theme,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<F>
+where
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
+  button(icon(glyph, text::CONTROL, theme.muted), on_press)
+    .padding(Padding::from_vh(space::XS, space::S))
+    .corner_radius(radius::CONTROL)
+    .background_color(Color::TRANSPARENT)
+    .active_background_color(theme.rule)
     .border_color(Color::TRANSPARENT)
     .hovered_border_color(theme.accent)
 }
@@ -246,13 +265,16 @@ fn edge_list(
   let mut items: Vec<_> = rows
     .iter()
     .map(|row| {
-      let mark = if row.satisfied { "☑" } else { "☐" };
+      let (mark, tint) = if row.satisfied {
+        (Icon::Check, theme.done.1)
+      } else {
+        (Icon::Square, theme.muted)
+      };
       let edge = row.edge;
       flex_row((
-        body(format!("{mark}  {}", row.name), theme).flex(1.0),
-        seg("×", theme, false, true, move |s: &mut AppState| {
-          s.remove_edge(edge)
-        }),
+        icon(mark, text::BODY, tint),
+        body(row.name.clone(), theme).flex(1.0),
+        icon_seg(Icon::X, theme, move |s: &mut AppState| s.remove_edge(edge)),
       ))
       .cross_axis_alignment(CrossAxisAlignment::Center)
       .gap(space::S.px())
@@ -416,7 +438,11 @@ fn lens_bar(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let open = data.picker_open();
 
   let head = flex_row((
-    label(if scoped { "◆" } else { "○" }.to_string()).color(theme.accent),
+    icon(
+      Icon::Flag,
+      text::BODY,
+      if scoped { theme.accent } else { theme.muted },
+    ),
     label(name)
       .text_size(text::BODY)
       .weight(FontWeight::BOLD)

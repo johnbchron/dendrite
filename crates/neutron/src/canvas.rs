@@ -43,7 +43,7 @@ use crate::{
 
 /// Width of every node box in world (graph) units, and so the width its
 /// label wraps at. Height follows the label (see [`node_size`]).
-const NODE_W: f64 = 150.0;
+const NODE_W: f64 = 175.0;
 /// Space between a node's border and its label.
 const PAD_X: f64 = 10.0;
 const PAD_Y: f64 = 8.0;
@@ -57,8 +57,8 @@ const MIN_LINES: f64 = 2.0;
 /// a click rather than a pan.
 const CLICK_SLOP: f64 = 4.0;
 /// How far the view zooms in and out.
-const ZOOM_MIN: f64 = 0.15;
-const ZOOM_MAX: f64 = 4.0;
+const ZOOM_MIN: f64 = 0.10;
+const ZOOM_MAX: f64 = 16.0;
 /// How quickly an animated zoom closes on its target, per second: the gap
 /// shrinks by a factor of `e` every `1 / ZOOM_RATE` seconds, so a wheel notch
 /// settles in roughly a fifth of a second and rapid notches blend together

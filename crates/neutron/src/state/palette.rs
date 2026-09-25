@@ -15,7 +15,7 @@ use crate::{
   focus::FieldKey,
   keymap::chord,
   query::{self, Query},
-  theme,
+  theme::Theme,
 };
 
 /// Most rows the palette shows; past that, typing narrows.
@@ -280,7 +280,7 @@ impl AppState {
       "Switch quest".into(),
       key("Q"),
     ));
-    for t in theme::ALL {
+    for t in Theme::ALL {
       if t.id != self.theme.id {
         rows.push(command(
           PaletteAct::Theme(t.id),

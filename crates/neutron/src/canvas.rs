@@ -36,10 +36,7 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
-use crate::{
-  font,
-  theme::{self, Theme},
-};
+use crate::{font, theme::Theme};
 
 /// Width of every node box in world (graph) units, and so the width its
 /// label wraps at. Height follows the label (see [`node_size`]).
@@ -742,11 +739,11 @@ impl CanvasWidget {
       .as_ref()
       .is_some_and(|l| l.taken.contains(&node.id));
     let fill = if node.dimmed || taken {
-      theme::dim(fill)
+      Theme::dim(fill)
     } else {
       fill
     };
-    let border = if taken { theme::dim(border) } else { border };
+    let border = if taken { Theme::dim(border) } else { border };
 
     match node.kind {
       NodeKind::Task { .. } => {

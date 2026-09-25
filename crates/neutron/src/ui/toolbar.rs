@@ -20,7 +20,7 @@ use crate::{
   keymap::chord,
   state::AppState,
   surface::{Level, surface},
-  theme,
+  theme::Theme,
   tokens::{size, space, text},
   tooltip::{Anchor, tooltip},
 };
@@ -191,7 +191,7 @@ pub(super) fn settings_popover(
   data: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
   let active = data.theme();
-  let rows: Vec<_> = theme::ALL
+  let rows: Vec<_> = Theme::ALL
     .iter()
     .map(|&t| {
       let chosen = t.id == active.id;

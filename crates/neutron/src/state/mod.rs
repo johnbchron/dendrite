@@ -30,7 +30,7 @@ use crate::{
   focus::{FieldKey, FocusRequests},
   keymap::{self, Command, Direction},
   query::{self, Query},
-  theme::{self, Theme},
+  theme::Theme,
   tokens::{size, space},
 };
 
@@ -294,7 +294,7 @@ impl AppState {
       link_filter:          String::new(),
       picker_open:          false,
       quest_query:          Query::default(),
-      theme:                theme::DEFAULT,
+      theme:                Theme::DEFAULT,
       settings_open:        false,
       now_open:             false,
       more_open:            false,
@@ -321,8 +321,8 @@ impl AppState {
       }
     };
     state.theme = stored
-      .and_then(|id| theme::by_id(&id))
-      .unwrap_or(theme::DEFAULT);
+      .and_then(|id| Theme::by_id(&id))
+      .unwrap_or(Theme::DEFAULT);
     state
   }
 
@@ -333,7 +333,7 @@ impl AppState {
   /// Switch palettes and persist the choice. A failed write is reported and
   /// the palette still changes for this session.
   pub fn set_theme(&mut self, id: &str) {
-    let Some(next) = theme::by_id(id) else { return };
+    let Some(next) = Theme::by_id(id) else { return };
     self.theme = next;
     if let Err(e) = self.lock().set_setting(THEME_KEY, next.id) {
       eprintln!("saving the palette failed: {e}");
@@ -1578,7 +1578,7 @@ mod tests {
   fn palette_choice_defaults_persists_and_survives_a_bad_id() {
     let store = Store::open_in_memory().unwrap();
     let mut state = AppState::new(store);
-    assert_eq!(state.theme().id, theme::DEFAULT.id, "default when unset");
+    assert_eq!(state.theme().id, Theme::DEFAULT.id, "default when unset");
 
     state.set_theme("umber");
     assert_eq!(state.theme().id, "umber");
@@ -1606,7 +1606,7 @@ mod tests {
     let store = Store::open_in_memory().unwrap();
     store.set_setting("palette", "chartreuse").unwrap();
     let state = AppState::new(store);
-    assert_eq!(state.theme().id, theme::DEFAULT.id);
+    assert_eq!(state.theme().id, Theme::DEFAULT.id);
   }
 
   /// Id of the seeded node with the given name.

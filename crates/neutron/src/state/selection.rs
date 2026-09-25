@@ -132,6 +132,44 @@ impl Reason {
       },
     }
   }
+
+  /// The reason as one sentence, for the inspector.
+  pub fn sentence(&self) -> String {
+    let count = |n: usize, one: &str, many: &str| {
+      if n == 1 {
+        one.to_string()
+      } else {
+        format!("{n} {many}")
+      }
+    };
+    match self {
+      Reason::AllMet(0) => "Nothing required: ready to do.".to_string(),
+      Reason::AllMet(n) => format!(
+        "{} met.",
+        count(*n, "Its one requirement", "requirements, all")
+      ),
+      Reason::WaitingOn(_) => "Waiting on:".to_string(),
+      Reason::CycleWith(_) => {
+        "In a cycle with these; remove an edge to break it:".to_string()
+      }
+      Reason::Completed => "Completed.".to_string(),
+      Reason::Satisfied => "Satisfied.".to_string(),
+      Reason::AwaitingSatisfaction => {
+        "Nothing unmet: waiting to be marked satisfied.".to_string()
+      }
+    }
+  }
+
+  /// Whether the reason is a problem to fix (a cycle), not just a state.
+  pub fn is_alert(&self) -> bool { matches!(self, Reason::CycleWith(_)) }
+
+  /// The other nodes that are the reason, by name, if any.
+  pub fn nodes(&self) -> &[(NodeId, String)] {
+    match self {
+      Reason::WaitingOn(nodes) | Reason::CycleWith(nodes) => nodes,
+      _ => &[],
+    }
+  }
 }
 
 impl Primary {

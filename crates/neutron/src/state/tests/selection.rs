@@ -117,3 +117,20 @@ fn arrow_keys_walk_the_graph_as_drawn() {
   state.run(Command::Nav(Direction::Right));
   assert_eq!(state.selected, row.get(i + 1).copied().or(Some(backend)));
 }
+
+/// The reason line counts requirements in words, names the nodes behind a
+/// wait or a cycle, and flags only a cycle as a problem.
+#[test]
+fn reason_sentences_count_and_flag_cycles() {
+  assert_eq!(
+    Reason::AllMet(0).sentence(),
+    "Nothing required: ready to do."
+  );
+  assert_eq!(Reason::AllMet(1).sentence(), "Its one requirement met.");
+  assert_eq!(Reason::AllMet(3).sentence(), "3 requirements, all met.");
+  let peer = vec![(NodeId::from_u128(1), "Peer".to_string())];
+  assert!(Reason::CycleWith(peer.clone()).is_alert());
+  assert!(!Reason::WaitingOn(peer.clone()).is_alert());
+  assert_eq!(Reason::WaitingOn(peer.clone()).nodes(), peer.as_slice());
+  assert!(Reason::Completed.nodes().is_empty());
+}

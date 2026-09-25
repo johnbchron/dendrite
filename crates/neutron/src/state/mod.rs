@@ -384,7 +384,7 @@ impl AppState {
     let fresh = Arc::new(Derivations {
       revision: store.revision(),
       derived:  Derived::compute(graph),
-      layout:   layout::layout(graph, &LayoutConfig::default()),
+      layout:   layout::Layout::compute(graph, &LayoutConfig::default()),
     });
     *cache = Some(fresh.clone());
     fresh

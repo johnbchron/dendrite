@@ -1,7 +1,7 @@
 //! Tests for the Sugiyama layout pipeline (PLAN §4, Milestone 4).
 
 use base::{Edge, EdgeId, EdgeKind, Graph, NodeId, NodeKind};
-use layout::{LayoutConfig, Size, Slot, layout};
+use layout::{Layout, LayoutConfig, Size, Slot};
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
 
@@ -31,7 +31,7 @@ fn build(n: u128, edges: &[(u128, u128, u128)]) -> Graph {
 #[test]
 fn every_node_gets_a_position_and_rank() {
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 1, 3)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   for i in 0..4 {
     assert!(l.pos(nid(i)).is_some(), "node {i} positioned");
     assert!(l.rank(nid(i)).is_some(), "node {i} ranked");
@@ -43,7 +43,7 @@ fn dependent_ranks_above_requirement() {
   // 0 -> 1 -> 2: "0 requires 1 requires 2". Goal 0 at top (rank 0),
   // requirements strictly below.
   let g = build(3, &[(10, 0, 1), (11, 1, 2)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   assert_eq!(l.rank(nid(0)), Some(0), "goal at the top");
   assert!(l.rank(nid(0)).unwrap() < l.rank(nid(1)).unwrap());
   assert!(l.rank(nid(1)).unwrap() < l.rank(nid(2)).unwrap());
@@ -60,7 +60,7 @@ fn non_reversed_edges_point_downward() {
     (13, 2, 3),
     (14, 3, 4),
   ]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   for e in g.edges() {
     if l.is_reversed(e.id) {
       continue;
@@ -86,8 +86,8 @@ fn layout_is_deterministic() {
     (15, 4, 5),
   ]);
   let cfg = LayoutConfig::default();
-  let a = layout(&g, &cfg);
-  let b = layout(&g, &cfg);
+  let a = Layout::compute(&g, &cfg);
+  let b = Layout::compute(&g, &cfg);
   assert_eq!(a.positions, b.positions);
   assert_eq!(a.ranks, b.ranks);
 }
@@ -99,7 +99,7 @@ fn order_hint_seeds_within_level_order() {
   let mut g = Graph::new();
   g.insert_node(base::Node::new(nid(1), "a", NodeKind::task(), 5.0));
   g.insert_node(base::Node::new(nid(2), "b", NodeKind::task(), 1.0));
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   // Same rank (both roots), ordered by hint: node 2 (hint 1) left of node 1.
   assert_eq!(l.rank(nid(1)), l.rank(nid(2)));
   assert!(
@@ -113,7 +113,7 @@ fn ranks_are_centred_on_a_shared_axis() {
   // Rank 0: node 0 alone. Rank 1: nodes 1, 2, 3 (odd count).
   let g = build(4, &[(10, 0, 1), (11, 0, 2), (12, 0, 3)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
 
   // Odd count: the middle node sits on the axis, its neighbours one spacing
   // either side.
@@ -136,7 +136,7 @@ fn even_count_rank_straddles_the_axis() {
   // is on it.
   let g = build(3, &[(10, 0, 1), (11, 0, 2)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
   let (x1, x2) = (l.pos(nid(1)).unwrap().x, l.pos(nid(2)).unwrap().x);
   assert_eq!(x1 + x2, 0.0, "row straddles the axis");
   assert_eq!((x2 - x1).abs(), cfg.node_size.w + cfg.x_gap);
@@ -147,7 +147,7 @@ fn placement_follows_node_sizes() {
   // Rank 0: node 0. Rank 1: nodes 1 (wide) and 2 (tall). Rank 2: node 3.
   let g = build(4, &[(10, 0, 1), (11, 0, 2), (12, 1, 3)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
   let size = |n: NodeId| match n {
     n if n == nid(1) => Size { w: 300.0, h: 40.0 },
     n if n == nid(2) => Size { w: 100.0, h: 90.0 },
@@ -184,7 +184,7 @@ fn independent_trees_do_not_interleave() {
   // centred on its own.
   let g = build(6, &[(10, 0, 2), (11, 0, 4), (12, 1, 3), (13, 1, 5)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
   let tree_a = [0, 2, 4];
   let tree_b = [1, 3, 5];
   let xs = |ids: &[u128]| -> Vec<f64> {
@@ -213,7 +213,7 @@ fn a_lone_tree_is_centred_in_its_own_column() {
   // The parent sits over the middle of its two children even though an
   // unrelated singleton shares its row.
   let g = build(4, &[(10, 0, 1), (11, 0, 2)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   let (x0, x1, x2) = (
     l.pos(nid(0)).unwrap().x,
     l.pos(nid(1)).unwrap().x,
@@ -235,7 +235,7 @@ fn a_node_sits_over_its_median_requirement() {
     (14, 1, 5),
     (15, 5, 6),
   ]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   let x = |i| l.pos(nid(i)).unwrap().x;
   let mut below = [x(3), x(4), x(5)];
   below.sort_by(f64::total_cmp);
@@ -254,7 +254,7 @@ fn long_edges_pass_through_their_own_gap() {
   // must not be drawn through nodes 1 and 2.
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 2, 3), (13, 0, 3)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
   let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
 
   let skip = &placed.channels[&EdgeId::from_u128(13)];
@@ -284,7 +284,7 @@ fn a_reversed_long_edge_still_gets_channels() {
   // 0 -> 1 -> 2 -> 3, plus 3 -> 0 closing a cycle that the cut reverses.
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 2, 3), (13, 3, 0)]);
   let cfg = LayoutConfig::default();
-  let l = layout(&g, &cfg);
+  let l = Layout::compute(&g, &cfg);
   let reversed: Vec<_> = l.reversed_edges.iter().copied().collect();
   assert_eq!(reversed.len(), 1);
   let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
@@ -294,7 +294,7 @@ fn a_reversed_long_edge_still_gets_channels() {
 #[test]
 fn retain_drops_hidden_nodes_and_empty_rows() {
   let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 0, 3)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   let only = l
     .arrangement
     .retain(|s| s != Slot::Node(nid(1)) && s != Slot::Node(nid(3)));
@@ -308,7 +308,7 @@ fn cyclic_graph_still_ranks_all_nodes() {
   // 2-cycle 0 <-> 1 plus a tail. Layout must not panic, must rank every
   // node, and must reverse at least one edge.
   let g = build(3, &[(10, 0, 1), (11, 1, 0), (12, 1, 2)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   assert_eq!(l.ranks.len(), 3);
   assert!(l.positions.len() == 3);
   assert!(!l.reversed_edges.is_empty(), "a back edge was reversed");
@@ -317,7 +317,7 @@ fn cyclic_graph_still_ranks_all_nodes() {
 #[test]
 fn self_loop_is_reversed_and_does_not_hang() {
   let g = build(1, &[(10, 0, 0)]);
-  let l = layout(&g, &LayoutConfig::default());
+  let l = Layout::compute(&g, &LayoutConfig::default());
   assert_eq!(l.rank(nid(0)), Some(0));
   assert!(l.is_reversed(EdgeId::from_u128(10)));
 }
@@ -348,7 +348,7 @@ mod props {
     #[test]
     fn total_coverage((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
-      let l = layout(&g, &LayoutConfig::default());
+      let l = Layout::compute(&g, &LayoutConfig::default());
       prop_assert_eq!(l.positions.len() as u128, n);
       prop_assert_eq!(l.ranks.len() as u128, n);
     }
@@ -357,7 +357,7 @@ mod props {
     #[test]
     fn acyclic_edges_go_down((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
-      let l = layout(&g, &LayoutConfig::default());
+      let l = Layout::compute(&g, &LayoutConfig::default());
       for e in g.edges() {
         if e.from == e.to || l.is_reversed(e.id) {
           continue;
@@ -372,7 +372,7 @@ mod props {
     fn channels_never_cross_nodes((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
       let cfg = LayoutConfig::default();
-      let l = layout(&g, &cfg);
+      let l = Layout::compute(&g, &cfg);
       let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
       let (hw, hh) = (cfg.node_size.w / 2.0, cfg.node_size.h / 2.0);
       for e in g.edges() {
@@ -396,7 +396,7 @@ mod props {
     fn rows_keep_their_order_and_gaps((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
       let cfg = LayoutConfig::default();
-      let l = layout(&g, &cfg);
+      let l = Layout::compute(&g, &cfg);
       let width = |id: NodeId| {
         let i = (0..n).find(|i| nid(*i) == id).unwrap();
         60.0 + 37.0 * (i % 5) as f64
@@ -430,7 +430,10 @@ mod props {
     fn deterministic((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
       let cfg = LayoutConfig::default();
-      prop_assert_eq!(layout(&g, &cfg).positions, layout(&g, &cfg).positions);
+      prop_assert_eq!(
+        Layout::compute(&g, &cfg).positions,
+        Layout::compute(&g, &cfg).positions
+      );
     }
   }
 }

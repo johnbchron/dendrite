@@ -79,8 +79,9 @@ fn ports_never_leave_the_side() {
   }
 }
 
-/// The curve leaves and arrives square to its nodes, and stops short of
-/// the tip by the arrowhead's length so the head caps it cleanly.
+/// The arrowhead sits at the dependent's end, pointing into it; the curve
+/// leaves square from the head's base and arrives square at the
+/// requirement.
 #[test]
 fn curve_meets_the_arrowhead_square_on() {
   let route = Route {
@@ -90,14 +91,22 @@ fn curve_meets_the_arrowhead_square_on() {
     via:   Vec::new(),
   };
   let (curve, tip) = route.curve();
-  assert_eq!(tip, Point::new(80.0, 100.0 - TIP_GAP));
+  assert_eq!(tip, Point::new(0.0, TIP_GAP));
   let els = curve.elements();
-  let PathEl::CurveTo(c1, c2, base) = els[1] else {
+  let PathEl::MoveTo(base) = els[0] else {
+    panic!("expected a move, got {els:?}");
+  };
+  assert_eq!(base, Point::new(0.0, tip.y + HEAD_LEN));
+  let PathEl::CurveTo(c1, c2, end) = els[1] else {
     panic!("expected a cubic, got {els:?}");
   };
-  assert_eq!(c1.x, 0.0, "leaves straight down");
-  assert_eq!(c2.x, base.x, "arrives straight down");
-  assert_eq!(base, Point::new(80.0, tip.y - HEAD_LEN));
+  assert_eq!(c1.x, base.x, "leaves straight down");
+  assert_eq!(c2.x, end.x, "arrives straight down");
+  assert_eq!(end, route.end);
+  // The head points up, into the dependent.
+  use masonry::kurbo::Shape as _;
+  let head = route.head(tip).bounding_box();
+  assert_eq!((head.y0, head.y1), (tip.y, base.y));
 }
 
 /// An edge that skips rows runs straight down each channel the layout

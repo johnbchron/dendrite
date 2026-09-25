@@ -28,9 +28,9 @@ pub struct RenderNode {
 pub struct RenderEdge {
   /// Which edge this is, to find the channels it was given.
   pub id:       EdgeId,
-  /// The dependent end.
+  /// The dependent end (the arrow points here).
   pub from:     NodeId,
-  /// The requirement end (the arrow points here).
+  /// The requirement end.
   pub to:       NodeId,
   /// Whether the cycle-cut reversed this edge (a backward cycle edge).
   pub reversed: bool,

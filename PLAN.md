@@ -154,7 +154,7 @@ technical risk (see §6).
   "actionable"), Blocked (neutral/grey), Cyclic (distinct warning treatment),
   Condition Pending/Satisfied (empty vs filled diamond).
 - **Edges**: every edge is a dependency, drawn solid. Direction arrows point
-  at the requirement.
+  at the dependent (from a requirement to what it unblocks).
 - **Layout**: fully automatic levelling, **top-down: quest roots/dependents
   at the top, requirements below** (progress flows upward toward the goal;
   backward edges of allowed cycles point upward and are styled as such).

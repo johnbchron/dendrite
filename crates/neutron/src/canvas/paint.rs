@@ -46,7 +46,7 @@ impl<'a> Painter<'a> {
     );
   }
 
-  /// Paint one edge as a curve plus an arrowhead at the requirement end.
+  /// Paint one edge as a curve plus an arrowhead at the dependent end.
   pub(super) fn edge(&mut self, edge: &RenderEdge, route: &Route) {
     let color = if edge.reversed {
       self.theme.cycle

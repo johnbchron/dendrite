@@ -26,9 +26,9 @@ const MIN_REACH: f64 = 24.0;
 /// way it travels there.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Route {
-  /// On the border of the `from` node.
+  /// On the border of the `from` node, where the arrowhead's tip goes.
   pub(super) start: Point,
-  /// On the border of the `to` node, where the arrowhead's tip goes.
+  /// On the border of the `to` node.
   pub(super) end:   Point,
   /// Unit direction the edge leaves `start` and arrives at `end` along:
   /// down or up between rows, sideways within one.
@@ -177,12 +177,14 @@ impl Route {
   /// The curve the edge is drawn along: cubics between rows that leave and
   /// arrive square to whatever they join, so edges bend smoothly the way
   /// Mermaid draws them, with a straight run down each skipped row's
-  /// channel. It ends at the arrowhead's base. Returns the curve and the
-  /// tip.
+  /// channel. The arrowhead points into the dependent, so work reads as
+  /// flowing from a requirement to what it unblocks: the curve starts at
+  /// the arrowhead's base and runs to the requirement. Returns the curve and
+  /// the tip.
   pub(super) fn curve(&self) -> (BezPath, Point) {
     let axis = self.axis;
-    let tip = self.end - axis * TIP_GAP;
-    let base = tip - axis * HEAD_LEN;
+    let tip = self.start + axis * TIP_GAP;
+    let base = tip + axis * HEAD_LEN;
     // Handles reach halfway along the travel axis, with a floor so a short
     // hop between close rows still bends rather than kinking.
     let bend = |path: &mut BezPath, from: Point, to: Point| {
@@ -190,22 +192,23 @@ impl Route {
       path.curve_to(from + axis * reach, to - axis * reach, to);
     };
     let mut path = BezPath::new();
-    path.move_to(self.start);
-    let mut at = self.start;
+    path.move_to(base);
+    let mut at = base;
     for &(entry, exit) in &self.via {
       bend(&mut path, at, entry);
       path.line_to(exit);
       at = exit;
     }
-    bend(&mut path, at, base);
+    bend(&mut path, at, self.end);
     (path, tip)
   }
 
-  /// The arrowhead at `tip`, along the travel axis: the curve arrives square
-  /// to the node, so the head lines up with it exactly.
+  /// The arrowhead at `tip`, pointing back along the travel axis into the
+  /// dependent: the curve leaves the node square, so the head lines up with
+  /// it exactly.
   pub(super) fn head(&self, tip: Point) -> BezPath {
     let axis = self.axis;
-    let base = tip - axis * HEAD_LEN;
+    let base = tip + axis * HEAD_LEN;
     let perp = Vec2::new(-axis.y, axis.x) * HEAD_HALF_W;
     let mut head = BezPath::new();
     head.move_to(tip);

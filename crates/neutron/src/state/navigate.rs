@@ -6,7 +6,7 @@ use base::NodeId;
 use layout::{Arrangement, Slot};
 
 use super::AppState;
-use crate::keymap::Direction;
+use crate::{canvas::CameraRequest, keymap::Direction};
 
 /// The drawn nodes by row and column, bends left out.
 struct Grid {
@@ -66,9 +66,20 @@ impl AppState {
   /// to a node that requires it, down to one it requires (the nearest in
   /// its row, if several), or left and right along its row. Stays put at an
   /// edge.
+  ///
+  /// Steps are taken between boxes, so a node drawn more than once moves
+  /// from the copy the selection was reached through, and a step down
+  /// lands on the copy of a shared condition that serves this node.
   pub fn navigate(&mut self, direction: Direction) {
-    let Some(from) = self.selected else { return };
-    let grid = Grid::new(&self.scene().arrangement);
+    let Some(selected) = self.selected else {
+      return;
+    };
+    let scene = self.scene();
+    let grid = Grid::new(&scene.arrangement);
+    let from = self
+      .selected_copy
+      .filter(|c| grid.at.contains_key(c))
+      .unwrap_or(selected);
     if !grid.at.contains_key(&from) {
       return;
     }
@@ -76,19 +87,27 @@ impl AppState {
       Direction::Left => grid.beside(from, false),
       Direction::Right => grid.beside(from, true),
       Direction::Up | Direction::Down => {
-        let store = self.lock();
-        let graph = store.graph();
-        let candidates = if direction == Direction::Up {
-          graph.dependents_of(from).map(|e| e.from).collect()
-        } else {
-          graph.requirements_of(from).map(|e| e.to).collect()
-        };
-        drop(store);
+        let up = direction == Direction::Up;
+        let candidates = scene
+          .edges
+          .iter()
+          .filter_map(|e| {
+            if up {
+              (e.to == from).then_some(e.from)
+            } else {
+              (e.from == from).then_some(e.to)
+            }
+          })
+          .collect();
         grid.nearest(from, candidates)
       }
     };
-    if let Some(target) = target {
-      self.go_to(target);
-    }
+    let Some(copy) = target else { return };
+    let Some(node) = scene.nodes.iter().find(|n| n.id == copy) else {
+      return;
+    };
+    self.select(Some(node.node));
+    self.selected_copy = Some(copy);
+    self.aim(CameraRequest::Reveal(copy));
   }
 }

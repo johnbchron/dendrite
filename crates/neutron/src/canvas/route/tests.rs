@@ -12,6 +12,7 @@ fn edge(from: u128, to: u128) -> RenderEdge {
     from:     NodeId::from_u128(from),
     to:       NodeId::from_u128(to),
     reversed: false,
+    to_copy:  false,
   }
 }
 

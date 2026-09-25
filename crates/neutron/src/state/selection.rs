@@ -264,6 +264,7 @@ impl AppState {
       self.recent.remember(node);
     }
     self.selected = node;
+    self.selected_copy = None;
     self.name_draft = {
       let store = self.lock();
       node

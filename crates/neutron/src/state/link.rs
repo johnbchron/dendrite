@@ -72,8 +72,14 @@ impl AppState {
   /// A click on the canvas. While armed this consumes the click to build a
   /// requirement edge and disarms, keeping the selection put; with `keep`
   /// (Shift held) it stays armed so several can be added in a row. Clicking
-  /// empty space means "never mind". Unarmed, it moves the selection.
-  pub fn canvas_click(&mut self, node: Option<NodeId>, keep: bool) {
+  /// empty space means "never mind". Unarmed, it moves the selection, to
+  /// the `copy` of the node that was clicked.
+  pub fn canvas_click(
+    &mut self,
+    node: Option<NodeId>,
+    copy: Option<NodeId>,
+    keep: bool,
+  ) {
     if self.linking {
       match node {
         Some(target) => {
@@ -87,6 +93,7 @@ impl AppState {
       return;
     }
     self.select(node);
+    self.selected_copy = copy;
   }
 
   /// Enter in the requirement search: link the best match and disarm.

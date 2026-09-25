@@ -76,3 +76,87 @@ fn a_lens_lays_out_its_own_rows() {
   assert_eq!(row_of(&state, signoff), Some(0));
   assert_eq!(row_of(&state, schema), Some(1));
 }
+
+/// A condition required from two rows of one tree is drawn twice, one copy
+/// under each dependent; the copies share the node's state, and the edges
+/// into them are marked.
+#[test]
+fn a_shared_condition_is_drawn_once_per_row_of_dependents() {
+  let mut state = AppState::new(demo_store());
+  let ship = node_named(&state, "Ship v1");
+  let frontend = node_named(&state, "Build frontend");
+  let signoff = node_named(&state, "Design signed off");
+  state.add_edge(ship, signoff, EdgeKind::Dependency);
+
+  let scene = state.scene();
+  let copies: Vec<_> =
+    scene.nodes.iter().filter(|n| n.node == signoff).collect();
+  assert_eq!(copies.len(), 2);
+  assert!(copies.iter().all(|n| n.copies == 2));
+  assert!(
+    copies.iter().any(|n| n.id == signoff),
+    "the first keeps its id"
+  );
+  let into: Vec<_> = scene
+    .edges
+    .iter()
+    .filter(|e| e.from == ship || e.from == frontend)
+    .filter(|e| e.to_copy)
+    .collect();
+  assert_eq!(into.len(), 2);
+  assert_ne!(into[0].to, into[1].to, "each dependent has its own copy");
+  assert!(
+    scene
+      .edges
+      .iter()
+      .filter(|e| !e.to_copy)
+      .all(|e| !copies.iter().any(|c| c.id == e.to))
+  );
+
+  // Satisfying the condition satisfies every copy.
+  state.select(Some(signoff));
+  state.toggle_selected();
+  let scene = state.scene();
+  assert!(
+    scene
+      .nodes
+      .iter()
+      .filter(|n| n.node == signoff)
+      .all(|n| n.state == NodeState::Satisfied && n.selected)
+  );
+}
+
+/// The arrow keys step between boxes: down from a dependent to the copy
+/// that serves it, and back up from that copy to the same dependent, also
+/// when the copy was clicked.
+#[test]
+fn navigation_moves_through_the_copies_as_drawn() {
+  let mut state = AppState::new(demo_store());
+  let ship = node_named(&state, "Ship v1");
+  let frontend = node_named(&state, "Build frontend");
+  let signoff = node_named(&state, "Design signed off");
+  state.add_edge(ship, signoff, EdgeKind::Dependency);
+  let copy_for = |state: &AppState, dependent| {
+    state
+      .scene()
+      .edges
+      .iter()
+      .find(|e| e.from == dependent && e.to_copy)
+      .unwrap()
+      .to
+  };
+  let under_frontend = copy_for(&state, frontend);
+  let under_ship = copy_for(&state, ship);
+
+  state.select(Some(frontend));
+  state.run(Command::Nav(Direction::Down));
+  assert_eq!(state.selected, Some(signoff));
+  assert_eq!(state.selected_copy, Some(under_frontend));
+  state.run(Command::Nav(Direction::Up));
+  assert_eq!(state.selected, Some(frontend));
+
+  // Clicking the other copy and going up reaches its own dependent.
+  state.canvas_click(Some(signoff), Some(under_ship), false);
+  state.run(Command::Nav(Direction::Up));
+  assert_eq!(state.selected, Some(ship));
+}

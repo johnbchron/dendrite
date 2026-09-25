@@ -81,7 +81,8 @@ impl CanvasWidget {
           let p = ctx.local_position(e.state.position);
           let hit = self.hit_test(self.frame.to_world(p));
           ctx.submit_action::<CanvasAction>(CanvasAction::Click {
-            node:  hit,
+            node:  hit.map(|h| h.node),
+            copy:  hit.map(|h| h.copy),
             shift: e.state.modifiers.shift(),
           });
         }

@@ -65,6 +65,10 @@ pub struct AppState {
   store:              Mutex<Store>,
   /// Currently selected node, if any.
   pub selected:       Option<NodeId>,
+  /// Which box of the selected node it was reached through: a copy of a
+  /// shared condition, when one was clicked or stepped onto. `None` means
+  /// the node's first box.
+  selected_copy:      Option<NodeId>,
   /// Active quest lens; `None` means the global "all nodes" view (PLAN §5).
   pub active_quest:   Option<QuestId>,
   /// Editable name buffer for the selected node.
@@ -130,6 +134,7 @@ impl AppState {
     let mut state = Self {
       store:              Mutex::new(store),
       selected:           None,
+      selected_copy:      None,
       active_quest:       None,
       name_draft:         String::new(),
       quest_draft:        String::new(),

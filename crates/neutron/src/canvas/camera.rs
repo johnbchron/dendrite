@@ -56,8 +56,9 @@ impl Insets {
 pub enum CameraRequest {
   /// Fit the whole graph into the uncovered area.
   Fit,
-  /// Pan, easing, until the node is inside the uncovered area. A node that
-  /// is already comfortably in view does not move.
+  /// Pan, easing, until the box is inside the uncovered area. A box that
+  /// is already comfortably in view does not move. A node's own id names
+  /// its first (or only) copy.
   Reveal(NodeId),
   /// Step the zoom, easing, about the centre of the uncovered area.
   Zoom(ZoomStep),

@@ -25,11 +25,15 @@ const LABEL_LINE: f32 = 1.3;
 /// one-word node is not a sliver, and a two-line label does not grow its box.
 const MIN_LINES: f64 = 2.0;
 
-/// Shaped labels, keyed by node, each with the text it was shaped from so a
-/// rename reshapes it.
+/// Type size of the count on a copy of a shared condition ("×3").
+pub(super) const BADGE_SIZE: f32 = 10.5;
+
+/// Shaped labels, keyed by box, each with the text it was shaped from so a
+/// rename reshapes it; and the copy counts ("×3") the boxes show.
 #[derive(Default)]
 pub(super) struct Labels {
-  cache: HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  cache:  HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  badges: HashMap<usize, TextLayout<BrushIndex>>,
 }
 
 impl Labels {
@@ -40,7 +44,10 @@ impl Labels {
   }
 
   /// Drop every label, as when the font set changes under them.
-  pub(super) fn clear(&mut self) { self.cache.clear(); }
+  pub(super) fn clear(&mut self) {
+    self.cache.clear();
+    self.badges.clear();
+  }
 
   /// Shape any label in `nodes` not already shaped from its current text.
   ///
@@ -54,6 +61,11 @@ impl Labels {
     nodes: &[RenderNode],
   ) {
     for node in nodes {
+      if node.copies > 1 && !self.badges.contains_key(&node.copies) {
+        let count = format!("\u{d7}{}", node.copies);
+        let badge = Self::shape_one(font_cx, layout_cx, &count, BADGE_SIZE);
+        self.badges.insert(node.copies, badge);
+      }
       let fresh = self
         .cache
         .get(&node.id)
@@ -61,26 +73,43 @@ impl Labels {
       if fresh {
         continue;
       }
-      let mut builder =
-        layout_cx.ranged_builder(font_cx, &node.label, 1.0, true);
-      builder.push_default(StyleProperty::FontSize(LABEL_SIZE));
-      builder.push_default(StyleProperty::LineHeight(
-        LineHeight::FontSizeRelative(LABEL_LINE),
-      ));
-      // A hand-rolled widget has to ask for the app face itself, or parley
-      // picks its own default and the canvas ends up in a different typeface
-      // to the panel.
-      builder.push_default(StyleProperty::FontStack(font::STACK));
-      let mut text = TextLayout::new();
-      builder.build_into(&mut text, &node.label);
+      let mut text =
+        Self::shape_one(font_cx, layout_cx, &node.label, LABEL_SIZE);
       text.break_all_lines(Some((NODE_W - 2.0 * PAD_X) as f32));
       self.cache.insert(node.id, (node.label.clone(), text));
     }
   }
 
+  /// Shape `text` at `size` in the app face, unbroken.
+  fn shape_one(
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<BrushIndex>,
+    text: &str,
+    size: f32,
+  ) -> TextLayout<BrushIndex> {
+    let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
+    builder.push_default(StyleProperty::FontSize(size));
+    builder.push_default(StyleProperty::LineHeight(
+      LineHeight::FontSizeRelative(LABEL_LINE),
+    ));
+    // A hand-rolled widget has to ask for the app face itself, or parley
+    // picks its own default and the canvas ends up in a different typeface
+    // to the panel.
+    builder.push_default(StyleProperty::FontStack(font::STACK));
+    let mut layout = TextLayout::new();
+    builder.build_into(&mut layout, text);
+    layout.break_all_lines(None);
+    layout
+  }
+
   /// The shaped label of `node`, if it has one.
   pub(super) fn get(&self, node: NodeId) -> Option<&TextLayout<BrushIndex>> {
     self.cache.get(&node).map(|(_, text)| text)
+  }
+
+  /// The shaped count for a node drawn `copies` times, if it is shaped.
+  pub(super) fn badge(&self, copies: usize) -> Option<&TextLayout<BrushIndex>> {
+    self.badges.get(&copies)
   }
 
   /// The box size of every labelled node.

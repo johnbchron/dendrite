@@ -44,7 +44,7 @@ fontconfig, wayland/xkb, …):
 
 ```sh
 nix develop        # or: direnv allow
-cargo test         # 122 tests across the workspace
+cargo test         # 128 tests across the workspace
 cargo run -p neutron
 ```
 
@@ -58,8 +58,13 @@ The canvas fills the window; everything else floats over it.
 
 - **Canvas**: drag to pan, scroll to zoom, click a node to select it. Tasks
   are rounded rectangles, conditions chamfered ones; fill and border encode
-  Ready / Blocked / Completed / Cyclic / Pending. Edges are dependencies, and
-  cycle-reversed edges are drawn in warning red.
+  Ready / Blocked / Completed / Cyclic / Pending. Edges are dependencies,
+  their arrows pointing at what a requirement unblocks, and cycle-reversed
+  edges are drawn in warning red. A condition with no requirements of its
+  own is drawn once per tree and row of the things that need it: row
+  neighbours in one tree share it, everyone else gets a copy right under
+  them. Copies share the node's state, carry a "×N" count, and the lines
+  into them end in a small ring.
 - **Top bar**: the quest lens (switch, search, create, rename and delete
   quests; a quest's view is laid out on its own, so its nodes take the
   rows the quest calls for),

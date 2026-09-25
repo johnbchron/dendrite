@@ -5,11 +5,16 @@ use std::collections::HashSet;
 use base::{EdgeId, NodeId, NodeKind, NodeState};
 use layout::Arrangement;
 
-/// One node as the canvas needs to draw and hit-test it.
+/// One box as the canvas needs to draw and hit-test it: a node, or one of
+/// the copies of a shared condition (see [`layout::Copies`]).
 #[derive(Clone, Debug)]
 pub struct RenderNode {
-  /// Which node this is (returned in [`CanvasAction::Click`]).
+  /// Which box this is: the node's own id for its first (or only) copy.
   pub id:       NodeId,
+  /// The graph node it draws (returned in [`CanvasAction::Click`]).
+  pub node:     NodeId,
+  /// How many boxes draw the same node; more than one marks a copy.
+  pub copies:   usize,
   /// Display text.
   pub label:    String,
   /// Task vs. condition — selects the shape.
@@ -28,12 +33,16 @@ pub struct RenderNode {
 pub struct RenderEdge {
   /// Which edge this is, to find the channels it was given.
   pub id:       EdgeId,
-  /// The dependent end (the arrow points here).
+  /// The dependent end's box (the arrow points here).
   pub from:     NodeId,
-  /// The requirement end.
+  /// The requirement end's box: the copy of the requirement that serves
+  /// this dependent, if it has several.
   pub to:       NodeId,
   /// Whether the cycle-cut reversed this edge (a backward cycle edge).
   pub reversed: bool,
+  /// Whether the requirement is drawn more than once, so this edge runs to
+  /// one of its copies (marked with a ring where it meets it).
+  pub to_copy:  bool,
 }
 
 /// A complete, self-contained description of what to paint.
@@ -71,6 +80,9 @@ pub enum CanvasAction {
   Click {
     /// The node clicked, if any.
     node:  Option<NodeId>,
+    /// The box clicked, if any: which copy, for a node drawn more than
+    /// once.
+    copy:  Option<NodeId>,
     /// Whether Shift was held.
     shift: bool,
   },

@@ -9,7 +9,7 @@ fn canvas_click_links_while_armed_and_selects_otherwise() {
   // Unarmed, a click just moves the selection.
   state.select(Some(backend));
   assert!(!state.is_linking());
-  state.canvas_click(Some(frontend), false);
+  state.canvas_click(Some(frontend), None, false);
   assert_eq!(state.selected, Some(frontend));
 
   // Armed, it builds an edge and leaves the selection put, so several
@@ -17,7 +17,7 @@ fn canvas_click_links_while_armed_and_selects_otherwise() {
   state.select(Some(backend));
   state.begin_link();
   assert!(state.is_linking());
-  state.canvas_click(Some(frontend), false);
+  state.canvas_click(Some(frontend), None, false);
   assert_eq!(state.selected, Some(backend));
   assert!(!state.is_linking());
   let names: Vec<String> = state
@@ -31,7 +31,7 @@ fn canvas_click_links_while_armed_and_selects_otherwise() {
 
   // Armed, a click on empty space cancels without linking or deselecting.
   state.begin_link();
-  state.canvas_click(None, false);
+  state.canvas_click(None, None, false);
   assert!(!state.is_linking());
   assert_eq!(state.selected, Some(backend));
 }
@@ -46,9 +46,9 @@ fn shift_click_keeps_link_mode_armed() {
   let signoff = node_named(&state, "Design signed off");
   state.select(Some(ship));
   state.begin_link();
-  state.canvas_click(Some(schema), true);
+  state.canvas_click(Some(schema), None, true);
   assert!(state.is_linking());
-  state.canvas_click(Some(signoff), false);
+  state.canvas_click(Some(signoff), None, false);
   assert!(!state.is_linking());
   let names: Vec<_> = state
     .selected_info()
@@ -118,7 +118,7 @@ fn linking_an_existing_requirement_adds_no_second_edge() {
 
   // The canvas path: arm, then click a node already required.
   state.begin_link();
-  state.canvas_click(Some(schema), false);
+  state.canvas_click(Some(schema), None, false);
   // And the direct path.
   state.add_edge(backend, schema, EdgeKind::Dependency);
 

@@ -425,3 +425,107 @@ mod props {
     }
   }
 }
+
+mod copies {
+  use super::*;
+
+  /// [`build`], with the nodes in `conditions` made conditions.
+  fn with_conditions(
+    n: u128,
+    edges: &[(u128, u128, u128)],
+    conditions: &[u128],
+  ) -> Graph {
+    let mut g = build(n, edges);
+    for &c in conditions {
+      let node = g.node(nid(c)).unwrap().clone();
+      g.insert_node(base::Node {
+        kind: NodeKind::condition(),
+        ..node
+      });
+    }
+    g
+  }
+
+  fn layout(g: &Graph) -> Layout {
+    Layout::compute(g, &LayoutConfig::default())
+  }
+
+  /// The drawn nodes that draw `node`.
+  fn drawn(l: &Layout, node: u128) -> Vec<NodeId> {
+    let mut out: Vec<NodeId> = l
+      .positions
+      .keys()
+      .copied()
+      .filter(|d| l.copies.node(*d) == nid(node))
+      .collect();
+    out.sort_unstable();
+    out
+  }
+
+  #[test]
+  fn row_siblings_in_one_tree_share_a_condition() {
+    // 0 requires 1 and 2; both require the condition 3.
+    let g =
+      with_conditions(4, &[(10, 0, 1), (11, 0, 2), (12, 1, 3), (13, 2, 3)], &[
+        3,
+      ]);
+    let l = layout(&g);
+    assert_eq!(l.copies.count(nid(3)), 1);
+    assert_eq!(drawn(&l, 3), [nid(3)]);
+  }
+
+  #[test]
+  fn different_rows_of_one_tree_get_a_copy_each_under_them() {
+    // 0 requires 1 and the condition 2; 1 requires 2 as well.
+    let g = with_conditions(3, &[(10, 0, 1), (11, 0, 2), (12, 1, 2)], &[2]);
+    let l = layout(&g);
+    assert_eq!(l.copies.count(nid(2)), 2);
+    let copies = drawn(&l, 2);
+    assert_eq!(copies.len(), 2);
+    assert!(
+      copies.contains(&nid(2)),
+      "the first copy keeps the node's id"
+    );
+
+    // The node itself serves the oldest dependent, 0; each copy sits one
+    // row under its dependent, so no edge skips a row.
+    let edge = |e: u128| *g.edge(EdgeId::from_u128(e)).unwrap();
+    assert_eq!(l.copies.end(&edge(11)), nid(2));
+    let other = l.copies.end(&edge(12));
+    assert_ne!(other, nid(2));
+    assert_eq!(l.rank(nid(2)), Some(1));
+    assert_eq!(l.rank(other), Some(2));
+    assert!(
+      l.arrangement
+        .rows
+        .iter()
+        .flatten()
+        .all(|s| matches!(s, Slot::Node(_))),
+      "no bends"
+    );
+  }
+
+  #[test]
+  fn separate_trees_get_a_copy_each_and_stay_apart() {
+    // 0 and 1 are unrelated but for the condition 2.
+    let g = with_conditions(3, &[(10, 0, 2), (11, 1, 2)], &[2]);
+    let l = layout(&g);
+    assert_eq!(l.copies.count(nid(2)), 2);
+    let tree = |n: NodeId| l.arrangement.tree[&Slot::Node(n)];
+    assert_ne!(tree(nid(0)), tree(nid(1)));
+
+    // The same graph lays out the same copies.
+    assert_eq!(drawn(&l, 2), drawn(&layout(&g), 2));
+  }
+
+  #[test]
+  fn tasks_and_conditions_with_requirements_are_drawn_once() {
+    let task = build(3, &[(10, 0, 2), (11, 1, 2)]);
+    assert_eq!(layout(&task).copies.count(nid(2)), 1);
+    assert_eq!(layout(&task).positions.len(), 3);
+
+    let gated = with_conditions(4, &[(10, 0, 2), (11, 1, 2), (12, 2, 3)], &[2]);
+    assert_eq!(layout(&gated).copies.count(nid(2)), 1);
+    assert_eq!(layout(&gated).positions.len(), 4);
+  }
+}

@@ -5,7 +5,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use base::{Graph, NodeId, NodeState, QuestId};
 use db::Store;
-use layout::Layout;
+use layout::{Layout, Slot};
 
 use super::AppState;
 use crate::canvas::{CanvasScene, RenderEdge, RenderNode};
@@ -78,16 +78,29 @@ impl AppState {
     };
     let lens = Lens::new(graph, self.active_quest);
 
-    let nodes = graph
-      .nodes()
-      .filter(|node| lens.shows(node.id))
-      .map(|node| RenderNode {
-        id:       node.id,
-        label:    node.name.clone(),
-        kind:     node.kind.clone(),
-        state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
-        selected: self.selected == Some(node.id),
-        dimmed:   lens.dims(node.id),
+    // One box per drawn node: every node in view, and every extra copy of
+    // a shared condition. Each copy shows its node's state.
+    let nodes = lay
+      .arrangement
+      .rows
+      .iter()
+      .flatten()
+      .filter_map(|slot| match *slot {
+        Slot::Node(drawn) => Some(drawn),
+        Slot::Bend { .. } => None,
+      })
+      .filter_map(|drawn| {
+        let node = graph.node(lay.copies.node(drawn))?;
+        Some(RenderNode {
+          id:       drawn,
+          node:     node.id,
+          copies:   lay.copies.count(node.id),
+          label:    node.name.clone(),
+          kind:     node.kind.clone(),
+          state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
+          selected: self.selected == Some(node.id),
+          dimmed:   lens.dims(node.id),
+        })
       })
       .collect();
 
@@ -97,8 +110,9 @@ impl AppState {
       .map(|edge| RenderEdge {
         id:       edge.id,
         from:     edge.from,
-        to:       edge.to,
+        to:       lay.copies.end(edge),
         reversed: lay.is_reversed(edge.id),
+        to_copy:  lay.copies.count(edge.to) > 1,
       })
       .collect();
 

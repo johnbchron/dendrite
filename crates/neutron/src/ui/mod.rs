@@ -76,7 +76,9 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     link,
     |s: &mut AppState, action| match action {
       // While a link is armed this builds an edge instead of selecting.
-      CanvasAction::Click { node, shift } => s.canvas_click(node, shift),
+      CanvasAction::Click { node, copy, shift } => {
+        s.canvas_click(node, copy, shift);
+      }
       CanvasAction::Zoomed(percent) => s.set_zoom_percent(percent),
     },
   );

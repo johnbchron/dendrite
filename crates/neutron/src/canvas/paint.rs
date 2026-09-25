@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use base::{EdgeId, NodeId, NodeKind};
 use masonry::{
   core::{BrushIndex, render_text},
-  kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Shape, Size, Stroke},
+  kurbo::{
+    Affine, BezPath, Circle, Point, Rect, RoundedRect, Shape, Size, Stroke,
+  },
   parley::Layout as TextLayout,
   peniko::{Brush, Color, Fill},
   vello::Scene,
@@ -16,6 +18,10 @@ use crate::theme::Theme;
 
 /// How far a condition's corners are cut back, in world units.
 const CHAMFER: f64 = 10.0;
+/// Radius of the ring where an edge meets a copy of a shared condition.
+pub(super) const COPY_RING: f64 = 5.0;
+/// Space either side of a copy count inside its pill.
+const BADGE_PAD: f64 = 5.0;
 
 /// One paint pass: the scene being drawn into, the world→screen transform
 /// and the palette.
@@ -46,7 +52,8 @@ impl<'a> Painter<'a> {
     );
   }
 
-  /// Paint one edge as a curve plus an arrowhead at the dependent end.
+  /// Paint one edge as a curve plus an arrowhead at the dependent end, and
+  /// a ring at the requirement end when that is one of several copies.
   pub(super) fn edge(&mut self, edge: &RenderEdge, route: &Route) {
     let color = if edge.reversed {
       self.theme.cycle
@@ -68,6 +75,25 @@ impl<'a> Painter<'a> {
       None,
       &route.head(tip),
     );
+    if edge.to_copy {
+      // Hollow, sitting on the line just clear of the box, so it reads as
+      // a mark on the edge rather than a part of the node.
+      let ring = Circle::new(route.end - route.axis * COPY_RING, COPY_RING);
+      self.scene.fill(
+        Fill::NonZero,
+        self.tf,
+        &Brush::Solid(self.theme.bg),
+        None,
+        &ring,
+      );
+      self.scene.stroke(
+        &Stroke::new(1.5),
+        self.tf,
+        &Brush::Solid(color),
+        None,
+        &ring,
+      );
+    }
   }
 
   /// Paint the edge link mode would add from `from` to `to`: dashed, in
@@ -80,6 +106,7 @@ impl<'a> Painter<'a> {
       from:     a,
       to:       b,
       reversed: false,
+      to_copy:  false,
     };
     let rects = HashMap::from([(a, from), (b, to)]);
     let Some(route) =
@@ -104,18 +131,20 @@ impl<'a> Painter<'a> {
     );
   }
 
-  /// Paint a single node in `rect`: shape, fill, border and `label`. In
-  /// `link` mode, nodes a click cannot add fade back and nodes that would
-  /// close a cycle get a warning ring.
+  /// Paint a single node in `rect`: shape, fill, border and `label`, and
+  /// for a copy of a shared condition, its `badge` ("×3"). In `link` mode,
+  /// nodes a click cannot add fade back and nodes that would close a cycle
+  /// get a warning ring.
   pub(super) fn node(
     &mut self,
     node: &RenderNode,
     rect: Rect,
     link: Option<&LinkMode>,
     label: Option<&TextLayout<BrushIndex>>,
+    badge: Option<&TextLayout<BrushIndex>>,
   ) {
     let (fill, border) = self.theme.for_state(node.state);
-    let taken = link.is_some_and(|l| l.taken.contains(&node.id));
+    let taken = link.is_some_and(|l| l.taken.contains(&node.node));
     let fill = if node.dimmed || taken {
       Theme::dim(fill)
     } else {
@@ -134,7 +163,7 @@ impl<'a> Painter<'a> {
       }
     }
 
-    if link.is_some_and(|l| l.closes_cycle.contains(&node.id)) {
+    if link.is_some_and(|l| l.closes_cycle.contains(&node.node)) {
       let ring = RoundedRect::from_rect(rect.inflate(4.0, 4.0), 11.0);
       self.scene.stroke(
         &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
@@ -160,6 +189,51 @@ impl<'a> Painter<'a> {
         true,
       );
     }
+
+    if node.copies > 1
+      && let Some(text) = badge
+    {
+      self.badge(rect, text, border);
+    }
+  }
+
+  /// A copy count in a pill straddling the top edge of `rect`, towards its
+  /// right-hand end, outlined in the node's `border` colour.
+  fn badge(
+    &mut self,
+    rect: Rect,
+    text: &TextLayout<BrushIndex>,
+    border: Color,
+  ) {
+    let (w, h) = (text.width() as f64, text.height() as f64);
+    let pill = Rect::from_center_size(
+      (rect.x1 - CHAMFER - BADGE_PAD - w / 2.0 - 4.0, rect.y0),
+      (w + 2.0 * BADGE_PAD, h + 2.0),
+    );
+    let shape = RoundedRect::from_rect(pill, pill.height() / 2.0);
+    self.scene.fill(
+      Fill::NonZero,
+      self.tf,
+      &Brush::Solid(self.theme.bg),
+      None,
+      &shape,
+    );
+    self.scene.stroke(
+      &Stroke::new(1.0),
+      self.tf,
+      &Brush::Solid(border),
+      None,
+      &shape,
+    );
+    let origin =
+      Point::new(pill.center().x - w / 2.0, pill.center().y - h / 2.0);
+    render_text(
+      self.scene,
+      self.tf * Affine::translate(origin.to_vec2()),
+      text,
+      &[Brush::Solid(self.theme.text)],
+      true,
+    );
   }
 
   /// Fill `shape`, then stroke its border, thicker and accented when

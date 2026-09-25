@@ -26,6 +26,15 @@ use super::{
 };
 use crate::theme::Theme;
 
+/// A box under the pointer: which copy, and the node it draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Hit {
+  /// The box.
+  copy: NodeId,
+  /// The graph node it draws.
+  node: NodeId,
+}
+
 /// The Masonry canvas widget.
 pub struct CanvasWidget {
   scene:         Arc<CanvasScene>,
@@ -45,15 +54,15 @@ pub struct CanvasWidget {
   fit_pending:   bool,
   /// The frame an eased fit or reveal is heading for, if one is in flight.
   glide:         Option<Frame>,
-  /// A node to reveal once it has been placed (the request can arrive in the
+  /// A box to reveal once it has been placed (the request can arrive in the
   /// same rebuild as the scene that adds it).
   reveal:        Option<NodeId>,
   /// How much of the canvas the chrome covers.
   insets:        Insets,
   /// Link mode, while it is armed.
   link:          Option<LinkMode>,
-  /// The node under the pointer, tracked while no button is held.
-  hover:         Option<NodeId>,
+  /// The box under the pointer, tracked while no button is held.
+  hover:         Option<Hit>,
   /// The zoom percentage last reported to the app, so it hears of changes
   /// only.
   reported_zoom: u32,
@@ -71,7 +80,7 @@ pub struct CanvasWidget {
   theme:         &'static Theme,
   /// Shaped node labels.
   labels:        Labels,
-  /// Every node's box in world coordinates, placed in the layout pass from
+  /// Every box in world coordinates, placed in the layout pass from
   /// the scene's arrangement and the measured labels.
   rects:         HashMap<NodeId, Rect>,
   /// Where each of the scene's edges attaches, index-aligned with
@@ -131,15 +140,18 @@ impl CanvasWidget {
     self.link = link;
   }
 
-  /// Topmost node whose box contains `world`, searched front-to-back.
-  fn hit_test(&self, world: Point) -> Option<NodeId> {
+  /// Topmost box containing `world`, searched front-to-back.
+  fn hit_test(&self, world: Point) -> Option<Hit> {
     self
       .scene
       .nodes
       .iter()
       .rev()
       .find(|n| self.rects.get(&n.id).is_some_and(|r| r.contains(world)))
-      .map(|n| n.id)
+      .map(|n| Hit {
+        copy: n.id,
+        node: n.node,
+      })
   }
 
   /// Shape any label not already shaped, then size and place every node
@@ -268,11 +280,11 @@ impl Widget for CanvasWidget {
     // In link mode, the edge a click on the hovered node would add.
     if let Some(link) = &self.link
       && let Some(target) = self.hover
-      && !link.taken.contains(&target)
+      && !link.taken.contains(&target.node)
       && let (Some(&from), Some(&to)) =
-        (self.rects.get(&link.source), self.rects.get(&target))
+        (self.rects.get(&link.source), self.rects.get(&target.copy))
     {
-      let color = if link.closes_cycle.contains(&target) {
+      let color = if link.closes_cycle.contains(&target.node) {
         self.theme.cycle
       } else {
         self.theme.accent
@@ -285,7 +297,13 @@ impl Widget for CanvasWidget {
       if let Some(&rect) = self.rects.get(&node.id)
         && rect.overlaps(view)
       {
-        painter.node(node, rect, self.link.as_ref(), self.labels.get(node.id));
+        painter.node(
+          node,
+          rect,
+          self.link.as_ref(),
+          self.labels.get(node.id),
+          self.labels.badge(node.copies),
+        );
       }
     }
   }

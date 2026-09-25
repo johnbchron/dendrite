@@ -284,10 +284,7 @@ impl AppState {
       active_quest:         None,
       name_draft:           String::new(),
       quest_draft:          String::new(),
-      camera:               Camera {
-        epoch:   0,
-        request: CameraRequest::Fit,
-      },
+      camera:               Camera::default(),
       inspector_width:      INSPECTOR_WIDTH,
       inspector_width_base: INSPECTOR_WIDTH,
       linking:              false,
@@ -572,10 +569,7 @@ impl AppState {
 
   /// Ask the canvas camera to do something on the next rebuild.
   fn aim(&mut self, request: CameraRequest) {
-    self.camera = Camera {
-      epoch: self.camera.epoch + 1,
-      request,
-    };
+    self.camera = self.camera.then(request);
   }
 
   /// Ask the canvas to refit/centre the whole graph on the next frame.

@@ -292,18 +292,6 @@ fn a_reversed_long_edge_still_gets_channels() {
 }
 
 #[test]
-fn retain_drops_hidden_nodes_and_empty_rows() {
-  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 0, 3)]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  let only = l
-    .arrangement
-    .retain(|s| s != Slot::Node(nid(1)) && s != Slot::Node(nid(3)));
-  assert_eq!(only.rows, vec![vec![Slot::Node(nid(0))], vec![Slot::Node(
-    nid(2)
-  )]]);
-}
-
-#[test]
 fn cyclic_graph_still_ranks_all_nodes() {
   // 2-cycle 0 <-> 1 plus a tail. Layout must not panic, must rank every
   // node, and must reverse at least one edge.

@@ -2,10 +2,10 @@
 //! choosing a row does.
 //!
 //! One list mixes three kinds of row: nodes (choose to go to one), commands
-//! (verb phrases, with their keys), and quests (switch the lens, or add the
-//! selection to one or take it out). With an empty query it shows recently
-//! selected nodes, then the commands; typing ranks everything by
-//! [`query::score`](crate::query::score).
+//! (verb phrases, with their keys), and quests (switch the lens, rename or
+//! delete one, or add the selection to one or take it out). With an empty query
+//! it shows recently selected nodes, then the commands; typing ranks everything
+//! by [`query::score`](crate::query::score).
 
 mod rows;
 
@@ -58,6 +58,10 @@ pub enum PaletteAct {
   Unclaim(QuestId),
   /// Start a quest with the selection in it.
   NewQuestWith,
+  /// Put the cursor in a quest's name.
+  RenameQuest(QuestId),
+  /// Delete a quest.
+  DeleteQuest(QuestId),
 }
 
 /// What kind of thing a row is, for its icon and its place in the ranking.
@@ -193,6 +197,8 @@ impl AppState {
       PaletteAct::Claim(quest) => self.claim_selected(quest),
       PaletteAct::Unclaim(quest) => self.unclaim_selected(quest),
       PaletteAct::NewQuestWith => self.new_quest_with_selected(),
+      PaletteAct::RenameQuest(quest) => self.rename_quest(quest),
+      PaletteAct::DeleteQuest(quest) => self.delete_quest(quest),
     }
   }
 }

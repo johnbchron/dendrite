@@ -48,31 +48,6 @@ pub struct Arrangement {
 }
 
 impl Arrangement {
-  /// The same arrangement with only the slots `keep` accepts, in the same
-  /// rows and order. Rows left without a node are dropped, so a filtered
-  /// view does not keep a blank band for a rank it hides entirely.
-  ///
-  /// Callers should drop a bend whenever they drop either end of its edge.
-  pub fn retain(&self, keep: impl Fn(Slot) -> bool) -> Arrangement {
-    let rows = self
-      .rows
-      .iter()
-      .map(|row| row.iter().copied().filter(|s| keep(*s)).collect::<Vec<_>>())
-      .filter(|row| row.iter().any(|s| matches!(s, Slot::Node(_))))
-      .collect();
-    let links = self
-      .links
-      .iter()
-      .copied()
-      .filter(|&(a, b)| keep(a) && keep(b))
-      .collect();
-    Arrangement {
-      rows,
-      tree: self.tree.clone(),
-      links,
-    }
-  }
-
   /// Assign every node a centre position, given its size, and every long
   /// edge the channels it runs through.
   ///

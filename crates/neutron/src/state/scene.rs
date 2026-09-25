@@ -5,7 +5,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use base::{Graph, NodeId, NodeState, QuestId};
 use db::Store;
-use layout::Slot;
+use layout::Layout;
 
 use super::AppState;
 use crate::canvas::{CanvasScene, RenderEdge, RenderNode};
@@ -64,7 +64,18 @@ impl AppState {
   fn build_scene(&self, store: &Store) -> CanvasScene {
     let graph = store.graph();
     let cached = self.derivations(store);
-    let (derived, lay) = (&cached.derived, &cached.layout);
+    let derived = &cached.derived;
+    // A lens is laid out as a graph of its own, so its nodes take the rows
+    // their places in the quest call for, not the ones they hold among
+    // every node.
+    let lens_layout;
+    let lay: &Layout = match self.active_quest {
+      Some(quest) => {
+        lens_layout = self.caches.lens_layout(store, quest);
+        &lens_layout
+      }
+      None => &cached.layout,
+    };
     let lens = Lens::new(graph, self.active_quest);
 
     let nodes = graph
@@ -91,15 +102,7 @@ impl AppState {
       })
       .collect();
 
-    // Out-of-scope nodes give up their slots, so a lens shows its nodes
-    // packed together rather than scattered among gaps.
-    // A long edge keeps its channels only while both its ends are shown.
-    let arrangement = lay.arrangement.retain(|slot| match slot {
-      Slot::Node(n) => lens.shows(n),
-      Slot::Bend { edge, .. } => graph
-        .edge(edge)
-        .is_some_and(|e| lens.shows(e.from) && lens.shows(e.to)),
-    });
+    let arrangement = lay.arrangement.clone();
     CanvasScene {
       nodes,
       edges,

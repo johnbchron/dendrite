@@ -24,13 +24,37 @@ impl AppState {
       quest: id,
       name:  if unnamed { "New quest".into() } else { name },
     }]);
-    self.set_active_quest(Some(id));
     if unnamed {
-      // Straight into naming it (this replaces the switcher's own request
-      // for its search field).
-      self.open_picker();
-      self.focus_requests.request(FieldKey::QuestName);
+      self.rename_quest(id);
+    } else {
+      self.set_active_quest(Some(id));
     }
+  }
+
+  /// Rename `quest`: put the lens on it and open the switcher with the
+  /// cursor in its name field (this replaces the switcher's own request for
+  /// its search field).
+  pub fn rename_quest(&mut self, quest: QuestId) {
+    self.set_active_quest(Some(quest));
+    self.open_picker();
+    self.focus_requests.request(FieldKey::QuestName);
+  }
+
+  /// Delete `quest`. Its nodes stay, since a quest owns nothing; if it was
+  /// the lens, the view goes back to every node. There is no confirmation:
+  /// a toast offers Undo, as for deleting a node.
+  pub fn delete_quest(&mut self, quest: QuestId) {
+    let name = self.lock().graph().quest(quest).map(|q| q.name.clone());
+    let Some(name) = name else { return };
+    self.commit(vec![Event::QuestRemoved { quest }]);
+    if self.active_quest == Some(quest) {
+      // Not `set_active_quest`, which would close the switcher this may
+      // have been deleted from.
+      self.active_quest = None;
+      self.sync_quest_draft();
+    }
+    let revision = self.lock().revision();
+    self.toasts.show(format!("Deleted quest {name}"), revision);
   }
 
   /// Switch the active quest lens (or clear it for the global view), and
@@ -141,8 +165,6 @@ impl AppState {
       },
       Event::QuestClaimed { quest, node },
     ]);
-    self.set_active_quest(Some(quest));
-    self.open_picker();
-    self.focus_requests.request(FieldKey::QuestName);
+    self.rename_quest(quest);
   }
 }

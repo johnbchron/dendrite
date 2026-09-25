@@ -152,3 +152,65 @@ fn quest_membership_changes_from_the_palette_and_the_inspector() {
   let (rows, _) = state.palette_rows();
   assert!(!rows.iter().any(|r| matches!(r.act, PaletteAct::Claim(_))));
 }
+
+/// Deleting a quest leaves its nodes alone, takes the lens off it, and
+/// offers Undo, which puts back its claims too.
+#[test]
+fn deleting_a_quest_keeps_its_nodes_and_undoes() {
+  let mut state = AppState::new(demo_store());
+  let ship = node_named(&state, "Ship v1");
+  let (launch, _) = state
+    .quest_rows()
+    .into_iter()
+    .find_map(|r| match r.choice {
+      QuestChoice::Quest(id) => Some((id, r.label)),
+      _ => None,
+    })
+    .unwrap();
+  state.set_active_quest(Some(launch));
+  state.toggle_picker();
+
+  state.delete_quest(launch);
+  assert!(state.lock().graph().quest(launch).is_none());
+  assert_eq!(state.lock().graph().node_count(), 5, "nodes stay");
+  assert_eq!(state.active_quest, None, "the lens is off the gone quest");
+  assert!(state.picker_open(), "the switcher stays open to go on");
+  assert_eq!(state.toast().unwrap().text, "Deleted quest v1 Launch");
+
+  state.undo_toast();
+  let store = state.lock();
+  let quest = store.graph().quest(launch).expect("undo restores it");
+  assert_eq!(quest.name, "v1 Launch");
+  assert!(quest.claims.contains(&ship), "with its claims");
+}
+
+/// The palette renames and deletes any quest by name.
+#[test]
+fn the_palette_renames_and_deletes_quests() {
+  let mut state = AppState::new(demo_store());
+  let requests = state.focus_requests();
+  let row = |state: &mut AppState, text: &str| {
+    state.open_palette(false);
+    state.set_palette_text(text.into());
+    let (rows, _) = state.palette_rows();
+    rows
+      .into_iter()
+      .find(|r| r.label == text)
+      .unwrap_or_else(|| panic!("no row {text}"))
+      .act
+  };
+
+  let rename = row(&mut state, "Rename quest v1 Launch");
+  let PaletteAct::RenameQuest(launch) = rename else {
+    panic!("not a rename: {rename:?}")
+  };
+  state.run_palette(rename);
+  assert_eq!(state.active_quest, Some(launch), "the lens moves to it");
+  assert!(state.picker_open());
+  assert_eq!(requests.take(), Some(FieldKey::QuestName));
+
+  let delete = row(&mut state, "Delete quest v1 Launch");
+  assert_eq!(delete, PaletteAct::DeleteQuest(launch));
+  state.run_palette(delete);
+  assert_eq!(state.lock().graph().quests().count(), 0);
+}

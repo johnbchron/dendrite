@@ -6,7 +6,8 @@
 //! on opening; the arrow keys (which pass through the field) and Enter pick
 //! a row, and a query no quest matches becomes the
 //! name of a new quest. Renaming the active quest lives in the switcher
-//! rather than on the pill, so the pill cannot be edited by accident.
+//! rather than on the pill, so the pill cannot be edited by accident; each
+//! quest row has a delete button while hovered.
 
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
@@ -17,14 +18,18 @@ use xilem::{
   },
 };
 
-use super::controls::{body, fill, label, muted, row_button, section};
+use super::controls::{
+  body, fill, icon_btn, label, muted, row_button, section,
+};
 use crate::{
   field::field,
   focus::FieldKey,
+  hover_row::hover_row,
   icons::{Icon, icon},
   state::{AppState, QuestChoice},
   surface::{Level, surface},
   tokens::{radius, size, space, text},
+  tooltip::{Anchor, tooltip},
 };
 
 /// Width of the switcher popover.
@@ -101,7 +106,7 @@ pub(super) fn switcher(
         _ if row.current => icon(Icon::Flag, size::ICON, theme.accent),
         _ => icon(Icon::Flag, size::ICON, theme.muted),
       };
-      row_button(
+      let button = row_button(
         theme,
         i == highlight,
         flex_row((
@@ -115,8 +120,26 @@ pub(super) fn switcher(
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .gap(space::S.px()),
         move |s: &mut AppState| s.choose_quest(choice),
-      )
-      .into_any_flex()
+      );
+      match choice {
+        QuestChoice::Quest(id) => hover_row(
+          button,
+          tooltip(
+            "Delete quest",
+            theme,
+            Anchor::End,
+            icon_btn(
+              Icon::Trash,
+              theme,
+              false,
+              true,
+              move |s: &mut AppState| s.delete_quest(id),
+            ),
+          ),
+        )
+        .into_any_flex(),
+        _ => button.into_any_flex(),
+      }
     })
     .collect();
 

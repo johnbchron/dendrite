@@ -84,6 +84,20 @@ impl Graph {
       .filter_map(|e| self.edges.get(e))
   }
 
+  /// The subgraph on the nodes `keep` accepts: those nodes and the edges
+  /// between them. Quests are left out, since a subgraph is for drawing,
+  /// not for asking what claims what.
+  pub fn induced(&self, keep: impl Fn(NodeId) -> bool) -> Graph {
+    let mut sub = Graph::new();
+    for node in self.nodes.values().filter(|n| keep(n.id)) {
+      sub.insert_node(node.clone());
+    }
+    for edge in self.edges.values().filter(|e| keep(e.from) && keep(e.to)) {
+      sub.insert_edge(*edge);
+    }
+    sub
+  }
+
   /// Whether `node` is satisfied (completed task / satisfied condition).
   pub fn is_satisfied(&self, node: NodeId) -> bool {
     self.nodes.get(&node).is_some_and(|n| n.kind.is_satisfied())

@@ -44,7 +44,7 @@ fontconfig, wayland/xkb, …):
 
 ```sh
 nix develop        # or: direnv allow
-cargo test         # 118 tests across the workspace
+cargo test         # 122 tests across the workspace
 cargo run -p neutron
 ```
 
@@ -60,7 +60,9 @@ The canvas fills the window; everything else floats over it.
   are rounded rectangles, conditions chamfered ones; fill and border encode
   Ready / Blocked / Completed / Cyclic / Pending. Edges are dependencies, and
   cycle-reversed edges are drawn in warning red.
-- **Top bar**: the quest lens (switch, search, create and rename quests),
+- **Top bar**: the quest lens (switch, search, create, rename and delete
+  quests; a quest's view is laid out on its own, so its nodes take the
+  rows the quest calls for),
   new task / condition (attached to the selection as its requirement, if
   there is one), a search box for the command palette, undo / redo (their
   tooltips name the step), zoom and fit, and settings (the colour palette).

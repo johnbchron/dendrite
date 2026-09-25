@@ -174,25 +174,33 @@ impl AppState {
   }
 
   /// "Switch to `quest`" for every quest but the current lens, and back to
-  /// all nodes when under one.
+  /// all nodes when under one; "Rename" and "Delete" for every quest.
   fn quest_rows_for_palette(&self) -> Vec<PaletteRow> {
     let store = self.lock();
     let mut quests: Vec<_> = store
       .graph()
       .quests()
-      .filter(|q| self.active_quest != Some(q.id))
       .map(|q| (q.name.clone(), q.id))
       .collect();
     quests.sort();
-    let mut rows: Vec<PaletteRow> = quests
-      .into_iter()
-      .map(|(name, id)| {
-        PaletteRow::quest(
+    let row = PaletteRow::quest;
+    let mut rows = Vec::new();
+    for (name, id) in quests {
+      if self.active_quest != Some(id) {
+        rows.push(row(
           PaletteAct::Quest(Some(id)),
           format!("Switch to {name}"),
-        )
-      })
-      .collect();
+        ));
+      }
+      rows.push(row(
+        PaletteAct::RenameQuest(id),
+        format!("Rename quest {name}"),
+      ));
+      rows.push(row(
+        PaletteAct::DeleteQuest(id),
+        format!("Delete quest {name}"),
+      ));
+    }
     if self.active_quest.is_some() {
       rows.push(PaletteRow::quest(
         PaletteAct::Quest(None),

@@ -1,33 +1,12 @@
-//! A single-line text field: xilem's `text_input`, with the controls the
-//! chrome needs and xilem 0.4 does not expose.
-//!
-//! - **Size and face.** The inner `TextArea` gets an explicit font size and the
-//!   app's font stack, instead of Masonry's fixed 15 px system face.
-//! - **Focus.** The field reports gaining and losing focus, and Escape gives
-//!   focus up (the text area passes Escape through unhandled).
-//! - **Its own frame.** Masonry's `TextInput` paints its focused border in
-//!   hard-coded white, which disappears on a light palette. Here the inner
-//!   input is transparent and borderless, and the wrapper paints the ground,
-//!   the border and a focus ring from the theme.
-//!
-//! The widget is a thin wrapper, [`FieldWidget`], around Masonry's
-//! `TextInput`; the view mirrors xilem's `TextInput` view and adds the rest.
+//! The Xilem view that hosts [`FieldWidget`], mirroring xilem's own
+//! `TextInput` view.
 
 use masonry::{
-  accesskit::{Node as AccessNode, Role},
-  core::{
-    AccessCtx, ArcStr, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    NewWidget, PaintCtx, PointerEvent, Properties, PropertiesMut,
-    PropertiesRef, RegisterCtx, StyleProperty, TextEvent, Update, UpdateCtx,
-    Widget, WidgetMut, WidgetPod,
-    keyboard::{Key, KeyState, NamedKey},
-  },
-  kurbo::{Affine, RoundedRect, Size, Stroke},
-  peniko::{Brush, Color, Fill},
+  core::{ArcStr, NewWidget, Properties, StyleProperty},
+  peniko::Color,
   properties::{
     Background, BorderWidth, CaretColor, ContentColor, PlaceholderColor,
   },
-  vello::Scene,
   widgets::{self, TextAction},
 };
 use xilem::{
@@ -35,190 +14,12 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
+use super::{Colors, FieldAction, widget::FieldWidget};
 use crate::{
   focus::{self, FieldKey},
   font,
   theme::Theme,
-  tokens::radius,
 };
-
-/// What the wrapper itself reports, alongside the text area's own
-/// [`TextAction`]s.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FieldAction {
-  /// The field gained or lost keyboard focus.
-  Focus {
-    /// Whether the field now has focus.
-    focused:    bool,
-    /// Whether a click in the field caused it (rather than the key map).
-    by_pointer: bool,
-  },
-}
-
-// --- the widget ---------------------------------------------------------
-
-/// Paints the field's frame around a transparent Masonry `TextInput`, and
-/// reports focus changes.
-pub struct FieldWidget {
-  child:          WidgetPod<widgets::TextInput>,
-  colors:         Colors,
-  /// Whether Escape, after giving up focus, goes on to the key map too.
-  escape_bubbles: bool,
-  /// Set between a press inside the field and the focus change it causes,
-  /// so the view can tell a click from keyboard focus.
-  pressed:        bool,
-}
-
-/// The frame's colours, all taken from the theme.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Colors {
-  ground: Color,
-  border: Color,
-  focus:  Color,
-}
-
-impl Colors {
-  fn from_theme(theme: &Theme) -> Self {
-    Self {
-      ground: theme.sunken,
-      border: theme.rule,
-      focus:  theme.focus,
-    }
-  }
-}
-
-impl FieldWidget {
-  fn new(child: NewWidget<widgets::TextInput>, colors: Colors) -> Self {
-    Self {
-      child: child.to_pod(),
-      colors,
-      escape_bubbles: false,
-      pressed: false,
-    }
-  }
-
-  fn child_mut<'t>(
-    this: &'t mut WidgetMut<'_, Self>,
-  ) -> WidgetMut<'t, widgets::TextInput> {
-    this.ctx.get_mut(&mut this.widget.child)
-  }
-}
-
-impl Widget for FieldWidget {
-  type Action = FieldAction;
-
-  fn on_text_event(
-    &mut self,
-    ctx: &mut EventCtx<'_>,
-    _props: &mut PropertiesMut<'_>,
-    event: &TextEvent,
-  ) {
-    // Escape bubbles up from the text area unhandled: treat it as "done
-    // here", so the key map sees the next Escape.
-    if let TextEvent::Keyboard(key) = event
-      && key.state == KeyState::Down
-      && key.key == Key::Named(NamedKey::Escape)
-      && ctx.has_focus_target()
-    {
-      ctx.resign_focus();
-      if !self.escape_bubbles {
-        ctx.set_handled();
-      }
-    }
-  }
-
-  fn on_pointer_event(
-    &mut self,
-    _ctx: &mut EventCtx<'_>,
-    _props: &mut PropertiesMut<'_>,
-    event: &PointerEvent,
-  ) {
-    // Presses bubble up from the text area before focus moves to it.
-    match event {
-      PointerEvent::Down(_) => self.pressed = true,
-      PointerEvent::Up(_) | PointerEvent::Cancel(_) => self.pressed = false,
-      _ => {}
-    }
-  }
-
-  fn update(
-    &mut self,
-    ctx: &mut UpdateCtx<'_>,
-    _props: &mut PropertiesMut<'_>,
-    event: &Update,
-  ) {
-    if let Update::ChildFocusChanged(focused) = event {
-      ctx.submit_action::<FieldAction>(FieldAction::Focus {
-        focused:    *focused,
-        by_pointer: std::mem::take(&mut self.pressed),
-      });
-      ctx.request_paint_only();
-    }
-  }
-
-  fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
-    ctx.register_child(&mut self.child);
-  }
-
-  fn layout(
-    &mut self,
-    ctx: &mut LayoutCtx<'_>,
-    _props: &mut PropertiesMut<'_>,
-    bc: &BoxConstraints,
-  ) -> Size {
-    let size = ctx.run_layout(&mut self.child, bc);
-    ctx.place_child(&mut self.child, (0.0, 0.0).into());
-    size
-  }
-
-  fn paint(
-    &mut self,
-    ctx: &mut PaintCtx<'_>,
-    _props: &PropertiesRef<'_>,
-    scene: &mut Scene,
-  ) {
-    let rect = ctx.size().to_rect();
-    let shape = RoundedRect::from_rect(rect.inset(-0.5), radius::CONTROL);
-    scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(self.colors.ground),
-      None,
-      &shape,
-    );
-    let (color, width) = if ctx.has_focus_target() {
-      (self.colors.focus, 2.0)
-    } else {
-      (self.colors.border, 1.0)
-    };
-    // Stroke inside the bounds, so the ring is never clipped by a parent.
-    let ring =
-      RoundedRect::from_rect(rect.inset(-width / 2.0), radius::CONTROL);
-    scene.stroke(
-      &Stroke::new(width),
-      Affine::IDENTITY,
-      &Brush::Solid(color),
-      None,
-      &ring,
-    );
-  }
-
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
-
-  fn accessibility(
-    &mut self,
-    _ctx: &mut AccessCtx<'_>,
-    _props: &PropertiesRef<'_>,
-    _node: &mut AccessNode,
-  ) {
-  }
-
-  fn children_ids(&self) -> ChildrenIds {
-    ChildrenIds::from_slice(&[self.child.id()])
-  }
-}
-
-// --- the view -----------------------------------------------------------
 
 type Callback<State, Action, T> =
   Box<dyn Fn(&mut State, T) -> Action + Send + Sync + 'static>;
@@ -347,9 +148,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     }
     let input = NewWidget::new_with_props(input, self.input_props());
     let pod = ctx.with_action_widget(|ctx| {
-      let mut widget = FieldWidget::new(input, Colors::from_theme(self.theme));
-      widget.escape_bubbles = self.escape_bubbles;
-      ctx.create_pod(widget)
+      ctx.create_pod(FieldWidget::new(
+        input,
+        Colors::from_theme(self.theme),
+        self.escape_bubbles,
+      ))
     });
     (pod, ())
   }
@@ -362,10 +165,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     mut element: Mut<'_, Self::Element>,
     _: &mut State,
   ) {
-    element.widget.escape_bubbles = self.escape_bubbles;
+    FieldWidget::set_escape_bubbles(&mut element, self.escape_bubbles);
     if !std::ptr::eq(self.theme, prev.theme) {
-      element.widget.colors = Colors::from_theme(self.theme);
-      element.ctx.request_paint_only();
+      FieldWidget::set_colors(&mut element, Colors::from_theme(self.theme));
     }
     let mut input = FieldWidget::child_mut(&mut element);
     if !std::ptr::eq(self.theme, prev.theme) {
@@ -441,10 +243,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     // Focus from the keyboard selects the whole text, so typing replaces it,
     // as a rename field should; a click keeps the caret where it landed.
     if focused && !by_pointer {
-      let mut input = FieldWidget::child_mut(&mut element);
-      let mut area = widgets::TextInput::text_mut(&mut input);
-      let len: usize = area.widget.text().into_iter().map(str::len).sum();
-      widgets::TextArea::select_byte_range(&mut area, 0, len);
+      FieldWidget::select_all(&mut element);
     }
     match &self.on_focus {
       Some(f) => MessageResult::Action(f(app_state, focused)),

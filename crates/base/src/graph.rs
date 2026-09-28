@@ -8,31 +8,41 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-  ids::{EdgeId, NodeId, QuestId},
+  ids::{ContextId, EdgeId, NodeId, PlaceId, QuestId, ResourceId, ScheduleId},
   model::{Edge, Node, Quest},
+  referent::{Context, Place, Resource, Schedule},
 };
 
-/// The whole world: one flat, global, fully cross-linkable graph plus the
-/// quests that claim into it.
+/// The whole world: one flat, global, fully cross-linkable graph, the
+/// quests that claim into it, and the referents formula atoms point at.
 #[derive(Clone, Debug, Default)]
 pub struct Graph {
-  nodes:  HashMap<NodeId, Node>,
-  edges:  HashMap<EdgeId, Edge>,
-  quests: HashMap<QuestId, Quest>,
+  nodes:     HashMap<NodeId, Node>,
+  edges:     HashMap<EdgeId, Edge>,
+  quests:    HashMap<QuestId, Quest>,
+  places:    HashMap<PlaceId, Place>,
+  resources: HashMap<ResourceId, Resource>,
+  schedules: HashMap<ScheduleId, Schedule>,
+  contexts:  HashMap<ContextId, Context>,
   /// `from` node -> edges leaving it (its requirements).
-  out:    HashMap<NodeId, Vec<EdgeId>>,
+  out:       HashMap<NodeId, Vec<EdgeId>>,
   /// `to` node -> edges arriving at it (its dependents).
-  inc:    HashMap<NodeId, Vec<EdgeId>>,
+  inc:       HashMap<NodeId, Vec<EdgeId>>,
 }
 
-/// Two graphs are equal when they hold the same nodes, edges and quests.
-/// Adjacency indices are derived and deliberately excluded, so a graph that
-/// reached a state by different mutation paths still compares equal.
+/// Two graphs are equal when they hold the same nodes, edges, quests and
+/// referents. Adjacency indices are derived and deliberately excluded, so a
+/// graph that reached a state by different mutation paths still compares
+/// equal.
 impl PartialEq for Graph {
   fn eq(&self, other: &Self) -> bool {
     self.nodes == other.nodes
       && self.edges == other.edges
       && self.quests == other.quests
+      && self.places == other.places
+      && self.resources == other.resources
+      && self.schedules == other.schedules
+      && self.contexts == other.contexts
   }
 }
 
@@ -98,9 +108,71 @@ impl Graph {
     sub
   }
 
-  /// Whether `node` is satisfied (completed task / satisfied condition).
+  /// Whether `node`'s stored bit is set (completed task / satisfied manual
+  /// condition). Formula conditions depend on facts; gating reads
+  /// [`Derived::is_satisfied`](crate::Derived::is_satisfied).
   pub fn is_satisfied(&self, node: NodeId) -> bool {
     self.nodes.get(&node).is_some_and(|n| n.kind.is_satisfied())
+  }
+
+  /// Whether `node` is a formula condition. Formula conditions are sinks:
+  /// derivation ignores any edge leaving one.
+  pub fn is_formula(&self, node: NodeId) -> bool {
+    self
+      .nodes
+      .get(&node)
+      .is_some_and(|n| n.kind.atom().is_some())
+  }
+
+  /// Look a place up by id.
+  pub fn place(&self, id: PlaceId) -> Option<&Place> { self.places.get(&id) }
+
+  /// Look a resource up by id.
+  pub fn resource(&self, id: ResourceId) -> Option<&Resource> {
+    self.resources.get(&id)
+  }
+
+  /// Look a schedule up by id.
+  pub fn schedule(&self, id: ScheduleId) -> Option<&Schedule> {
+    self.schedules.get(&id)
+  }
+
+  /// Look a context up by id.
+  pub fn context(&self, id: ContextId) -> Option<&Context> {
+    self.contexts.get(&id)
+  }
+
+  /// Iterate all places in arbitrary order.
+  pub fn places(&self) -> impl Iterator<Item = &Place> { self.places.values() }
+
+  /// Iterate all resources in arbitrary order.
+  pub fn resources(&self) -> impl Iterator<Item = &Resource> {
+    self.resources.values()
+  }
+
+  /// Iterate all schedules in arbitrary order.
+  pub fn schedules(&self) -> impl Iterator<Item = &Schedule> {
+    self.schedules.values()
+  }
+
+  /// Iterate all contexts in arbitrary order.
+  pub fn contexts(&self) -> impl Iterator<Item = &Context> {
+    self.contexts.values()
+  }
+
+  /// Whether being at `place` means being at `outer`: they are the same
+  /// place, or `outer` is reached by following `within` up from `place`.
+  /// A `within` loop is walked once round and no further.
+  pub fn is_within(&self, place: PlaceId, outer: PlaceId) -> bool {
+    let mut at = Some(place);
+    for _ in 0..=self.places.len() {
+      match at {
+        Some(p) if p == outer => return true,
+        Some(p) => at = self.places.get(&p).and_then(|p| p.within),
+        None => return false,
+      }
+    }
+    false
   }
 
   // --- structural mutations ---------------------------------------------
@@ -227,9 +299,64 @@ impl Graph {
       .is_some_and(|q| q.claims.remove(&node))
   }
 
-  /// The distinct requirement targets of `node` (deduplicated across
-  /// parallel/multi-kind edges).
+  /// Insert or replace a place, returning the one it replaced.
+  pub fn insert_place(&mut self, place: Place) -> Option<Place> {
+    self.places.insert(place.id, place)
+  }
+
+  /// Remove a place, returning it if it existed. Places within it keep
+  /// their now-dangling `within`, which simply leads nowhere.
+  pub fn remove_place(&mut self, id: PlaceId) -> Option<Place> {
+    self.places.remove(&id)
+  }
+
+  /// Insert or replace a resource, returning the one it replaced.
+  pub fn insert_resource(&mut self, resource: Resource) -> Option<Resource> {
+    self.resources.insert(resource.id, resource)
+  }
+
+  /// Remove a resource, returning it if it existed.
+  pub fn remove_resource(&mut self, id: ResourceId) -> Option<Resource> {
+    self.resources.remove(&id)
+  }
+
+  /// A resource, for editing in place.
+  pub fn resource_mut(&mut self, id: ResourceId) -> Option<&mut Resource> {
+    self.resources.get_mut(&id)
+  }
+
+  /// Insert or replace a schedule, returning the one it replaced.
+  pub fn insert_schedule(&mut self, schedule: Schedule) -> Option<Schedule> {
+    self.schedules.insert(schedule.id, schedule)
+  }
+
+  /// Remove a schedule, returning it if it existed.
+  pub fn remove_schedule(&mut self, id: ScheduleId) -> Option<Schedule> {
+    self.schedules.remove(&id)
+  }
+
+  /// Insert or replace a context, returning the one it replaced.
+  pub fn insert_context(&mut self, context: Context) -> Option<Context> {
+    self.contexts.insert(context.id, context)
+  }
+
+  /// Remove a context, returning it if it existed.
+  pub fn remove_context(&mut self, id: ContextId) -> Option<Context> {
+    self.contexts.remove(&id)
+  }
+
+  /// A context, for editing in place.
+  pub fn context_mut(&mut self, id: ContextId) -> Option<&mut Context> {
+    self.contexts.get_mut(&id)
+  }
+
+  /// The distinct targets that gate `node` (deduplicated across
+  /// parallel/multi-kind edges). None for a formula condition, which is a
+  /// sink whatever edges leave it.
   pub(crate) fn requirement_targets(&self, node: NodeId) -> HashSet<NodeId> {
+    if self.is_formula(node) {
+      return HashSet::new();
+    }
     self.requirements_of(node).map(|e| e.to).collect()
   }
 }

@@ -5,9 +5,10 @@
 use std::collections::{HashMap, HashSet};
 
 use base::{
-  Derived, Edge, EdgeKind, Event, Graph, NodeId, NodeKind, NodeState, Quest,
-  QuestId, actionable, apply_batch, cycle_peers, cyclic_nodes, scope,
+  Derived, Edge, EdgeKind, Event, Facts, Graph, NodeId, NodeKind, NodeState,
+  Quest, QuestId, actionable, apply_batch, cycle_peers, cyclic_nodes, scope,
 };
+use jiff::{Timestamp, tz::TimeZone};
 
 // --- helpers ------------------------------------------------------------
 
@@ -16,6 +17,13 @@ use base::{
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
 
 fn qid(n: u128) -> QuestId { QuestId::from_u128(n) }
+
+/// Derived state under facts with nothing declared; no formula conditions
+/// here, so the clock is irrelevant.
+fn derive(g: &Graph) -> Derived {
+  let facts = Facts::new(Timestamp::UNIX_EPOCH, TimeZone::UTC);
+  Derived::compute(g, &facts)
+}
 
 /// Build a graph from a node spec and edge list. `tasks` maps id -> done.
 fn build(
@@ -59,7 +67,7 @@ fn build(
 #[test]
 fn task_with_no_requirements_is_ready() {
   let g = build(&[(1, false)], &[], &[]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Ready));
   assert!(d.is_ready(nid(1)));
 }
@@ -67,7 +75,7 @@ fn task_with_no_requirements_is_ready() {
 #[test]
 fn completed_task_is_not_ready() {
   let g = build(&[(1, true)], &[], &[]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Completed));
   assert!(!d.is_ready(nid(1)));
 }
@@ -79,14 +87,14 @@ fn task_is_blocked_until_all_requirements_satisfied() {
     (10, 1, 2),
     (11, 1, 3),
   ]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Blocked));
 
   let g = build(&[(1, false), (2, true), (3, false)], &[], &[
     (10, 1, 2),
     (11, 1, 3),
   ]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(
     d.state(nid(1)),
     Some(NodeState::Blocked),
@@ -97,7 +105,7 @@ fn task_is_blocked_until_all_requirements_satisfied() {
     (10, 1, 2),
     (11, 1, 3),
   ]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(
     d.state(nid(1)),
     Some(NodeState::Ready),
@@ -108,7 +116,7 @@ fn task_is_blocked_until_all_requirements_satisfied() {
 #[test]
 fn condition_states_are_pending_or_satisfied() {
   let g = build(&[], &[(1, false), (2, true)], &[]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Pending));
   assert_eq!(d.state(nid(2)), Some(NodeState::Satisfied));
   // A pending manual condition with no requirements is actionable.
@@ -120,7 +128,7 @@ fn condition_states_are_pending_or_satisfied() {
 #[test]
 fn self_loop_is_cyclic() {
   let g = build(&[(1, false)], &[], &[(10, 1, 1)]);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Cyclic));
   assert!(!d.is_ready(nid(1)), "cyclic nodes are never ready");
 }
@@ -172,12 +180,12 @@ fn actionable_is_the_ready_frontier_of_scope() {
   quest.claims.insert(nid(1));
   g.insert_quest(quest);
 
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(actionable(&g, &d, qid(100)), vec![nid(3)]);
 
   // Finish 3: now 2 is the frontier.
   g.set_satisfied(nid(3), true);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   assert_eq!(actionable(&g, &d, qid(100)), vec![nid(2)]);
 }
 
@@ -188,7 +196,7 @@ fn actionable_lists_pulled_in_ready_work() {
   let mut quest = Quest::new(qid(100), "epic");
   quest.claims.insert(nid(1));
   g.insert_quest(quest);
-  let d = Derived::compute(&g);
+  let d = derive(&g);
   let act = actionable(&g, &d, qid(100));
   assert!(act.contains(&nid(2)), "pulled-in ready work is listed");
   assert!(!scope(&g, qid(100)).claimed.contains(&nid(2)));
@@ -415,7 +423,7 @@ mod props {
       (n, edges) in arb_graph()
     ) {
       let g = graph_from(n, &edges);
-      let d = Derived::compute(&g);
+      let d = derive(&g);
       let cyclic = cyclic_nodes(&g);
       for i in 0..n {
         let node = nid(i as u128);

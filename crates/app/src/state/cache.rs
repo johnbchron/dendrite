@@ -9,7 +9,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use base::{Derived, NodeId, QuestId};
+use base::{Derived, Facts, NodeId, QuestId};
+use jiff::{Timestamp, tz::TimeZone};
 use layout::{Layout, LayoutConfig};
 use session::Session;
 
@@ -37,9 +38,13 @@ impl Derivations {
   /// Compute everything for `store`'s current graph.
   fn compute(store: &Session) -> Self {
     let graph = store.graph();
+    // Only the clock for now; declared facts, and recomputing when the
+    // horizon passes, come with the fact store (plans/formula-conditions.md
+    // step F3).
+    let facts = Facts::new(Timestamp::now(), TimeZone::system());
     Self {
       revision: store.revision(),
-      derived:  Derived::compute(graph),
+      derived:  Derived::compute(graph, &facts),
       layout:   Layout::compute(graph, &LayoutConfig::default()),
     }
   }

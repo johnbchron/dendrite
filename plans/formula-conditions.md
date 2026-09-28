@@ -1,6 +1,6 @@
 # Formula conditions
 
-Status: **proposal**
+Status: **in progress** — F1 landed
 Date: 2026-09-28
 Author: John Lewis
 

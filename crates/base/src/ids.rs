@@ -81,3 +81,27 @@ id_type!(
   /// Identifies a single [`Event`](crate::Event) in the append-only log.
   EventId
 );
+id_type!(
+  /// Identifies a [`Place`](crate::Place).
+  PlaceId
+);
+id_type!(
+  /// Identifies a [`Resource`](crate::Resource).
+  ResourceId
+);
+id_type!(
+  /// Identifies a [`Schedule`](crate::Schedule).
+  ScheduleId
+);
+id_type!(
+  /// Identifies a [`Context`](crate::Context).
+  ContextId
+);
+
+impl NodeId {
+  /// Whether this id was derived from a value rather than minted: the
+  /// ids of formula conditions ([`Atom::node_id`](crate::Atom::node_id))
+  /// leave the 48-bit ULID timestamp at zero, so they sort before, and
+  /// never collide with, every id minted by [`NodeId::new`].
+  pub fn is_value_addressed(self) -> bool { self.to_u128() >> 80 == 0 }
+}

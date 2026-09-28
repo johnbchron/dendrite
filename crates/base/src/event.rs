@@ -9,9 +9,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+  formula::Amount,
   graph::Graph,
-  ids::{EdgeId, NodeId, QuestId},
+  ids::{ContextId, EdgeId, NodeId, PlaceId, QuestId, ResourceId, ScheduleId},
   model::{Edge, EdgeKind, Node, NodeKind, Quest},
+  referent::{Context, Place, Resource, Schedule, Span, Unit},
 };
 
 /// A single, self-describing mutation of the graph.
@@ -114,6 +116,101 @@ pub enum Event {
     /// Node being released.
     node:  NodeId,
   },
+  /// Define a place, or redefine one wholesale.
+  PlaceDefined {
+    /// New place id.
+    place:  PlaceId,
+    /// Display name.
+    name:   String,
+    /// The place it lies in.
+    within: Option<PlaceId>,
+  },
+  /// Edit a place's name and parent.
+  PlaceChanged {
+    /// Target place.
+    place:  PlaceId,
+    /// New name.
+    name:   String,
+    /// New parent.
+    within: Option<PlaceId>,
+  },
+  /// Remove a place. Atoms that point at it stop holding.
+  PlaceRemoved {
+    /// Place to remove.
+    place: PlaceId,
+  },
+  /// Define a resource, or redefine one wholesale.
+  ResourceDefined {
+    /// New resource id.
+    resource: ResourceId,
+    /// Display name.
+    name:     String,
+    /// What its amounts count.
+    unit:     Unit,
+    /// How much I have.
+    balance:  Amount,
+  },
+  /// Declare how much of a resource I have.
+  ResourceBalanceSet {
+    /// Target resource.
+    resource: ResourceId,
+    /// New balance.
+    balance:  Amount,
+  },
+  /// Change a resource's display name.
+  ResourceRenamed {
+    /// Target resource.
+    resource: ResourceId,
+    /// New name.
+    name:     String,
+  },
+  /// Remove a resource. Atoms that point at it stop holding.
+  ResourceRemoved {
+    /// Resource to remove.
+    resource: ResourceId,
+  },
+  /// Define a schedule, or redefine one wholesale.
+  ScheduleDefined {
+    /// New schedule id.
+    schedule: ScheduleId,
+    /// Display name.
+    name:     String,
+    /// Its windows.
+    spans:    Vec<Span>,
+  },
+  /// Edit a schedule's name and windows.
+  ScheduleChanged {
+    /// Target schedule.
+    schedule: ScheduleId,
+    /// New name.
+    name:     String,
+    /// New windows.
+    spans:    Vec<Span>,
+  },
+  /// Remove a schedule. Atoms that point at it stop holding.
+  ScheduleRemoved {
+    /// Schedule to remove.
+    schedule: ScheduleId,
+  },
+  /// Define a context, or redefine one wholesale.
+  ContextDefined {
+    /// New context id.
+    context: ContextId,
+    /// Display name.
+    name:    String,
+  },
+  /// Change a context's display name.
+  ContextRenamed {
+    /// Target context.
+    context: ContextId,
+    /// New name.
+    name:    String,
+  },
+  /// Remove a context. Atoms that point at it stop holding.
+  ContextRemoved {
+    /// Context to remove.
+    context: ContextId,
+  },
 }
 
 impl Event {
@@ -147,6 +244,19 @@ impl Event {
       Event::QuestRenamed { .. } => "rename quest",
       Event::QuestClaimed { .. } => "claim",
       Event::QuestUnclaimed { .. } => "unclaim",
+      Event::PlaceDefined { .. } => "new place",
+      Event::PlaceChanged { .. } => "edit place",
+      Event::PlaceRemoved { .. } => "delete place",
+      Event::ResourceDefined { .. } => "new resource",
+      Event::ResourceBalanceSet { .. } => "set balance",
+      Event::ResourceRenamed { .. } => "rename resource",
+      Event::ResourceRemoved { .. } => "delete resource",
+      Event::ScheduleDefined { .. } => "new schedule",
+      Event::ScheduleChanged { .. } => "edit schedule",
+      Event::ScheduleRemoved { .. } => "delete schedule",
+      Event::ContextDefined { .. } => "new context",
+      Event::ContextRenamed { .. } => "rename context",
+      Event::ContextRemoved { .. } => "delete context",
     }
   }
 
@@ -170,6 +280,26 @@ impl Event {
         Event::OrderHintChanged { node: a, .. },
         Event::OrderHintChanged { node: b, .. },
       ) => a == b,
+      (
+        Event::PlaceChanged { place: a, .. },
+        Event::PlaceChanged { place: b, .. },
+      ) => a == b,
+      (
+        Event::ResourceBalanceSet { resource: a, .. },
+        Event::ResourceBalanceSet { resource: b, .. },
+      )
+      | (
+        Event::ResourceRenamed { resource: a, .. },
+        Event::ResourceRenamed { resource: b, .. },
+      ) => a == b,
+      (
+        Event::ScheduleChanged { schedule: a, .. },
+        Event::ScheduleChanged { schedule: b, .. },
+      ) => a == b,
+      (
+        Event::ContextRenamed { context: a, .. },
+        Event::ContextRenamed { context: b, .. },
+      ) => a == b,
       _ => false,
     }
   }
@@ -178,6 +308,9 @@ impl Event {
   ///
   /// Application is total and best-effort: an event that targets a missing
   /// entity is a no-op rather than an error, which keeps log replay robust.
+  ///
+  /// Adding a formula condition that already exists is a no-op too, so two
+  /// replicas, or an undo and a redo, adding the same atom agree.
   pub fn apply(&self, graph: &mut Graph) {
     match self {
       Event::NodeAdded {
@@ -186,12 +319,17 @@ impl Event {
         name,
         order_hint,
       } => {
-        graph.insert_node(Node::new(
-          *node,
-          name.clone(),
-          kind.clone(),
-          *order_hint,
-        ));
+        if graph.is_formula(*node) {
+          return;
+        }
+        let mut kind = kind.clone();
+        if kind.atom().is_some() {
+          // The atom decides; the stored bit stays false.
+          if let NodeKind::Condition { satisfied, .. } = &mut kind {
+            *satisfied = false;
+          }
+        }
+        graph.insert_node(Node::new(*node, name.clone(), kind, *order_hint));
       }
       Event::NodeRemoved { node } => {
         graph.remove_node(*node);
@@ -234,6 +372,100 @@ impl Event {
       Event::QuestUnclaimed { quest, node } => {
         graph.unclaim(*quest, *node);
       }
+      Event::PlaceDefined {
+        place,
+        name,
+        within,
+      } => {
+        graph.insert_place(Place {
+          id:     *place,
+          name:   name.clone(),
+          within: *within,
+        });
+      }
+      Event::PlaceChanged {
+        place,
+        name,
+        within,
+      } => {
+        if graph.place(*place).is_some() {
+          graph.insert_place(Place {
+            id:     *place,
+            name:   name.clone(),
+            within: *within,
+          });
+        }
+      }
+      Event::PlaceRemoved { place } => {
+        graph.remove_place(*place);
+      }
+      Event::ResourceDefined {
+        resource,
+        name,
+        unit,
+        balance,
+      } => {
+        graph.insert_resource(Resource {
+          id:      *resource,
+          name:    name.clone(),
+          unit:    unit.clone(),
+          balance: *balance,
+        });
+      }
+      Event::ResourceBalanceSet { resource, balance } => {
+        if let Some(r) = graph.resource_mut(*resource) {
+          r.balance = *balance;
+        }
+      }
+      Event::ResourceRenamed { resource, name } => {
+        if let Some(r) = graph.resource_mut(*resource) {
+          r.name = name.clone();
+        }
+      }
+      Event::ResourceRemoved { resource } => {
+        graph.remove_resource(*resource);
+      }
+      Event::ScheduleDefined {
+        schedule,
+        name,
+        spans,
+      } => {
+        graph.insert_schedule(Schedule {
+          id:    *schedule,
+          name:  name.clone(),
+          spans: spans.clone(),
+        });
+      }
+      Event::ScheduleChanged {
+        schedule,
+        name,
+        spans,
+      } => {
+        if graph.schedule(*schedule).is_some() {
+          graph.insert_schedule(Schedule {
+            id:    *schedule,
+            name:  name.clone(),
+            spans: spans.clone(),
+          });
+        }
+      }
+      Event::ScheduleRemoved { schedule } => {
+        graph.remove_schedule(*schedule);
+      }
+      Event::ContextDefined { context, name } => {
+        graph.insert_context(Context {
+          id:   *context,
+          name: name.clone(),
+        });
+      }
+      Event::ContextRenamed { context, name } => {
+        if let Some(c) = graph.context_mut(*context) {
+          c.name = name.clone();
+        }
+      }
+      Event::ContextRemoved { context } => {
+        graph.remove_context(*context);
+      }
     }
   }
 
@@ -245,6 +477,9 @@ impl Event {
   /// empty vec when there is nothing to invert (e.g. a no-op event).
   pub fn inverse(&self, graph: &Graph) -> Vec<Event> {
     match self {
+      // Re-adding a formula condition changes nothing, so undoing it must
+      // not remove the node the earlier add made.
+      Event::NodeAdded { node, .. } if graph.is_formula(*node) => vec![],
       Event::NodeAdded { node, .. } => {
         vec![Event::NodeRemoved { node: *node }]
       }
@@ -310,6 +545,7 @@ impl Event {
         .collect(),
       Event::ConditionSet { node, .. } => graph
         .node(*node)
+        .filter(|n| n.kind.atom().is_none())
         .map(|n| Event::ConditionSet {
           node:      *node,
           satisfied: n.kind.is_satisfied(),
@@ -368,8 +604,114 @@ impl Event {
           node:  *node,
         }]
       }
+      // A definition may replace an existing one; undo restores it.
+      Event::PlaceDefined { place, .. } => vec![
+        restore_place(graph, *place)
+          .unwrap_or(Event::PlaceRemoved { place: *place }),
+      ],
+      Event::PlaceChanged { place, .. } | Event::PlaceRemoved { place } => {
+        restore_place(graph, *place).into_iter().collect()
+      }
+      Event::ResourceDefined { resource, .. } => {
+        vec![restore_resource(graph, *resource).unwrap_or(
+          Event::ResourceRemoved {
+            resource: *resource,
+          },
+        )]
+      }
+      Event::ResourceBalanceSet { resource, .. } => graph
+        .resource(*resource)
+        .map(|r| Event::ResourceBalanceSet {
+          resource: *resource,
+          balance:  r.balance,
+        })
+        .into_iter()
+        .collect(),
+      Event::ResourceRenamed { resource, .. } => graph
+        .resource(*resource)
+        .map(|r| Event::ResourceRenamed {
+          resource: *resource,
+          name:     r.name.clone(),
+        })
+        .into_iter()
+        .collect(),
+      Event::ResourceRemoved { resource } => {
+        restore_resource(graph, *resource).into_iter().collect()
+      }
+      Event::ScheduleDefined { schedule, .. } => {
+        vec![restore_schedule(graph, *schedule).unwrap_or(
+          Event::ScheduleRemoved {
+            schedule: *schedule,
+          },
+        )]
+      }
+      Event::ScheduleChanged { schedule, .. } => graph
+        .schedule(*schedule)
+        .map(|s| Event::ScheduleChanged {
+          schedule: *schedule,
+          name:     s.name.clone(),
+          spans:    s.spans.clone(),
+        })
+        .into_iter()
+        .collect(),
+      Event::ScheduleRemoved { schedule } => {
+        restore_schedule(graph, *schedule).into_iter().collect()
+      }
+      Event::ContextDefined { context, .. } => {
+        vec![
+          restore_context(graph, *context)
+            .unwrap_or(Event::ContextRemoved { context: *context }),
+        ]
+      }
+      Event::ContextRenamed { context, .. } => graph
+        .context(*context)
+        .map(|c| Event::ContextRenamed {
+          context: *context,
+          name:    c.name.clone(),
+        })
+        .into_iter()
+        .collect(),
+      Event::ContextRemoved { context } => {
+        restore_context(graph, *context).into_iter().collect()
+      }
     }
   }
+}
+
+/// The event that redefines `place` as `graph` holds it.
+fn restore_place(graph: &Graph, place: PlaceId) -> Option<Event> {
+  graph.place(place).map(|p| Event::PlaceDefined {
+    place:  p.id,
+    name:   p.name.clone(),
+    within: p.within,
+  })
+}
+
+/// The event that redefines `resource` as `graph` holds it.
+fn restore_resource(graph: &Graph, resource: ResourceId) -> Option<Event> {
+  graph.resource(resource).map(|r| Event::ResourceDefined {
+    resource: r.id,
+    name:     r.name.clone(),
+    unit:     r.unit.clone(),
+    balance:  r.balance,
+  })
+}
+
+/// The event that redefines `schedule` as `graph` holds it.
+fn restore_schedule(graph: &Graph, schedule: ScheduleId) -> Option<Event> {
+  graph.schedule(schedule).map(|s| Event::ScheduleDefined {
+    schedule: s.id,
+    name:     s.name.clone(),
+    spans:    s.spans.clone(),
+  })
+}
+
+/// The event that redefines `context` as `graph` holds it.
+fn restore_context(graph: &Graph, context: ContextId) -> Option<Event> {
+  graph.context(context).map(|c| Event::ContextDefined {
+    context: c.id,
+    name:    c.name.clone(),
+  })
 }
 
 /// Apply a batch of events in order, returning the batch that undoes it.

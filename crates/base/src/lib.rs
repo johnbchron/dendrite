@@ -6,17 +6,31 @@
 //! data model, the derived-state algorithms (readiness, Tarjan cycle
 //! detection, quest scope + actionable queries), and the [`Event`] log
 //! reducer with inverse generation for undo (PLAN §4).
+//!
+//! Formula conditions ([`Atom`]) are evaluated against [`Facts`] passed in
+//! by the caller: `base` never reads a clock. [`jiff`] is re-exported for
+//! the time types facts are made of.
 
 pub mod derive;
 pub mod event;
+pub mod formula;
 pub mod graph;
 pub mod ids;
 pub mod model;
 pub mod quest;
+pub mod referent;
 
 pub use derive::{Derived, NodeState, cycle_peers, cyclic_nodes};
 pub use event::{Event, apply_batch};
+pub use formula::{
+  Amount, Atom, Explanation, Facts, Minutes, Moment, TimeOfDay, Truth,
+  WeekdaySet,
+};
 pub use graph::Graph;
-pub use ids::{EdgeId, EventId, NodeId, QuestId};
+pub use ids::{
+  ContextId, EdgeId, EventId, NodeId, PlaceId, QuestId, ResourceId, ScheduleId,
+};
+pub use jiff;
 pub use model::{ConditionSource, Edge, EdgeKind, Node, NodeKind, Quest};
 pub use quest::{QuestScope, actionable, claiming_quests, scope};
+pub use referent::{Context, Place, Resource, Schedule, Span, Unit};

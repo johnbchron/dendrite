@@ -45,7 +45,7 @@ struct Task { completed: bool }
 struct Condition { satisfied: bool, source: ConditionSource }
 enum ConditionSource {
   Manual,
-  // v2: Auto(...) — reserved in schema now, not implemented in v1
+  Formula { atom: Atom },   // computed from facts; see plans/formula-conditions.md
 }
 
 // Quests claim nodes from the global namespace
@@ -73,7 +73,10 @@ Changes from the current skeleton:
 - `NodeKind` + payload instead of `NodeData` enum, since tasks and conditions
   both hold edges now.
 - `ConditionSource` reserved so auto-evaluated conditions slot in without
-  schema migration later.
+  schema migration later. `Formula` fills it: a condition whose truth an
+  `Atom` computes from facts (the clock, where I am, what I have), whose id
+  is a hash of the atom, so equal formulas share one node
+  (plans/formula-conditions.md).
 
 ### Derived state (never stored, always computed)
 
@@ -83,11 +86,14 @@ Changes from the current skeleton:
 | Task      | Ready      | all incoming-requirement targets satisfied        |
 | Task      | Blocked    | ≥1 requirement target unsatisfied                 |
 | Task      | Cyclic     | member of a detected cycle → excluded from Ready  |
-| Condition | Satisfied  | `satisfied`                                       |
-| Condition | Pending    | !`satisfied`                                      |
+| Condition | Satisfied  | `satisfied`, or its formula's atom holds          |
+| Condition | Pending    | not satisfied                                     |
 
 - Ready requires **ALL** dependency targets satisfied (AND semantics, v1 only
   — no ANY/n-of-N).
+- Derivation takes the graph **and the facts** (`Derived::compute(graph,
+  facts)`). Formula conditions are sinks and never Ready; `Derived::horizon`
+  is the next instant one could flip by time alone.
 - Cycles are **allowed but flagged**: SCC detection (Tarjan) marks members
   Cyclic; they render invalid and are treated as permanently blocked until the
   cycle is broken. Layout uses a feedback-arc heuristic to rank them anyway.
@@ -225,7 +231,8 @@ technical risk (see §6).
 
 ## 9. Non-goals (v1)
 
-- Auto-evaluated conditions (schema reserved only).
+- Automatic fact sources (geolocation, calendar free/busy). Formula
+  conditions read facts the user declares, plus the clock.
 - Sync, collaboration, web/mobile.
 - ANY / n-of-N dependency semantics.
 - Nested graphs / containment hierarchies.

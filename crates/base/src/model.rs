@@ -5,7 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{EdgeId, NodeId, QuestId};
+use crate::{
+  formula::Atom,
+  ids::{EdgeId, NodeId, QuestId},
+};
 
 /// A node is either a [`Task`](NodeKind::Task) the user performs or a
 /// [`Condition`](NodeKind::Condition) that becomes satisfied.
@@ -42,8 +45,30 @@ impl NodeKind {
     }
   }
 
-  /// Whether this node counts as satisfied for the purposes of gating
-  /// downstream work: a completed task or a satisfied condition.
+  /// A formula condition holding `atom`. Its stored bit stays `false`:
+  /// the atom decides its truth, in [`Derived`](crate::Derived).
+  pub fn formula(atom: Atom) -> Self {
+    Self::Condition {
+      satisfied: false,
+      source:    ConditionSource::Formula { atom },
+    }
+  }
+
+  /// The atom of a formula condition.
+  pub fn atom(&self) -> Option<&Atom> {
+    match self {
+      Self::Condition {
+        source: ConditionSource::Formula { atom },
+        ..
+      } => Some(atom),
+      _ => None,
+    }
+  }
+
+  /// The stored completion/satisfaction bit: a completed task or a
+  /// satisfied manual condition. Always `false` for a formula condition,
+  /// whose truth depends on facts; gating reads
+  /// [`Derived::is_satisfied`](crate::Derived::is_satisfied).
   pub fn is_satisfied(&self) -> bool {
     match self {
       Self::Task { completed } => *completed,
@@ -52,10 +77,14 @@ impl NodeKind {
   }
 
   /// Set the completion/satisfaction bit regardless of variant, returning
-  /// the previous value.
+  /// the previous value. A no-op on a formula condition: no click sets it.
   pub fn set_satisfied(&mut self, value: bool) -> bool {
     match self {
       Self::Task { completed } => core::mem::replace(completed, value),
+      Self::Condition {
+        source: ConditionSource::Formula { .. },
+        ..
+      } => false,
       Self::Condition { satisfied, .. } => core::mem::replace(satisfied, value),
     }
   }
@@ -63,15 +92,21 @@ impl NodeKind {
 
 /// How a [`Condition`](NodeKind::Condition)'s value is produced.
 ///
-/// Only [`Manual`](ConditionSource::Manual) ships in v1; the enum is
-/// non-exhaustive so auto-evaluated sources slot in without a schema
-/// migration (PLAN §2, §9).
+/// The enum is non-exhaustive so further sources slot in without a schema
+/// migration (PLAN §2).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "source", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConditionSource {
   /// The user toggles satisfaction by hand.
   Manual,
+  /// Computed from facts by an atom (plans/formula-conditions.md). The
+  /// node's id is the atom's [`node_id`](Atom::node_id); it has no
+  /// requirements and is never actionable.
+  Formula {
+    /// The predicate that decides the condition.
+    atom: Atom,
+  },
 }
 
 /// A single node in the global graph.

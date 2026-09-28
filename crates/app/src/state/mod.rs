@@ -30,6 +30,7 @@ mod cache;
 mod chrome;
 mod commands;
 mod edit;
+mod facts;
 mod link;
 mod navigate;
 mod now;
@@ -45,21 +46,32 @@ mod toast;
 use std::sync::{Mutex, MutexGuard};
 
 use base::{Event, NodeId, QuestId};
+use jiff::Timestamp;
 use session::Session;
 
 use self::{
   cache::Caches,
   chrome::{PanelWidth, Popover},
+  facts::Declared,
   palette::Recent,
   toast::Toasts,
 };
 pub use self::{
+  facts::SAFETY_TICK,
+  link::AtomOffer,
+  now::SoonItem,
   palette::{PaletteRow, RowKind},
   selection::{EdgeRow, Reason},
   switcher::QuestChoice,
   toast::Toast,
 };
-use crate::{camera::Camera, focus::FocusRequests, query::Query, theme::Theme};
+use crate::{
+  camera::Camera,
+  focus::FocusRequests,
+  formula::{Clock, SystemClock},
+  query::Query,
+  theme::Theme,
+};
 
 /// The whole application's state.
 pub struct AppState {
@@ -118,6 +130,15 @@ pub struct AppState {
   /// Derived state, layout and the canvas scene for the store's current
   /// revision.
   caches:             Caches,
+  /// Where the time comes from.
+  clock:              Box<dyn Clock>,
+  /// What I have declared about the world, mirrored from preferences.
+  declared:           Declared,
+  /// Bumped whenever the facts may have changed; see
+  /// [`AppState::facts_revision`].
+  facts_revision:     u64,
+  /// When [`AppState::tick`] last looked at the clock.
+  checked_at:         Timestamp,
 }
 
 /// A text field that commits as it is typed in.
@@ -130,33 +151,43 @@ enum LiveEdit {
 }
 
 impl AppState {
-  /// Wrap `store`, restoring the palette it records.
-  pub fn new(store: Session) -> Self {
+  /// Wrap `store`, restoring the palette and the declared facts it
+  /// records, on the system clock.
+  pub fn new(store: Session) -> Self { Self::with_clock(store, SystemClock) }
+
+  /// Wrap `store`, reading the time from `clock`.
+  pub fn with_clock(store: Session, clock: impl Clock + 'static) -> Self {
+    let declared = Declared::load(&store);
+    let checked_at = clock.now();
     let mut state = Self {
-      store:              Mutex::new(store),
-      selected:           None,
-      selected_copy:      None,
-      active_quest:       None,
-      name_draft:         String::new(),
-      quest_draft:        String::new(),
-      camera:             Camera::default(),
-      panel:              PanelWidth::default(),
-      linking:            false,
-      link_filter:        String::new(),
-      popover:            None,
-      quest_query:        Query::default(),
-      theme:              Theme::DEFAULT,
-      now_open:           false,
-      more_open:          false,
-      quests_open:        false,
-      toasts:             Toasts::default(),
-      palette_query:      Query::default(),
+      store: Mutex::new(store),
+      selected: None,
+      selected_copy: None,
+      active_quest: None,
+      name_draft: String::new(),
+      quest_draft: String::new(),
+      camera: Camera::default(),
+      panel: PanelWidth::default(),
+      linking: false,
+      link_filter: String::new(),
+      popover: None,
+      quest_query: Query::default(),
+      theme: Theme::DEFAULT,
+      now_open: false,
+      more_open: false,
+      quests_open: false,
+      toasts: Toasts::default(),
+      palette_query: Query::default(),
       palette_nodes_only: false,
-      recent:             Recent::default(),
-      focus_requests:     FocusRequests::default(),
-      zoom_percent:       100,
-      live_edit:          None,
-      caches:             Caches::default(),
+      recent: Recent::default(),
+      focus_requests: FocusRequests::default(),
+      zoom_percent: 100,
+      live_edit: None,
+      caches: Caches::default(),
+      clock: Box::new(clock),
+      declared,
+      facts_revision: 0,
+      checked_at,
     };
     state.theme = state.stored_theme();
     state

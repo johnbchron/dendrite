@@ -3,10 +3,27 @@
 
 use std::collections::HashSet;
 
-use base::{EdgeKind, NodeId};
+use base::{EdgeId, EdgeKind, NodeId};
 
 use super::AppState;
-use crate::{query, scene::LinkMode};
+use crate::{
+  formula::{
+    describe,
+    phrase::{self, Offer},
+  },
+  query,
+  scene::LinkMode,
+};
+
+/// A formula the requirement search offers for what was typed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AtomOffer {
+  /// The reading of the phrase.
+  pub offer:   Offer,
+  /// How many nodes already require this atom: it exists and choosing it
+  /// links to it ("At Home — used by 6"). Zero for a new one.
+  pub used_by: usize,
+}
 
 /// Most rows the requirement picker will ever show. The panel must not grow
 /// with the graph; anything beyond this is narrowed with the filter instead.
@@ -53,7 +70,7 @@ impl AppState {
     closes_cycle.retain(|n| !taken.contains(n));
     let name = graph
       .node(source)
-      .map(|n| n.name.clone())
+      .map(|n| describe::node_name(graph, n, self.today()))
       .unwrap_or_default();
     Some(LinkMode {
       source,
@@ -116,12 +133,13 @@ impl AppState {
     let graph = store.graph();
     let existing: HashSet<NodeId> =
       graph.requirements_of(id).map(|e| e.to).collect();
+    let today = self.today();
     let mut scored: Vec<(u32, String, NodeId)> = graph
       .nodes()
       .filter(|n| n.id != id && !existing.contains(&n.id))
       .filter_map(|n| {
-        query::score(&self.link_filter, &n.name)
-          .map(|sc| (sc, n.name.clone(), n.id))
+        let name = describe::node_name(graph, n, today);
+        query::score(&self.link_filter, &name).map(|sc| (sc, name, n.id))
       })
       .collect();
     // Best match first; the name, then the id, keep the order stable.
@@ -133,6 +151,36 @@ impl AppState {
       .map(|(_, name, id)| (id, name))
       .collect();
     (v, total)
+  }
+
+  /// Formulas [`Self::link_filter`] reads as, for the requirement search,
+  /// leaving out any the selection already requires.
+  pub fn atom_offers(&self) -> Vec<AtomOffer> {
+    let Some(id) = self.selected else {
+      return Vec::new();
+    };
+    let store = self.lock();
+    let graph = store.graph();
+    phrase::offers(&self.link_filter, graph, self.today())
+      .into_iter()
+      .filter(|o| !graph.requirements_of(id).any(|e| e.to == o.atom.node_id()))
+      .map(|offer| AtomOffer {
+        used_by: graph.dependents_of(offer.atom.node_id()).count(),
+        offer,
+      })
+      .collect()
+  }
+
+  /// Make the selection require `offer`'s atom, defining whatever it names
+  /// that does not exist yet, as one undo step. An atom some node already
+  /// requires is linked to, not added again.
+  pub fn require_offer(&mut self, offer: Offer) {
+    let Some(id) = self.selected else { return };
+    // The requirement first, so the undo step is named for it; an atom may
+    // name a referent defined later in the same group.
+    let mut events = offer.atom.require(self.lock().graph(), id, EdgeId::new());
+    events.extend(offer.define);
+    self.commit(events);
   }
 
   /// Add a dependency requirement from the selected node to `target`.

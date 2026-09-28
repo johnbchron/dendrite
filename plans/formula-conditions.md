@@ -1,6 +1,6 @@
 # Formula conditions
 
-Status: **in progress** — F1 and F2 landed
+Status: **in progress** — F1, F2 and F3 landed
 Date: 2026-09-28
 Author: John Lewis
 

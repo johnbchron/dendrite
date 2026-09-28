@@ -18,12 +18,15 @@
 //! - [`keymap`]: what a key means.
 //! - [`focus`]: naming a text field so it can be focused without knowing what
 //!   widget it is.
+//! - [`formula`]: the clock, formula conditions in words, and typed phrases
+//!   read as formulas.
 //! - [`query`]: typing into a list: the text, the highlight, and matching.
 //! - [`theme`]: the colour palettes every painted surface reads from.
 //! - [`tokens`]: the spacing, size and type scale the chrome is built on.
 
 pub mod camera;
 pub mod focus;
+pub mod formula;
 pub mod keymap;
 pub mod query;
 pub mod scene;

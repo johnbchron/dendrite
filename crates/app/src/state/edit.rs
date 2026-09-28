@@ -3,7 +3,7 @@
 use base::{EdgeId, EdgeKind, Event, NodeId, NodeKind};
 
 use super::{AppState, LiveEdit};
-use crate::focus::FieldKey;
+use crate::{focus::FieldKey, formula::describe};
 
 impl AppState {
   /// Add a new task: see `add_node`.
@@ -112,7 +112,13 @@ impl AppState {
   /// There is no confirmation: a toast offers Undo instead.
   pub fn delete_selected(&mut self) {
     let Some(id) = self.selected else { return };
-    let name = self.lock().graph().node(id).map(|n| n.name.clone());
+    let name = {
+      let store = self.lock();
+      let graph = store.graph();
+      graph
+        .node(id)
+        .map(|n| describe::node_name(graph, n, self.today()))
+    };
     self.commit(vec![Event::NodeRemoved { node: id }]);
     self.select(None);
     let revision = self.lock().revision();

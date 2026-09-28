@@ -1,10 +1,13 @@
 //! The selected node, as the inspector shows it, and changing the
 //! selection.
 
-use base::{Derived, EdgeId, Graph, NodeId, NodeKind, NodeState, QuestId};
+use base::{
+  Derived, EdgeId, Facts, Graph, NodeId, NodeKind, NodeState, QuestId,
+};
+use jiff::civil::Date;
 
 use super::AppState;
-use crate::camera::CameraRequest;
+use crate::{camera::CameraRequest, formula::describe};
 
 /// One edge incident to the selected node, as the inspector shows it. Carries
 /// the [`EdgeId`] so a row can delete the edge it stands for.
@@ -58,6 +61,9 @@ pub enum Reason {
   Satisfied,
   /// A condition with nothing unmet, waiting to be set satisfied.
   AwaitingSatisfaction,
+  /// A formula condition: why its atom holds or not, in a sentence ("Opens
+  /// Thu 1 Oct, in 3 days").
+  Computed(String),
 }
 
 /// The inspector's primary action for the selected node.
@@ -75,6 +81,8 @@ pub enum Primary {
   Satisfy,
   /// Clear a condition's satisfaction.
   Unsatisfy,
+  /// Nothing to press: a formula condition follows the facts, not clicks.
+  Automatic,
 }
 
 impl EdgeRow {
@@ -82,6 +90,7 @@ impl EdgeRow {
   fn new(
     graph: &Graph,
     derived: &Derived,
+    today: Date,
     edge: EdgeId,
     other: NodeId,
   ) -> Self {
@@ -89,7 +98,7 @@ impl EdgeRow {
       edge,
       name: graph
         .node(other)
-        .map(|n| n.name.clone())
+        .map(|n| describe::node_name(graph, n, today))
         .unwrap_or_default(),
       state: derived.state(other).unwrap_or(NodeState::Blocked),
       other,
@@ -98,13 +107,36 @@ impl EdgeRow {
 }
 
 impl Reason {
-  /// Why `node`, in `state`, is in it.
-  fn for_node(graph: &Graph, node: NodeId, state: NodeState) -> Self {
+  /// Why `node`, in `state`, is in it, as derived under `facts`.
+  fn for_node(
+    graph: &Graph,
+    derived: &Derived,
+    facts: &Facts,
+    node: NodeId,
+    state: NodeState,
+  ) -> Self {
+    if let (Some(atom), Some(truth)) = (
+      graph.node(node).and_then(|n| n.kind.atom()),
+      derived.truth(node),
+    ) {
+      return Reason::Computed(describe::truth_sentence(
+        graph,
+        atom,
+        truth,
+        facts.now,
+        &facts.zone,
+      ));
+    }
+    let today = facts.zone.to_datetime(facts.now).date();
     // By name, for a list that does not reshuffle as the graph changes.
     let named = |ids: Vec<NodeId>| -> Vec<(NodeId, String)> {
       let mut v: Vec<(NodeId, String)> = ids
         .into_iter()
-        .filter_map(|n| graph.node(n).map(|node| (n, node.name.clone())))
+        .filter_map(|n| {
+          graph
+            .node(n)
+            .map(|node| (n, describe::node_name(graph, node, today)))
+        })
         .collect();
       v.sort_by(|a, b| a.1.cmp(&b.1));
       v
@@ -114,7 +146,7 @@ impl Reason {
         graph
           .requirements_of(node)
           .map(|e| e.to)
-          .filter(|t| !graph.is_satisfied(*t))
+          .filter(|t| !derived.is_satisfied(*t))
           .collect(),
       )
     };
@@ -157,6 +189,7 @@ impl Reason {
       Reason::AwaitingSatisfaction => {
         "Nothing unmet: waiting to be marked satisfied.".to_string()
       }
+      Reason::Computed(sentence) => sentence.clone(),
     }
   }
 
@@ -180,16 +213,23 @@ impl Primary {
       Primary::Reopen => "Reopen",
       Primary::Satisfy => "Mark satisfied",
       Primary::Unsatisfy => "Unsatisfy",
+      Primary::Automatic => "Automatic",
     }
   }
 
   /// Whether the button can be pressed.
   pub fn enabled(self) -> bool {
-    !matches!(self, Primary::Complete { enabled: false })
+    !matches!(
+      self,
+      Primary::Complete { enabled: false } | Primary::Automatic
+    )
   }
 
   /// The primary action for a node of `kind` in `state`.
   fn for_node(kind: &NodeKind, state: NodeState) -> Self {
+    if kind.atom().is_some() {
+      return Primary::Automatic;
+    }
     match (kind, state) {
       (NodeKind::Task { completed: true }, _) => Primary::Reopen,
       (NodeKind::Task { .. }, state) => Primary::Complete {
@@ -213,18 +253,20 @@ impl AppState {
     let store = self.lock();
     let graph = store.graph();
     let node = graph.node(id)?;
-    let derived = &self.derivations(&store).derived;
+    let cached = self.derivations(&store);
+    let derived = &cached.derived;
+    let today = self.today();
 
     // `requirements_of` walks outgoing edges (what this node needs) and
     // `dependents_of` incoming ones (what needs this node); either way the
     // row describes the node at the *other* end.
     let mut requirements: Vec<EdgeRow> = graph
       .requirements_of(id)
-      .map(|e| EdgeRow::new(graph, derived, e.id, e.to))
+      .map(|e| EdgeRow::new(graph, derived, today, e.id, e.to))
       .collect();
     let mut dependents: Vec<EdgeRow> = graph
       .dependents_of(id)
-      .map(|e| EdgeRow::new(graph, derived, e.id, e.from))
+      .map(|e| EdgeRow::new(graph, derived, today, e.id, e.from))
       .collect();
     // Adjacency order is an implementation detail; sort so the panel does not
     // reshuffle as edges come and go.
@@ -244,7 +286,7 @@ impl AppState {
     Some(SelectedInfo {
       state,
       is_task: matches!(node.kind, NodeKind::Task { .. }),
-      reason: Reason::for_node(graph, id, state),
+      reason: Reason::for_node(graph, derived, &cached.facts, id, state),
       primary: Primary::for_node(&node.kind, state),
       quests,
       claimed,
@@ -285,6 +327,10 @@ impl AppState {
   /// buttons' tooltips.
   pub fn attach_point(&self) -> Option<String> {
     let id = self.selected?;
-    self.lock().graph().node(id).map(|n| n.name.clone())
+    let store = self.lock();
+    let graph = store.graph();
+    graph
+      .node(id)
+      .map(|n| describe::node_name(graph, n, self.today()))
   }
 }

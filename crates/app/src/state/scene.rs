@@ -8,7 +8,10 @@ use layout::{Layout, Slot};
 use session::Session;
 
 use super::AppState;
-use crate::scene::{CanvasScene, RenderEdge, RenderNode};
+use crate::{
+  formula::describe,
+  scene::{CanvasScene, RenderEdge, RenderNode},
+};
 
 /// Which nodes a lens shows, and which of those it dims.
 struct Lens {
@@ -56,7 +59,12 @@ impl AppState {
   /// calls return the same `Arc`, which the canvas takes as "nothing new".
   pub fn scene(&self) -> Arc<CanvasScene> {
     let store = self.lock();
-    let key = (store.revision(), self.selected, self.active_quest);
+    let key = (
+      store.revision(),
+      self.facts_revision,
+      self.selected,
+      self.active_quest,
+    );
     self.caches.scene(key, || self.build_scene(&store))
   }
 
@@ -77,6 +85,7 @@ impl AppState {
       None => &cached.layout,
     };
     let lens = Lens::new(graph, self.active_quest);
+    let today = self.today();
 
     // One box per drawn node: every node in view, and every extra copy of
     // a shared condition. Each copy shows its node's state.
@@ -95,7 +104,7 @@ impl AppState {
           id:       drawn,
           node:     node.id,
           copies:   lay.copies.count(node.id),
-          label:    node.name.clone(),
+          label:    describe::node_name(graph, node, today),
           kind:     node.kind.clone(),
           state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),

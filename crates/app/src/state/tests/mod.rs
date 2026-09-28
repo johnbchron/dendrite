@@ -2,6 +2,7 @@
 
 mod chrome;
 mod edit;
+mod facts;
 mod link;
 mod now;
 mod palette;

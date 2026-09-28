@@ -2,7 +2,8 @@
 //! canvas's bottom-left.
 //!
 //! Collapsed, it is a pill with the count; open, it lists every actionable
-//! node — no cap, scrolling when long — grouped by quest in the global view.
+//! node — no cap, scrolling when long — grouped by quest in the global view,
+//! then under Soon the tasks only the clock is holding back, soonest first.
 //! Choosing a row selects that node and brings it into view.
 
 use masonry::{
@@ -18,7 +19,7 @@ use xilem::{
   },
 };
 
-use super::controls::{body, label, muted, row_button, section, spacer};
+use super::controls::{body, fill, label, muted, row_button, section, spacer};
 use crate::{
   icons::{Icon, icon},
   state::AppState,
@@ -39,6 +40,7 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
   let open = data.now_open();
   let (groups, total) = data.now();
+  let soon = data.soon();
 
   let header = button(
     flex_row((
@@ -72,8 +74,10 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .hovered_border_color(theme.accent);
 
   let list = open.then(|| {
-    let headings = groups.iter().filter(|g| g.title.is_some()).count();
-    let rows: usize = groups.iter().map(|g| g.items.len()).sum();
+    let headings = groups.iter().filter(|g| g.title.is_some()).count()
+      + usize::from(!soon.is_empty());
+    let rows: usize =
+      groups.iter().map(|g| g.items.len()).sum::<usize>() + soon.len();
     let mut items = Vec::new();
     for group in groups {
       if let Some(title) = group.title {
@@ -100,6 +104,30 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
         sized_box(muted("Nothing ready right now.", theme))
           .padding(Padding::from_vh(space::XS, space::S))
           .into_any_flex(),
+      );
+    }
+    if !soon.is_empty() {
+      items.push(
+        sized_box(section("Soon", theme))
+          .padding(Padding::from_vh(space::XS, space::S))
+          .into_any_flex(),
+      );
+    }
+    for item in soon {
+      let id = item.node;
+      items.push(
+        row_button(
+          theme,
+          false,
+          flex_row((
+            fill(body(item.name, theme)),
+            muted(format!("Opens {}", item.when), theme),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::S.px()),
+          move |s: &mut AppState| s.go_to(id),
+        )
+        .into_any_flex(),
       );
     }
     // A portal needs a definite height: the list's own, up to the cap.

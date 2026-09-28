@@ -139,11 +139,18 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   ))
   .alignment(UnitPoint::TOP_LEFT);
 
+  // Look at the clock again when a formula could next flip, or a minute
+  // on, whichever is sooner.
+  let (wake, delay) = data.wake();
+
   // Outermost, so it is the window's root widget and receives every key
   // that no focused field handles.
-  keymap(data.key_flags(), window, |s: &mut AppState, command| {
-    s.run(command)
-  })
+  fork(
+    keymap(data.key_flags(), window, |s: &mut AppState, command| {
+      s.run(command)
+    }),
+    after(wake, delay, |s: &mut AppState| s.tick()),
+  )
 }
 
 /// The banner along the canvas's top edge while link mode is armed, so the

@@ -1,10 +1,13 @@
-//! The Now tray: what can be done right now (PLAN §2 actionable query).
+//! The Now tray: what can be done right now (PLAN §2 actionable query), and
+//! what the clock alone is holding back.
 
 use std::collections::HashSet;
 
-use base::{Derived, Graph, NodeId, QuestId};
+use base::{Derived, Graph, NodeId, NodeKind, NodeState, QuestId};
+use jiff::{Timestamp, civil::Date};
 
 use super::AppState;
+use crate::formula::describe;
 
 /// A group of actionable nodes in the Now tray.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,11 +31,16 @@ impl NowGroup {
     graph: &Graph,
     derived: &Derived,
     quest: Option<QuestId>,
+    today: Date,
   ) -> (Vec<NowGroup>, usize) {
     let named = |ids: Vec<NodeId>| -> Vec<(NodeId, String)> {
       let mut v: Vec<(NodeId, String)> = ids
         .into_iter()
-        .filter_map(|id| graph.node(id).map(|n| (id, n.name.clone())))
+        .filter_map(|id| {
+          graph
+            .node(id)
+            .map(|n| (id, describe::node_name(graph, n, today)))
+        })
         .collect();
       v.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
       v
@@ -74,13 +82,71 @@ impl NowGroup {
   }
 }
 
+/// A task nothing but the clock is holding back, for the tray's Soon
+/// section.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SoonItem {
+  /// The task.
+  pub node:  NodeId,
+  /// Its name.
+  pub name:  String,
+  /// The earliest it can open: when its last time requirement flips.
+  pub opens: Timestamp,
+  /// That, from now: "in 2 h".
+  pub when:  String,
+}
+
 impl AppState {
+  /// Tasks blocked only by requirements that time alone will meet, soonest
+  /// first, within the active lens.
+  pub fn soon(&self) -> Vec<SoonItem> {
+    let store = self.lock();
+    let graph = store.graph();
+    let cached = self.derivations(&store);
+    let derived = &cached.derived;
+    let now = cached.facts.now;
+    let today = cached.facts.zone.to_datetime(now).date();
+    let scope = self.active_quest.map(|q| base::scope(graph, q));
+
+    let mut items: Vec<SoonItem> = graph
+      .nodes()
+      .filter(|n| matches!(n.kind, NodeKind::Task { .. }))
+      .filter(|n| derived.state(n.id) == Some(NodeState::Blocked))
+      .filter(|n| scope.as_ref().is_none_or(|s| s.contains(n.id)))
+      .filter_map(|n| {
+        // Every unmet requirement must be one the clock will flip.
+        let opens = graph
+          .requirements_of(n.id)
+          .filter(|e| !derived.is_satisfied(e.to))
+          .map(|e| derived.truth(e.to).and_then(|t| t.until))
+          .try_fold(None, |latest: Option<Timestamp>, until| {
+            Some(latest.max(Some(until?)))
+          })??;
+        Some(SoonItem {
+          node: n.id,
+          name: describe::node_name(graph, n, today),
+          opens,
+          when: describe::relative(now, opens),
+        })
+      })
+      .collect();
+    items.sort_by(|a, b| {
+      (a.opens, &a.name, a.node).cmp(&(b.opens, &b.name, b.node))
+    });
+    items
+  }
+
   /// What can be done right now, for the Now tray, and how many distinct
   /// nodes that is; see `NowGroup::collect`.
   pub fn now(&self) -> (Vec<NowGroup>, usize) {
     let store = self.lock();
     let cached = self.derivations(&store);
-    NowGroup::collect(store.graph(), &cached.derived, self.active_quest)
+    NowGroup::collect(
+      store.graph(),
+      &cached.derived,
+      self.active_quest,
+      self.today(),
+    )
   }
 
   /// Whether the Now tray is open.

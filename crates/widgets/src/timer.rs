@@ -5,6 +5,8 @@
 //! restart for a new toast that replaces an old one. This view is keyed:
 //! when the key changes, the pending timer is dropped and a new one starts,
 //! and a timer that fires for a key that is no longer current is ignored.
+//! Only the key restarts it: a caller aiming at a fixed moment can pass a
+//! delay recomputed on every rebuild without pushing the moment back.
 //! It has no widget, so it rides alongside one via `xilem::core::fork`.
 
 use std::{sync::Arc, time::Duration};
@@ -78,7 +80,7 @@ where
     (): Mut<'_, NoElement>,
     _: &mut State,
   ) {
-    if self.key != prev.key || self.delay != prev.delay {
+    if self.key != prev.key {
       handle.abort();
       *handle = self.spawn(ctx);
     }

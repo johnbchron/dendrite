@@ -5,7 +5,8 @@ use base::NodeId;
 
 use super::{PALETTE_MAX, PaletteAct, PaletteRow, RowKind};
 use crate::{
-  camera::ZoomStep, keymap::chord, query, state::AppState, theme::Theme,
+  camera::ZoomStep, formula::describe, keymap::chord, query, state::AppState,
+  theme::Theme,
 };
 
 impl AppState {
@@ -54,6 +55,7 @@ impl AppState {
     let store = self.lock();
     let graph = store.graph();
     let cached = self.derivations(&store);
+    let today = self.today();
     let row = |id: NodeId| {
       let node = graph.node(id)?;
       let quests: Vec<String> = base::claiming_quests(graph, id)
@@ -63,7 +65,7 @@ impl AppState {
       Some(PaletteRow {
         act:    PaletteAct::GoTo(id),
         kind:   RowKind::Node,
-        label:  node.name.clone(),
+        label:  describe::node_name(graph, node, today),
         detail: (!quests.is_empty()).then(|| quests.join(", ")),
         state:  cached.derived.state(id),
       })

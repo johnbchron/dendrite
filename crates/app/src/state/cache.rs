@@ -6,48 +6,42 @@
 //! panel drag) change nothing. A quest lens is laid out on its own, as the
 //! subgraph it shows, so that is kept too, for as long as the graph and the
 //! lens stay the same.
+//!
+//! Derived state also depends on the facts, so it is kept per graph
+//! revision *and* facts revision; layout depends on the graph alone, so time
+//! passing, or a declared fact changing, reuses it.
 
 use std::sync::{Arc, Mutex};
 
 use base::{Derived, Facts, NodeId, QuestId};
-use jiff::{Timestamp, tz::TimeZone};
 use layout::{Layout, LayoutConfig};
 use session::Session;
 
 use super::AppState;
 use crate::scene::CanvasScene;
 
-/// Everything a [`CanvasScene`] is built from: the graph revision, the
-/// selection (highlighted), and the lens (which nodes show, which dim).
-pub(super) type SceneKey = (u64, Option<NodeId>, Option<QuestId>);
+/// Everything a [`CanvasScene`] is built from: the graph and facts
+/// revisions (node states), the selection (highlighted), and the lens
+/// (which nodes show, which dim).
+pub(super) type SceneKey = (u64, u64, Option<NodeId>, Option<QuestId>);
 
 /// What a lens's layout is computed from: the graph revision and the quest.
 type LensKey = (u64, QuestId);
 
-/// Whole-graph computations that depend only on the graph.
+/// Whole-graph computations: derived state from the graph and the facts,
+/// and layout from the graph alone.
 pub(super) struct Derivations {
   /// The [`Session::revision`] these were computed at.
   revision:           u64,
+  /// The [`AppState::facts_revision`] the derived state was computed at.
+  facts_revision:     u64,
+  /// The facts the derived state was computed from.
+  pub(super) facts:   Facts,
   /// Readiness, cycles, satisfaction.
   pub(super) derived: Derived,
-  /// Ranks, ordering and the reversed edges.
-  pub(super) layout:  Layout,
-}
-
-impl Derivations {
-  /// Compute everything for `store`'s current graph.
-  fn compute(store: &Session) -> Self {
-    let graph = store.graph();
-    // Only the clock for now; declared facts, and recomputing when the
-    // horizon passes, come with the fact store (plans/formula-conditions.md
-    // step F3).
-    let facts = Facts::new(Timestamp::now(), TimeZone::system());
-    Self {
-      revision: store.revision(),
-      derived:  Derived::compute(graph, &facts),
-      layout:   Layout::compute(graph, &LayoutConfig::default()),
-    }
-  }
+  /// Ranks, ordering and the reversed edges; shared with the previous
+  /// derivations when only the facts changed.
+  pub(super) layout:  Arc<Layout>,
 }
 
 /// The latest [`Derivations`] and canvas scene.
@@ -62,16 +56,34 @@ pub(super) struct Caches {
 }
 
 impl Caches {
-  /// Derivations for `store`'s current graph, computed at most once per
-  /// revision.
-  pub(super) fn derivations(&self, store: &Session) -> Arc<Derivations> {
+  /// Derivations for `store`'s current graph at `facts_revision`: derived
+  /// state computed at most once per pair of revisions, from the `facts`
+  /// asked for then, and layout at most once per graph revision.
+  pub(super) fn derivations(
+    &self,
+    store: &Session,
+    facts_revision: u64,
+    facts: impl FnOnce() -> Facts,
+  ) -> Arc<Derivations> {
     let mut cache = self.derivations.lock().expect("cache mutex poisoned");
-    if let Some(d) = cache.as_ref()
-      && d.revision == store.revision()
-    {
-      return d.clone();
-    }
-    let fresh = Arc::new(Derivations::compute(store));
+    let revision = store.revision();
+    let layout = match cache.as_ref() {
+      Some(d)
+        if d.revision == revision && d.facts_revision == facts_revision =>
+      {
+        return d.clone();
+      }
+      Some(d) if d.revision == revision => d.layout.clone(),
+      _ => Arc::new(Layout::compute(store.graph(), &LayoutConfig::default())),
+    };
+    let facts = facts();
+    let fresh = Arc::new(Derivations {
+      revision,
+      facts_revision,
+      derived: Derived::compute(store.graph(), &facts),
+      facts,
+      layout,
+    });
     *cache = Some(fresh.clone());
     fresh
   }
@@ -118,9 +130,11 @@ impl Caches {
 }
 
 impl AppState {
-  /// Derived state and layout for `store`'s current graph, computed at most
-  /// once per revision.
+  /// Derived state and layout for `store`'s current graph under the
+  /// current facts; see [`Caches::derivations`].
   pub(super) fn derivations(&self, store: &Session) -> Arc<Derivations> {
-    self.caches.derivations(store)
+    self
+      .caches
+      .derivations(store, self.facts_revision, || self.facts())
   }
 }

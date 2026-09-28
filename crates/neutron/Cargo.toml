@@ -4,10 +4,10 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+app = { path = "../app" }
 base = { path = "../base" }
 db = { path = "../db" }
 layout = { path = "../layout" }
-session = { path = "../session" }
 
 dirs = "7"
 masonry = "0.4"

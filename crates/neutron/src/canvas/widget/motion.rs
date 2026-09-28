@@ -1,6 +1,7 @@
 //! Moving the camera: acting on the app's requests, and easing the view
 //! towards where they point, a frame at a time.
 
+use app::camera::{ZOOM_MAX, ZOOM_MIN};
 use masonry::{
   core::UpdateCtx,
   kurbo::{Point, Rect, Size},
@@ -9,7 +10,7 @@ use masonry::{
 use super::CanvasWidget;
 use crate::canvas::{
   CameraRequest, CanvasAction,
-  camera::{Frame, ZOOM_MAX, ZOOM_MIN, ZOOM_RATE},
+  frame::{Frame, ZOOM_RATE},
 };
 
 impl CanvasWidget {

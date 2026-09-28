@@ -138,6 +138,8 @@ crates/
              + reducer, serde. No I/O, no UI.
   session/   the editing session: graph + undo/redo over an abstract log.
   db/        the SQLite backend for a session: event log, migrations.
+  app/       all application behaviour, with no UI toolkit: state, commands,
+             the key map, palettes, and the scene a canvas is handed.
   layout/    (new, pure) Sugiyama: cycle cut → ranking → within-level ordering
              (barycenter crossing-minimization seeded by order_hint) →
              x-coordinate assignment. Incremental-friendly API.

@@ -11,9 +11,11 @@
 //! a disk is behind [`Backend`].
 
 mod history;
+mod memory;
 
 use base::{Event, Graph};
 pub use history::Group;
+pub use memory::Memory;
 
 /// Anything the backing store can fail with.
 ///

@@ -1,0 +1,18 @@
+[package]
+name = "app"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+base = { path = "../base" }
+layout = { path = "../layout" }
+session = { path = "../session" }
+
+# Linebender vocabulary crates: geometry, colour and input events. All three
+# are pure — no windowing, no GPU, no OS — so depending on them directly
+# (rather than through masonry's re-exports) is what keeps this crate
+# portable.
+kurbo = "0.12"
+peniko = "0.5"
+ui-events = "0.2"
+

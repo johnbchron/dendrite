@@ -12,8 +12,9 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
 | `session` | The editing session: the graph as it stands, and undo/redo via inverse events, over an abstract append-only log (the `Backend` trait). Pure — no I/O, no SQL, no platform. | ✅ complete, tested through `db` |
 | `db` | The SQLite `Backend`: an append-only event log (the source of truth) plus UI preferences, replayed on open. One database for the whole global graph. | ✅ complete, round-trip tested |
+| `app` | Everything Neutron *does*, minus how it is drawn: selection, the inspector's reasoning, link mode, quests and their lens, the command palette, the Now tray, the key map, the colour palettes, and the scene handed to a canvas. Depends only on `base`, `layout`, `session` and the pure linebender vocabulary crates (`kurbo`, `peniko`, `ui-events`) — no toolkit, no platform. | ✅ complete, tested |
 | `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → Brandes–Köpf coordinate assignment. | ✅ complete, tested |
-| `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), a root key map, and the command layer wiring gestures to events. | 🚧 editing done, text sync to come |
+| `neutron` | The Xilem UI and nothing else: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), and the glue that delivers input to `app` and paints what it says. | 🚧 editing done, text sync to come |
 
 ## Milestone status (PLAN §8)
 

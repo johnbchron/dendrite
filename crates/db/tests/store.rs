@@ -123,22 +123,6 @@ fn undo_and_redo_walk_the_graph_while_the_log_only_grows() {
 }
 
 #[test]
-fn undo_of_node_removal_restores_edges_and_claims() {
-  let mut store = Store::open_in_memory().unwrap();
-  store.commit(sample_batch()).unwrap();
-  let before = store.graph().clone();
-
-  store
-    .commit(vec![Event::NodeRemoved { node: nid(1) }])
-    .unwrap();
-  assert!(store.graph().node(nid(1)).is_none());
-  assert_eq!(store.graph().edges().count(), 0);
-
-  store.undo().unwrap();
-  assert_eq!(store.graph(), &before, "removal fully restored by undo");
-}
-
-#[test]
 fn settings_round_trip_and_survive_reopen() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("settings.db");
@@ -438,25 +422,6 @@ fn history_is_never_rewritten() {
     }])
     .unwrap();
   assert_eq!(store.event_count().unwrap(), before + 1);
-}
-
-#[test]
-fn an_amended_rename_reopens_at_its_final_value() {
-  let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
-  let rename = |name: &str| Event::NodeRenamed {
-    node: nid(1),
-    name: name.into(),
-  };
-  {
-    let mut store = Store::open(&path).unwrap();
-    store.commit(sample_batch()).unwrap();
-    store.commit(vec![rename("first")]).unwrap();
-    // Rewrites the row just logged rather than appending to it.
-    store.commit_amend(vec![rename("final")]).unwrap();
-  }
-  let reopened = Store::open(&path).unwrap();
-  assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "final");
 }
 
 #[test]

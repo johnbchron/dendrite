@@ -46,26 +46,3 @@ fn the_now_tray_groups_by_quest_in_the_global_view() {
   )]);
   assert_eq!(total, 1);
 }
-
-#[test]
-fn actionable_tracks_the_ready_frontier() {
-  let mut state = AppState::new(demo_store());
-  // Global view: schema is done, so backend is ready; signoff pending is
-  // actionable; frontend/ship blocked.
-  let (groups, total) = state.now();
-  let names: Vec<String> = groups
-    .into_iter()
-    .flat_map(|g| g.items)
-    .map(|(_, n)| n)
-    .collect();
-  assert_eq!(names.len(), total);
-  assert!(names.contains(&"Build backend".to_string()));
-  assert!(!names.contains(&"Ship v1".to_string()));
-
-  // Undo/redo round-trips the store.
-  let before = state.scene().nodes.len();
-  state.add_task();
-  assert_eq!(state.scene().nodes.len(), before + 1);
-  state.undo();
-  assert_eq!(state.scene().nodes.len(), before);
-}

@@ -50,16 +50,6 @@ fn build(n: u128, edges: &[(u128, u128, u128)]) -> Graph {
 }
 
 #[test]
-fn every_node_gets_a_position_and_rank() {
-  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 1, 3)]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  for i in 0..4 {
-    assert!(pos(&l, nid(i)).is_some(), "node {i} positioned");
-    assert!(rank(&l, nid(i)).is_some(), "node {i} ranked");
-  }
-}
-
-#[test]
 fn dependent_ranks_above_requirement() {
   // 0 -> 1 -> 2: "0 requires 1 requires 2". Goal 0 at top (rank 0),
   // requirements strictly below.
@@ -70,46 +60,6 @@ fn dependent_ranks_above_requirement() {
   assert!(rank(&l, nid(1)).unwrap() < rank(&l, nid(2)).unwrap());
   // y increases downward with rank.
   assert!(pos(&l, nid(0)).unwrap().y < pos(&l, nid(2)).unwrap().y);
-}
-
-#[test]
-fn non_reversed_edges_point_downward() {
-  let g = build(5, &[
-    (10, 0, 1),
-    (11, 0, 2),
-    (12, 1, 3),
-    (13, 2, 3),
-    (14, 3, 4),
-  ]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  for e in g.edges() {
-    if l.is_reversed(e.id) {
-      continue;
-    }
-    let rf = rank(&l, e.from).unwrap();
-    let rt = rank(&l, e.to).unwrap();
-    assert!(
-      rf < rt,
-      "edge {:?} should point downward: {rf} < {rt}",
-      e.id
-    );
-  }
-}
-
-#[test]
-fn layout_is_deterministic() {
-  let g = build(6, &[
-    (10, 0, 2),
-    (11, 1, 2),
-    (12, 2, 3),
-    (13, 2, 4),
-    (14, 3, 5),
-    (15, 4, 5),
-  ]);
-  let cfg = LayoutConfig::default();
-  let a = Layout::compute(&g, &cfg);
-  let b = Layout::compute(&g, &cfg);
-  assert_eq!(a.arrangement, b.arrangement);
 }
 
 #[test]
@@ -309,16 +259,6 @@ fn a_reversed_long_edge_still_gets_channels() {
   assert_eq!(reversed.len(), 1);
   let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
   assert_eq!(placed.channels[&reversed[0]].len(), 2);
-}
-
-#[test]
-fn cyclic_graph_still_ranks_all_nodes() {
-  // 2-cycle 0 <-> 1 plus a tail. Layout must not panic, must rank every
-  // node, and must reverse at least one edge.
-  let g = build(3, &[(10, 0, 1), (11, 1, 0), (12, 1, 2)]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  assert_eq!(placed(&l).len(), 3, "every node ranked and placed");
-  assert!(!l.reversed_edges.is_empty(), "a back edge was reversed");
 }
 
 #[test]

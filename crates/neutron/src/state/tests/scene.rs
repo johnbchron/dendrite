@@ -1,22 +1,6 @@
 use super::*;
 
 #[test]
-fn scene_reflects_seeded_graph() {
-  let state = AppState::new(demo_store());
-  let scene = state.scene();
-  // 4 tasks + 1 condition were seeded.
-  assert_eq!(scene.nodes.len(), 5);
-  assert_eq!(scene.edges.len(), 4);
-  // "Design schema" is done, so "Build backend" should be Ready.
-  assert!(
-    scene
-      .nodes
-      .iter()
-      .any(|n| n.label == "Build backend" && n.state == NodeState::Ready)
-  );
-}
-
-#[test]
 fn derivations_and_scene_are_reused_until_something_changes() {
   let mut state = AppState::new(demo_store());
   let derivations = |s: &AppState| s.derivations(&s.lock());

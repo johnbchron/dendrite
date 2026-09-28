@@ -20,19 +20,14 @@ fn palette_choice_defaults_persists_and_survives_a_bad_id() {
 }
 
 #[test]
-fn a_stored_palette_is_restored_on_open() {
-  let store = Store::open_in_memory().unwrap();
-  store.set_setting("palette", "meridian").unwrap();
-  let state = AppState::new(store);
-  assert_eq!(state.theme().id, "meridian");
-}
-
-#[test]
-fn an_unknown_stored_palette_falls_back_to_the_default() {
-  let store = Store::open_in_memory().unwrap();
-  store.set_setting("palette", "chartreuse").unwrap();
-  let state = AppState::new(store);
-  assert_eq!(state.theme().id, Theme::DEFAULT.id);
+fn a_stored_palette_is_restored_on_open_unless_it_is_unknown() {
+  let open_with = |id| {
+    let store = Store::open_in_memory().unwrap();
+    store.set_setting("palette", id).unwrap();
+    AppState::new(store).theme().id
+  };
+  assert_eq!(open_with("meridian"), "meridian");
+  assert_eq!(open_with("chartreuse"), Theme::DEFAULT.id);
 }
 
 #[test]

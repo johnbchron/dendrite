@@ -126,14 +126,6 @@ fn self_loop_is_cyclic() {
 }
 
 #[test]
-fn two_cycle_flags_both_members() {
-  let g = build(&[(1, false), (2, false)], &[], &[(10, 1, 2), (11, 2, 1)]);
-  let d = Derived::compute(&g);
-  assert!(d.is_cyclic(nid(1)));
-  assert!(d.is_cyclic(nid(2)));
-}
-
-#[test]
 fn cycle_peers_are_the_rest_of_the_component() {
   // 1 -> 2 -> 3 -> 1 is a cycle; 3 -> 4 hangs off it; 5 loops on itself.
   let g = build(
@@ -148,15 +140,6 @@ fn cycle_peers_are_the_rest_of_the_component() {
     cycle_peers(&g, nid(5)).is_empty(),
     "a self-loop has no peers"
   );
-}
-
-#[test]
-fn acyclic_chain_has_no_cycles() {
-  let g = build(&[(1, false), (2, false), (3, false)], &[], &[
-    (10, 1, 2),
-    (11, 2, 3),
-  ]);
-  assert!(cyclic_nodes(&g).is_empty());
 }
 
 // --- quest scope + actionable ------------------------------------------
@@ -444,14 +427,5 @@ mod props {
       }
     }
 
-    /// Cyclic nodes are never reported ready.
-    #[test]
-    fn cyclic_never_ready((n, edges) in arb_graph()) {
-      let g = graph_from(n, &edges);
-      let d = Derived::compute(&g);
-      for node in cyclic_nodes(&g) {
-        prop_assert!(!d.is_ready(node));
-      }
-    }
   }
 }

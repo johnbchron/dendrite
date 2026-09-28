@@ -928,3 +928,46 @@ mod props {
     }
   }
 }
+
+mod group_props {
+  use base::apply_group;
+  use proptest::prelude::*;
+
+  use super::*;
+
+  proptest! {
+    /// Whatever a gesture removes, it leaves no formula node it unlinked
+    /// without dependents, and its inverse restores the graph exactly.
+    #[test]
+    fn groups_remove_orphans_and_undo_exactly(
+      reqs in prop::collection::vec((0u128..4, 0u128..3), 1..12),
+      removals in prop::collection::vec((any::<bool>(), 0usize..16), 1..4),
+    ) {
+      let mut g = Graph::new();
+      for n in 0..4 {
+        add_task(&mut g, n);
+      }
+      let atom = |n| Atom::At { place: PlaceId::from_u128(n) };
+      for (k, (task, a)) in reqs.iter().enumerate() {
+        let events = atom(*a).require(&g, nid(*task), eid(k as u128));
+        apply(&mut g, &events);
+      }
+      let gesture: Vec<Event> = removals
+        .iter()
+        .map(|(node, k)| match node {
+          true => Event::NodeRemoved { node: nid((*k % 4) as u128) },
+          false => Event::EdgeRemoved { edge: eid((*k % reqs.len()) as u128) },
+        })
+        .collect();
+
+      let before = g.clone();
+      let (applied, undo) = apply_group(&mut g, gesture.clone());
+      prop_assert_eq!(&applied[..gesture.len()], &gesture[..]);
+      for node in g.nodes().filter(|n| n.kind.atom().is_some()) {
+        prop_assert!(g.dependents_of(node.id).next().is_some());
+      }
+      apply_batch(&mut g, &undo);
+      prop_assert_eq!(&g, &before);
+    }
+  }
+}

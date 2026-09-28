@@ -4,12 +4,18 @@ use rusqlite::Connection;
 
 use crate::{DbError, meta::Meta};
 
-/// The current schema version, bumped when the table layout changes.
+/// The current schema version, bumped when the table layout changes or the
+/// log gains events an older build cannot read.
 ///
 /// Version 2 dropped the `nodes`/`edges`/`quests`/`quest_claims` projection
 /// tables: the log is the only source of truth, and it is replayed in full
 /// on open.
-const SCHEMA_VERSION: i64 = 2;
+///
+/// Version 3 changes no table, only what the log may hold: formula
+/// conditions and the referents they point at (plans/formula-conditions.md).
+/// A version 2 build cannot parse those events, so the bump makes it refuse
+/// the database cleanly rather than fail partway through replay.
+const SCHEMA_VERSION: i64 = 3;
 
 /// The database's table layout.
 pub(crate) struct Schema<'c>(pub(crate) &'c Connection);

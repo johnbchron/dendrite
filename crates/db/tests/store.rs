@@ -1,8 +1,13 @@
 //! Tests for the SQLite backend and the session it drives (PLAN Milestone
 //! 2): commit + read-back, on-disk round-trip, and undo/redo over a
-//! monotonic log.
+//! monotonic log. Formula conditions (plans/formula-conditions.md, step
+//! F2): every new event through the log, requiring existing and new atoms
+//! under undo and redo, and orphan removal.
 
-use base::{EdgeId, EdgeKind, Event, NodeId, NodeKind, QuestId};
+use base::{
+  Atom, ContextId, EdgeId, EdgeKind, Event, Moment, NodeId, NodeKind, PlaceId,
+  QuestId, ResourceId, ScheduleId, Span, TimeOfDay, Unit, WeekdaySet,
+};
 use rusqlite::Connection;
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
@@ -152,7 +157,7 @@ fn settings_round_trip_and_survive_reopen() {
   // The migration's own meta row is untouched by preference writes.
   assert_eq!(
     reopened.setting("schema_version").unwrap().as_deref(),
-    Some("2")
+    Some("3")
   );
 }
 
@@ -308,7 +313,7 @@ fn a_v1_database_sheds_its_projection_tables() {
   );
   assert_eq!(
     reopened.setting("schema_version").unwrap().as_deref(),
-    Some("2")
+    Some("3")
   );
   assert_eq!(reopened.setting("snapshot_seq").unwrap(), None);
   drop(reopened);
@@ -456,4 +461,357 @@ fn undo_and_redo_name_the_step_they_would_take() {
   store.redo().unwrap();
   assert_eq!(store.undo_label(), Some("rename"));
   assert_eq!(store.redo_label(), None);
+}
+
+// --- formula conditions ---------------------------------------------------
+
+fn task(n: u128) -> Event {
+  Event::NodeAdded {
+    node:       nid(n),
+    kind:       NodeKind::task(),
+    name:       format!("t{n}"),
+    order_hint: 0.0,
+  }
+}
+
+fn at_home() -> Atom {
+  Atom::At {
+    place: PlaceId::from_u128(1),
+  }
+}
+
+/// How many formula nodes the graph holds.
+fn formula_count(store: &db::Store) -> usize {
+  store
+    .graph()
+    .nodes()
+    .filter(|n| n.kind.atom().is_some())
+    .count()
+}
+
+/// Every stored payload, parsed back, in log order.
+fn logged(path: &std::path::Path) -> Vec<Event> {
+  let conn = Connection::open(path).unwrap();
+  let mut stmt = conn
+    .prepare("SELECT payload FROM events ORDER BY seq")
+    .unwrap();
+  stmt
+    .query_map([], |r| r.get::<_, String>(0))
+    .unwrap()
+    .map(|p| serde_json::from_str(&p.unwrap()).unwrap())
+    .collect()
+}
+
+/// One of every event formula conditions brought, and a formula node for
+/// every kind of atom.
+fn formula_batch() -> Vec<Event> {
+  let place = PlaceId::from_u128(1);
+  let resource = ResourceId::from_u128(2);
+  let schedule = ScheduleId::from_u128(3);
+  let context = ContextId::from_u128(4);
+  let moment = |s: &str| s.parse::<Moment>().unwrap();
+  let tod = |s: &str| s.parse::<TimeOfDay>().unwrap();
+  let mut events = vec![
+    Event::PlaceDefined {
+      place:  PlaceId::from_u128(9),
+      name:   "Chicago".into(),
+      within: None,
+    },
+    Event::PlaceDefined {
+      place,
+      name: "Home".into(),
+      within: None,
+    },
+    Event::PlaceChanged {
+      place,
+      name: "Home".into(),
+      within: Some(PlaceId::from_u128(9)),
+    },
+    Event::ResourceDefined {
+      resource,
+      name: "Fun budget".into(),
+      unit: Unit::Money {
+        currency:     "USD".into(),
+        minor_digits: 2,
+      },
+      balance: 32_000,
+    },
+    Event::ResourceBalanceSet {
+      resource,
+      balance: 31_000,
+    },
+    Event::ResourceRenamed {
+      resource,
+      name: "Fun".into(),
+    },
+    Event::ResourceDefined {
+      resource: ResourceId::from_u128(5),
+      name:     "Batteries".into(),
+      unit:     Unit::Count {
+        noun: "battery".into(),
+      },
+      balance:  3,
+    },
+    Event::ResourceRemoved {
+      resource: ResourceId::from_u128(5),
+    },
+    Event::ScheduleDefined {
+      schedule,
+      name: "Business hours".into(),
+      spans: vec![],
+    },
+    Event::ScheduleChanged {
+      schedule,
+      name: "Business hours".into(),
+      spans: vec![
+        Span::Weekly {
+          days:  WeekdaySet::WORKDAYS,
+          start: tod("09:00"),
+          end:   tod("17:00"),
+        },
+        Span::Once {
+          start: moment("2026-12-24T09:00"),
+          end:   moment("2026-12-24T12:00"),
+        },
+      ],
+    },
+    Event::ScheduleDefined {
+      schedule: ScheduleId::from_u128(6),
+      name:     "Unused".into(),
+      spans:    vec![],
+    },
+    Event::ScheduleRemoved {
+      schedule: ScheduleId::from_u128(6),
+    },
+    Event::ContextDefined {
+      context,
+      name: "Online".into(),
+    },
+    Event::ContextRenamed {
+      context,
+      name: "Connected".into(),
+    },
+    Event::ContextDefined {
+      context: ContextId::from_u128(7),
+      name:    "Unused".into(),
+    },
+    Event::ContextRemoved {
+      context: ContextId::from_u128(7),
+    },
+    Event::PlaceRemoved {
+      place: PlaceId::from_u128(9),
+    },
+    task(1),
+  ];
+  let atoms = [
+    Atom::After {
+      at: moment("2026-10-01"),
+    },
+    Atom::Before {
+      at: moment("2026-10-15T17:30"),
+    },
+    Atom::Within { schedule },
+    Atom::Free { at_least: 45 },
+    Atom::At { place },
+    Atom::Has {
+      resource,
+      at_least: 5_000,
+    },
+    Atom::In { context },
+  ];
+  for (k, atom) in atoms.iter().enumerate() {
+    events.push(atom.node_added());
+    events.push(Event::EdgeAdded {
+      edge: eid(100 + k as u128),
+      kind: EdgeKind::Dependency,
+      from: nid(1),
+      to:   atom.node_id(),
+    });
+  }
+  events
+}
+
+#[test]
+fn every_formula_event_round_trips_through_the_log() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("dendrite.db");
+  let batch = formula_batch();
+  let after = {
+    let mut store = db::open(&path).unwrap();
+    store.commit(batch.clone()).unwrap();
+    store.graph().clone()
+  };
+  assert_eq!(logged(&path), batch, "each payload parses back unchanged");
+
+  let reopened = db::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &after);
+  assert_eq!(formula_count(&reopened), 7);
+  assert_eq!(
+    reopened
+      .graph()
+      .resource(ResourceId::from_u128(2))
+      .unwrap()
+      .balance,
+    31_000
+  );
+}
+
+#[test]
+fn requiring_a_new_atom_undoes_node_and_edge_together() {
+  let mut store = db::open_in_memory().unwrap();
+  store.commit(vec![task(1)]).unwrap();
+
+  let events = at_home().require(store.graph(), nid(1), eid(10));
+  assert_eq!(events.len(), 2, "node and edge");
+  store.commit(events).unwrap();
+  assert_eq!(store.undo_label(), Some("add condition"));
+  let with = store.graph().clone();
+
+  store.undo().unwrap();
+  assert_eq!(formula_count(&store), 0);
+  assert_eq!(store.graph().edges().count(), 0);
+
+  store.redo().unwrap();
+  assert_eq!(store.graph(), &with);
+}
+
+#[test]
+fn requiring_an_existing_atom_undoes_only_the_edge() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("dendrite.db");
+  let mut store = db::open(&path).unwrap();
+  store.commit(vec![task(1), task(2)]).unwrap();
+  let events = at_home().require(store.graph(), nid(1), eid(10));
+  store.commit(events).unwrap();
+  let one = store.graph().clone();
+
+  let events = at_home().require(store.graph(), nid(2), eid(11));
+  assert!(matches!(events[..], [Event::EdgeAdded { .. }]), "edge only");
+  store.commit(events).unwrap();
+  assert_eq!(store.undo_label(), Some("add requirement"));
+  let two = store.graph().clone();
+  assert_eq!(formula_count(&store), 1);
+  assert_eq!(store.graph().dependents_of(at_home().node_id()).count(), 2);
+
+  // Undo leaves the node the first requirement made.
+  store.undo().unwrap();
+  assert_eq!(store.graph(), &one);
+  store.redo().unwrap();
+  assert_eq!(store.graph(), &two);
+  drop(store);
+
+  // The log, undo and redo included, replays to the same graph.
+  assert_eq!(db::open(&path).unwrap().graph(), &two);
+}
+
+#[test]
+fn re_adding_an_existing_atom_is_idempotent_through_the_log() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("dendrite.db");
+  let mut store = db::open(&path).unwrap();
+  let events = at_home().require(store.graph(), nid(1), eid(10));
+  store.commit([vec![task(1)], events].concat()).unwrap();
+  let before = store.graph().clone();
+
+  // What a replica, or a stale gesture, might log: the same atom again.
+  store.commit(vec![at_home().node_added()]).unwrap();
+  assert_eq!(store.graph(), &before);
+  store.undo().unwrap();
+  assert_eq!(store.graph(), &before, "undoing the re-add keeps the node");
+  store.redo().unwrap();
+  drop(store);
+
+  let reopened = db::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &before);
+}
+
+#[test]
+fn removing_the_last_requirement_removes_the_orphan_in_one_group() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("dendrite.db");
+  let mut store = db::open(&path).unwrap();
+  store.commit(vec![task(1), task(2)]).unwrap();
+  for (from, edge) in [(1, 10), (2, 11)] {
+    let events = at_home().require(store.graph(), nid(from), eid(edge));
+    store.commit(events).unwrap();
+  }
+  let f = at_home().node_id();
+
+  // Another task still needs it: it stays.
+  store
+    .commit(vec![Event::EdgeRemoved { edge: eid(10) }])
+    .unwrap();
+  assert!(store.graph().node(f).is_some());
+  let one_left = store.graph().clone();
+
+  // The last requirement goes, and the node with it, logged in the group.
+  let logged_before = store.event_count().unwrap();
+  store
+    .commit(vec![Event::EdgeRemoved { edge: eid(11) }])
+    .unwrap();
+  assert!(store.graph().node(f).is_none());
+  assert_eq!(store.event_count().unwrap(), logged_before + 2);
+  assert_eq!(store.undo_label(), Some("remove requirement"));
+
+  // One undo brings back both.
+  store.undo().unwrap();
+  assert_eq!(store.graph(), &one_left);
+  store.redo().unwrap();
+  assert!(store.graph().node(f).is_none());
+  store.undo().unwrap();
+
+  // Deleting the task that required it orphans it too.
+  store
+    .commit(vec![Event::NodeRemoved { node: nid(2) }])
+    .unwrap();
+  assert!(store.graph().node(f).is_none());
+  store.undo().unwrap();
+  assert_eq!(store.graph(), &one_left);
+  drop(store);
+
+  // No garbage collection at replay: the removals are in the log.
+  assert!(logged(&path).contains(&Event::NodeRemoved { node: f }));
+  assert_eq!(db::open(&path).unwrap().graph(), &one_left);
+}
+
+#[test]
+fn replacing_a_requirement_in_one_gesture_keeps_the_node() {
+  let mut store = db::open_in_memory().unwrap();
+  store.commit(vec![task(1), task(2)]).unwrap();
+  let events = at_home().require(store.graph(), nid(1), eid(10));
+  store.commit(events).unwrap();
+
+  // Moving the requirement from one task to another never leaves the node
+  // without a dependent once the gesture is done.
+  let mut events = vec![Event::EdgeRemoved { edge: eid(10) }];
+  events.extend(at_home().require(store.graph(), nid(2), eid(11)));
+  store.commit(events).unwrap();
+  assert_eq!(formula_count(&store), 1);
+  assert_eq!(store.graph().dependents_of(at_home().node_id()).count(), 1);
+}
+
+#[test]
+fn a_v2_database_opens_as_v3_with_its_log_intact() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("dendrite.db");
+  let before = {
+    let mut store = db::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+    store.graph().clone()
+  };
+  let conn = Connection::open(&path).unwrap();
+  conn
+    .execute(
+      "UPDATE meta SET value = '2' WHERE key = 'schema_version'",
+      [],
+    )
+    .unwrap();
+  drop(conn);
+
+  let reopened = db::open(&path).unwrap();
+  assert_eq!(reopened.graph(), &before);
+  assert_eq!(
+    reopened.setting("schema_version").unwrap().as_deref(),
+    Some("3")
+  );
 }

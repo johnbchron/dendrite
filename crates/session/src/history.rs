@@ -8,6 +8,10 @@
 //! adds an event that [supersedes](base::Event::supersedes) the group's last
 //! one — the next keystroke of a rename — it replaces that entry, so a typed
 //! name is logged once rather than once per character.
+//!
+//! A committed group may grow: a formula condition the group leaves with no
+//! dependents is removed as part of it (see [`base::apply_group`]), so the
+//! log and the undo step both carry the removal.
 
 use base::Event;
 
@@ -43,14 +47,15 @@ impl Session {
 
   /// Apply and persist a batch of events as one undoable group.
   ///
-  /// The batch is folded into the graph (yielding its inverse), then the
-  /// events are appended to the log. On success the inverse is pushed to
-  /// the undo stack and the redo stack is cleared.
+  /// The batch is folded into the graph (yielding its inverse, and the
+  /// removal of any formula condition it orphans), then the events are
+  /// appended to the log. On success the inverse is pushed to the undo
+  /// stack and the redo stack is cleared.
   pub fn commit(&mut self, events: Vec<Event>) -> Result<(), Error> {
     if events.is_empty() {
       return Ok(());
     }
-    let inverse = base::apply_batch(&mut self.graph, &events);
+    let (events, inverse) = base::apply_group(&mut self.graph, events);
     self.revision += 1;
     self.last_seq = self.backend.append(&events)?;
     self.undo.push(Group {
@@ -82,7 +87,7 @@ impl Session {
     let Some(prev) = self.undo.pop() else {
       return self.commit(events);
     };
-    let mut inverse = base::apply_batch(&mut self.graph, &events);
+    let (events, mut inverse) = base::apply_group(&mut self.graph, events);
     self.revision += 1;
     match self.backend.append(&events) {
       Ok(seq) => self.last_seq = seq,

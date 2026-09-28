@@ -21,7 +21,7 @@ pub mod quest;
 pub mod referent;
 
 pub use derive::{Derived, NodeState, cycle_peers, cyclic_nodes};
-pub use event::{Event, apply_batch};
+pub use event::{Event, apply_batch, apply_group};
 pub use formula::{
   Amount, Atom, Explanation, Facts, Minutes, Moment, TimeOfDay, Truth,
   WeekdaySet,

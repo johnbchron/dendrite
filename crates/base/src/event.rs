@@ -731,3 +731,62 @@ pub fn apply_batch(graph: &mut Graph, events: &[Event]) -> Vec<Event> {
   inverse.reverse();
   inverse
 }
+
+/// Apply one user gesture's events as [`apply_batch`] does, then remove
+/// every formula condition the gesture left with no dependents, returning
+/// the events actually applied (the batch, then those removals) and the
+/// batch that undoes them all.
+///
+/// A formula node exists only to be required, so the gesture that removes
+/// its last requirement removes it too, in the same undo group; undo brings
+/// both back through the ordinary inverses. The removals are real events in
+/// the log, so replay needs no garbage collection of its own.
+pub fn apply_group(
+  graph: &mut Graph,
+  mut events: Vec<Event>,
+) -> (Vec<Event>, Vec<Event>) {
+  // The formula nodes that lost a requirement, each seen against the state
+  // just before the event that unlinked it.
+  let mut unlinked = Vec::new();
+  let mut inverse = Vec::new();
+  for event in &events {
+    unlinked.extend(unlinks(event, graph));
+    let mut inv = event.inverse(graph);
+    event.apply(graph);
+    inv.reverse();
+    inverse.extend(inv);
+  }
+  unlinked.sort_unstable();
+  unlinked.dedup();
+  for node in unlinked {
+    if graph.is_formula(node) && graph.dependents_of(node).next().is_none() {
+      let removal = Event::NodeRemoved { node };
+      let mut inv = removal.inverse(graph);
+      removal.apply(graph);
+      inv.reverse();
+      inverse.extend(inv);
+      events.push(removal);
+    }
+  }
+  inverse.reverse();
+  (events, inverse)
+}
+
+/// The formula conditions `event` would take a requirement away from, read
+/// against the state before it: the target of a removed edge, or the
+/// formula requirements of a removed node.
+fn unlinks(event: &Event, graph: &Graph) -> Vec<NodeId> {
+  let targets: Vec<NodeId> = match event {
+    Event::EdgeRemoved { edge } => {
+      graph.edge(*edge).map(|e| e.to).into_iter().collect()
+    }
+    Event::NodeRemoved { node } => {
+      graph.requirements_of(*node).map(|e| e.to).collect()
+    }
+    _ => vec![],
+  };
+  targets
+    .into_iter()
+    .filter(|n| graph.is_formula(*n))
+    .collect()
+}

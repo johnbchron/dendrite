@@ -9,7 +9,7 @@ use crate::{
 };
 
 impl AppState {
-  /// The palette's rows for its query: at most [`PALETTE_MAX`], best first,
+  /// The palette's rows for its query: at most `PALETTE_MAX`, best first,
   /// and how many matched in all.
   pub fn palette_rows(&self) -> (Vec<PaletteRow>, usize) {
     let text = self.palette_query.text.trim();

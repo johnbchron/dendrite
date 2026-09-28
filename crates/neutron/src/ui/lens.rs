@@ -22,14 +22,11 @@ use super::controls::{
   body, fill, icon_btn, label, muted, row_button, section,
 };
 use crate::{
-  field::field,
   focus::FieldKey,
-  hover_row::hover_row,
   icons::{Icon, icon},
   state::{AppState, QuestChoice},
-  surface::{Level, surface},
+  themed::{Anchor, FocusKey as _, Level, field, hover_row, surface, tooltip},
   tokens::{radius, size, space, text},
-  tooltip::{Anchor, tooltip},
 };
 
 /// Width of the switcher popover.

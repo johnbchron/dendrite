@@ -14,28 +14,24 @@ use masonry::{
   vello::Scene,
 };
 
-use super::Colors;
-use crate::{
-  font,
-  tokens::{radius, text},
-};
+use super::Look;
 
 /// The tooltip itself: the layer's root. A leaf that shapes and paints its
 /// text, because a layer root is offered the whole window as tight
 /// constraints and every stock container would fill it.
 pub(super) struct TooltipBox {
   text:   String,
-  colors: Colors,
+  look:   Look,
   pad:    Padding,
   layout: TextLayout<BrushIndex>,
 }
 
 impl TooltipBox {
   /// A box for `text`, shaped at its first layout.
-  pub(super) fn new(text: String, colors: Colors, pad: Padding) -> Self {
+  pub(super) fn new(text: String, look: Look, pad: Padding) -> Self {
     Self {
       text,
-      colors,
+      look,
       pad,
       layout: TextLayout::new(),
     }
@@ -46,10 +42,11 @@ impl TooltipBox {
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<BrushIndex>,
     text: &str,
+    look: &Look,
   ) -> TextLayout<BrushIndex> {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
-    builder.push_default(StyleProperty::FontSize(text::SECONDARY));
-    builder.push_default(StyleProperty::FontStack(font::STACK));
+    builder.push_default(StyleProperty::FontSize(look.text_size));
+    builder.push_default(StyleProperty::FontStack(look.font.clone()));
     let mut layout = TextLayout::new();
     builder.build_into(&mut layout, text);
     layout.break_all_lines(None);
@@ -57,9 +54,13 @@ impl TooltipBox {
   }
 
   /// The width of `text` as the tooltip sets it.
-  pub(super) fn measure(ctx: &mut UpdateCtx<'_>, text: &str) -> f64 {
+  pub(super) fn measure(
+    ctx: &mut UpdateCtx<'_>,
+    text: &str,
+    look: &Look,
+  ) -> f64 {
     let (font_cx, layout_cx) = ctx.text_contexts();
-    let layout = Self::shape(font_cx, layout_cx, text);
+    let layout = Self::shape(font_cx, layout_cx, text, look);
     f64::from(layout.width())
   }
 }
@@ -76,7 +77,7 @@ impl Widget for TooltipBox {
     _bc: &BoxConstraints,
   ) -> Size {
     let (font_cx, layout_cx) = ctx.text_contexts();
-    self.layout = Self::shape(font_cx, layout_cx, &self.text);
+    self.layout = Self::shape(font_cx, layout_cx, &self.text, &self.look);
     // Deliberately ignores the (window-sized) constraints: see above.
     Size::new(
       f64::from(self.layout.width()) + self.pad.left + self.pad.right + 2.0,
@@ -91,18 +92,18 @@ impl Widget for TooltipBox {
     scene: &mut Scene,
   ) {
     let rect = ctx.size().to_rect();
-    let shape = RoundedRect::from_rect(rect.inset(-0.5), radius::CONTROL);
+    let shape = RoundedRect::from_rect(rect.inset(-0.5), self.look.radius);
     scene.fill(
       Fill::NonZero,
       Affine::IDENTITY,
-      &Brush::Solid(self.colors.ground),
+      &Brush::Solid(self.look.ground),
       None,
       &shape,
     );
     scene.stroke(
       &Stroke::new(1.0),
       Affine::IDENTITY,
-      &Brush::Solid(self.colors.border),
+      &Brush::Solid(self.look.border),
       None,
       &shape,
     );
@@ -110,7 +111,7 @@ impl Widget for TooltipBox {
       scene,
       Affine::translate((self.pad.left + 1.0, self.pad.top + 1.0)),
       &self.layout,
-      &[Brush::Solid(self.colors.text)],
+      &[Brush::Solid(self.look.text)],
       true,
     );
   }

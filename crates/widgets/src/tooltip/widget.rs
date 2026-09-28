@@ -8,19 +8,16 @@ use masonry::{
     UpdateCtx, Widget, WidgetId, WidgetMut, WidgetPod,
   },
   kurbo::{Point, Size},
-  properties::Padding,
   vello::Scene,
 };
 
-use super::{Anchor, Colors, DELAY_MS, GAP, bubble::TooltipBox};
-use crate::tokens::space;
-
+use super::{Anchor, DELAY_MS, GAP, Look, bubble::TooltipBox};
 /// Wraps a control and shows its tooltip on hover.
 pub struct TooltipWidget {
   child:   WidgetPod<dyn Widget>,
   text:    String,
   anchor:  Anchor,
-  colors:  Colors,
+  look:    Look,
   /// How long the pointer has rested here, while it is here and the tooltip
   /// is not yet showing.
   resting: Option<f64>,
@@ -34,13 +31,13 @@ impl TooltipWidget {
     child: NewWidget<dyn Widget>,
     text: String,
     anchor: Anchor,
-    colors: Colors,
+    look: Look,
   ) -> Self {
     Self {
       child: child.to_pod(),
       text,
       anchor,
-      colors,
+      look,
       resting: None,
       layer: None,
     }
@@ -58,11 +55,11 @@ impl TooltipWidget {
     this: &mut WidgetMut<'_, Self>,
     text: String,
     anchor: Anchor,
-    colors: Colors,
+    look: Look,
   ) {
     this.widget.text = text;
     this.widget.anchor = anchor;
-    this.widget.colors = colors;
+    this.widget.look = look;
     Self::hide(this);
   }
 
@@ -78,21 +75,26 @@ impl TooltipWidget {
     if self.text.is_empty() {
       return;
     }
-    let pad = Padding::from_vh(space::XS, space::S);
+    let pad = self.look.padding;
     // Measured here too, to know where to put it: the box's width is the
     // text's plus padding and the 1 px border.
-    let width =
-      TooltipBox::measure(ctx, &self.text) + pad.left + pad.right + 2.0;
+    let width = TooltipBox::measure(ctx, &self.text, &self.look)
+      + pad.left
+      + pad.right
+      + 2.0;
     let origin = ctx.window_origin();
     let size = ctx.size();
     let x = match self.anchor {
       Anchor::Center => origin.x + (size.width - width) / 2.0,
       Anchor::End => origin.x + size.width - width,
     };
-    let at = Point::new(x.max(space::XS), origin.y + size.height + GAP);
+    let at = Point::new(x.max(GAP), origin.y + size.height + GAP);
 
-    let root =
-      NewWidget::new(TooltipBox::new(self.text.clone(), self.colors, pad));
+    let root = NewWidget::new(TooltipBox::new(
+      self.text.clone(),
+      self.look.clone(),
+      pad,
+    ));
     self.layer = Some(root.id());
     ctx.create_layer(root, at);
   }

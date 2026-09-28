@@ -1,0 +1,9 @@
+[package]
+name = "widgets"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+masonry = "0.4"
+tokio = { version = "1", features = ["time"] }
+xilem = "0.4"

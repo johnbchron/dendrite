@@ -10,7 +10,7 @@ use crate::{query, scene::LinkMode};
 
 /// Most rows the requirement picker will ever show. The panel must not grow
 /// with the graph; anything beyond this is narrowed with the filter instead.
-pub const LINK_PICKER_MAX: usize = 6;
+pub(super) const LINK_PICKER_MAX: usize = 6;
 
 impl AppState {
   /// Whether the canvas is armed to pick a requirement target.
@@ -106,7 +106,7 @@ impl AppState {
   }
 
   /// Candidate requirement targets matching [`Self::link_filter`], capped at
-  /// [`LINK_PICKER_MAX`]. Returns the rows and the total number of matches, so
+  /// `LINK_PICKER_MAX`. Returns the rows and the total number of matches, so
   /// the panel can say how many it is not showing.
   pub fn candidate_requirements(&self) -> (Vec<(NodeId, String)>, usize) {
     let Some(id) = self.selected else {

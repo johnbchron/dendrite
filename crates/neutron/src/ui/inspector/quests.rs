@@ -10,11 +10,10 @@ use xilem::{
 
 use super::icon_row;
 use crate::{
-  hover_row::hover_row,
   icons::Icon,
   state::AppState,
+  themed::{Anchor, hover_row, tooltip},
   tokens::{radius, space},
-  tooltip::{Anchor, tooltip},
   ui::controls::{body, icon_btn, muted, section},
 };
 

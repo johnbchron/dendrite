@@ -7,21 +7,16 @@
 //!
 //! The modules `app` owns are re-exported below under the paths the views
 //! already use, so `crate::theme`, `crate::state` and the rest still name
-//! the one definition.
+//! the one definition. The generic widgets live in `widgets`; [`themed`]
+//! binds them to this app's palette and tokens.
 
-mod appear;
 mod canvas;
-mod divider;
 mod driver;
-mod field;
 mod focus;
 mod font;
-mod hover_row;
 mod icons;
 mod keymap;
-mod surface;
-mod timer;
-mod tooltip;
+mod themed;
 mod ui;
 
 use std::path::PathBuf;

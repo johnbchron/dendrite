@@ -22,7 +22,7 @@ use super::controls::{body, label, muted, row_button, section, spacer};
 use crate::{
   icons::{Icon, icon},
   state::AppState,
-  surface::{Level, surface},
+  themed::{Level, surface},
   tokens::{radius, size, space, text},
 };
 

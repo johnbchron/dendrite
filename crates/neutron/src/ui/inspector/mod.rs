@@ -31,15 +31,15 @@ use super::controls::{
   state_str,
 };
 use crate::{
-  divider::{DividerAction, divider},
-  field::field,
   focus::FieldKey,
   icons::{Icon, icon},
   state::AppState,
-  surface::{Level, surface},
   theme::Theme,
+  themed::{
+    Anchor, DividerAction, FocusKey as _, Level, divider, field, surface,
+    tooltip,
+  },
   tokens::{radius, size, space, text},
-  tooltip::{Anchor, tooltip},
 };
 
 /// The card, scrolling when the node's details outgrow it.

@@ -3,18 +3,22 @@
 //!
 //! The tooltip is drawn in a Masonry *layer* — a separate widget tree above
 //! the whole window — so it is never clipped by the bar or card its control
-//! sits in. [`TooltipWidget`] wraps the control, waits [`DELAY_MS`] of
+//! sits in. [`TooltipWidget`] wraps the control, waits `DELAY_MS` of
 //! hovering, measures the text, and places the layer centred under the
 //! control (or right-aligned, for controls at the window's right edge).
+//!
+//! How it is drawn comes in as a [`Look`]; the palette is the app's.
 
 mod bubble;
 mod view;
 mod widget;
 
-use masonry::peniko::Color;
+use masonry::{parley::style::FontStack, peniko::Color, properties::Padding};
 
-pub use self::{view::tooltip, widget::TooltipWidget};
-use crate::theme::Theme;
+pub use self::{
+  view::{Tooltip, tooltip},
+  widget::TooltipWidget,
+};
 
 /// How long the pointer rests on a control before its tooltip shows.
 const DELAY_MS: f64 = 450.0;
@@ -31,20 +35,21 @@ pub enum Anchor {
   End,
 }
 
-/// The tooltip's colours.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Colors {
-  ground: Color,
-  border: Color,
-  text:   Color,
-}
-
-impl Colors {
-  fn from_theme(theme: &Theme) -> Self {
-    Self {
-      ground: theme.surface_raised,
-      border: theme.rule,
-      text:   theme.text,
-    }
-  }
+/// How a tooltip is drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Look {
+  /// The bubble's ground.
+  pub ground:    Color,
+  /// Its 1px border.
+  pub border:    Color,
+  /// The label.
+  pub text:      Color,
+  /// Corner radius.
+  pub radius:    f64,
+  /// Label size, in logical pixels.
+  pub text_size: f32,
+  /// Space between the label and the bubble's edge.
+  pub padding:   Padding,
+  /// The face the label is shaped in.
+  pub font:      FontStack<'static>,
 }

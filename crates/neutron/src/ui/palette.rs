@@ -15,13 +15,12 @@ use xilem::{
 
 use super::controls::{body, fill, muted, row_button, state_dot};
 use crate::{
-  field::field,
   focus::FieldKey,
   icons::{Icon, icon},
   keymap::chord,
   state::{AppState, PaletteRow, RowKind},
-  surface::{Level, surface},
   theme::Theme,
+  themed::{FocusKey as _, Level, field, surface},
   tokens::{radius, size, space, text},
 };
 

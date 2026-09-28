@@ -9,21 +9,20 @@ use xilem::{
   },
 };
 
-use super::{Anchor, Colors, TooltipWidget};
-use crate::theme::Theme;
+use super::{Anchor, Look, TooltipWidget};
 
 const CHILD: ViewId = ViewId::new(0);
 
 /// `child` with a tooltip reading `text`.
 pub fn tooltip<V>(
   text: impl Into<String>,
-  theme: &'static Theme,
+  look: Look,
   anchor: Anchor,
   child: V,
 ) -> Tooltip<V> {
   Tooltip {
     text: text.into(),
-    theme,
+    look,
     anchor,
     child,
   }
@@ -33,7 +32,7 @@ pub fn tooltip<V>(
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct Tooltip<V> {
   text:   String,
-  theme:  &'static Theme,
+  look:   Look,
   anchor: Anchor,
   child:  V,
 }
@@ -59,7 +58,7 @@ where
       NewWidget::erased(child.new_widget),
       self.text.clone(),
       self.anchor,
-      Colors::from_theme(self.theme),
+      self.look.clone(),
     );
     (ctx.create_pod(widget), child_state)
   }
@@ -74,13 +73,13 @@ where
   ) {
     let changed = self.text != prev.text
       || self.anchor != prev.anchor
-      || !std::ptr::eq(self.theme, prev.theme);
+      || self.look != prev.look;
     if changed {
       TooltipWidget::relabel(
         &mut element,
         self.text.clone(),
         self.anchor,
-        Colors::from_theme(self.theme),
+        self.look.clone(),
       );
     }
     ctx.with_id(CHILD, |ctx| {

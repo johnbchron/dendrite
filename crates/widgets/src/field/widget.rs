@@ -14,14 +14,13 @@ use masonry::{
   widgets::{self},
 };
 
-use super::{Colors, FieldAction};
-use crate::tokens::radius;
+use super::{FieldAction, Frame};
 
 /// Paints the field's frame around a transparent Masonry `TextInput`, and
 /// reports focus changes.
 pub struct FieldWidget {
   child:          WidgetPod<widgets::TextInput>,
-  colors:         Colors,
+  frame:          Frame,
   /// Whether Escape, after giving up focus, goes on to the key map too.
   escape_bubbles: bool,
   /// Set between a press inside the field and the focus change it causes,
@@ -32,12 +31,12 @@ pub struct FieldWidget {
 impl FieldWidget {
   pub(super) fn new(
     child: NewWidget<widgets::TextInput>,
-    colors: Colors,
+    frame: Frame,
     escape_bubbles: bool,
   ) -> Self {
     Self {
       child: child.to_pod(),
-      colors,
+      frame,
       escape_bubbles,
       pressed: false,
     }
@@ -55,8 +54,8 @@ impl FieldWidget {
   }
 
   /// Repaint the frame in new colours.
-  pub(super) fn set_colors(this: &mut WidgetMut<'_, Self>, colors: Colors) {
-    this.widget.colors = colors;
+  pub(super) fn set_colors(this: &mut WidgetMut<'_, Self>, frame: Frame) {
+    this.widget.frame = frame;
     this.ctx.request_paint_only();
   }
 
@@ -143,22 +142,22 @@ impl Widget for FieldWidget {
     scene: &mut Scene,
   ) {
     let rect = ctx.size().to_rect();
-    let shape = RoundedRect::from_rect(rect.inset(-0.5), radius::CONTROL);
+    let shape = RoundedRect::from_rect(rect.inset(-0.5), self.frame.radius);
     scene.fill(
       Fill::NonZero,
       Affine::IDENTITY,
-      &Brush::Solid(self.colors.ground),
+      &Brush::Solid(self.frame.ground),
       None,
       &shape,
     );
     let (color, width) = if ctx.has_focus_target() {
-      (self.colors.focus, 2.0)
+      (self.frame.focus, 2.0)
     } else {
-      (self.colors.border, 1.0)
+      (self.frame.border, 1.0)
     };
     // Stroke inside the bounds, so the ring is never clipped by a parent.
     let ring =
-      RoundedRect::from_rect(rect.inset(-width / 2.0), radius::CONTROL);
+      RoundedRect::from_rect(rect.inset(-width / 2.0), self.frame.radius);
     scene.stroke(
       &Stroke::new(width),
       Affine::IDENTITY,

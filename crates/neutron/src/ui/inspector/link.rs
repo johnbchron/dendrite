@@ -8,10 +8,10 @@ use xilem::{
 
 use super::icon_row;
 use crate::{
-  field::field,
   focus::FieldKey,
   icons::Icon,
   state::AppState,
+  themed::{FocusKey as _, field},
   tokens::{space, text},
   ui::controls::{body, muted},
 };

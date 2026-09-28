@@ -1,12 +1,11 @@
-//! Surfaces: the grounds chrome sits on over the canvas.
+//! Surfaces: a ground with a border and, optionally, a shadow, wrapped
+//! round a padded child.
 //!
-//! A [`surface`] paints one of three [`Level`]s — the top bar, a card, a
-//! popover — with the theme's ground, border and shadow, and pads its child.
-//! It exists because Masonry's `SizedBox` has no shadow, and the redesign
-//! separates floating chrome from the canvas with elevation.
+//! It exists because Masonry's `SizedBox` has no shadow, and floating
+//! chrome wants to be separated from what is under it by elevation.
 //!
 //! A surface also claims the pointer over its whole area, so clicks on its
-//! padding do not fall through to the canvas.
+//! padding do not fall through to whatever is beneath.
 
 use masonry::{
   accesskit::{Node as AccessNode, Role},
@@ -27,53 +26,20 @@ use xilem::{
   },
 };
 
-use crate::{theme::Theme, tokens::radius};
-
-/// How far a surface floats above the canvas.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Level {
-  /// A full-width bar along the top edge: flat, with a hairline beneath.
-  Bar,
-  /// A card resting on the canvas: rounded, bordered, a soft shadow.
-  Card,
-  /// A popover or palette above everything: the raised ground and a deeper
-  /// shadow.
-  Popover,
-}
-
-/// Everything a surface paints, resolved from a theme and a level.
+/// Everything a surface paints.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Style {
-  ground: Color,
-  border: Color,
-  radius: f64,
+pub struct Style {
+  /// The ground it fills with.
+  pub ground: Color,
+  /// Its border, or the hairline beneath it when `flat`.
+  pub border: Color,
+  /// Corner radius; 0 for a square edge.
+  pub radius: f64,
   /// Shadow colour, vertical offset and blur (standard deviation).
-  shadow: Option<(Color, f64, f64)>,
-}
-
-impl Style {
-  fn new(theme: &Theme, level: Level) -> Self {
-    match level {
-      Level::Bar => Self {
-        ground: theme.surface,
-        border: theme.rule,
-        radius: 0.0,
-        shadow: None,
-      },
-      Level::Card => Self {
-        ground: theme.surface,
-        border: theme.rule,
-        radius: radius::CARD,
-        shadow: Some((theme.shadow, 4.0, 8.0)),
-      },
-      Level::Popover => Self {
-        ground: theme.surface_raised,
-        border: theme.rule,
-        radius: radius::CARD,
-        shadow: Some((theme.shadow, 8.0, 16.0)),
-      },
-    }
-  }
+  pub shadow: Option<(Color, f64, f64)>,
+  /// Draw only a hairline along the lower edge instead of a full border:
+  /// for a bar spanning the window, whose sides have no edge to show.
+  pub flat:   bool,
 }
 
 // --- the widget ---------------------------------------------------------
@@ -82,7 +48,6 @@ impl Style {
 pub struct SurfaceWidget {
   child:   WidgetPod<dyn Widget>,
   style:   Style,
-  flat:    bool,
   padding: f64,
 }
 
@@ -153,7 +118,7 @@ impl Widget for SurfaceWidget {
       None,
       &shape,
     );
-    if self.flat {
+    if s.flat {
       // A bar only needs its lower edge drawn.
       let y = rect.y1 - 0.5;
       scene.stroke(
@@ -197,11 +162,10 @@ fn inset(rect: Rect, by: f64) -> Rect { rect.inset(-by) }
 
 const CHILD: ViewId = ViewId::new(0);
 
-/// `child` on a surface of the given `level`, padded by `padding` logical
+/// `child` on a surface painted with `style`, padded by `padding` logical
 /// pixels on every side.
 pub fn surface<State, Action, V>(
-  theme: &'static Theme,
-  level: Level,
+  style: Style,
   padding: f64,
   child: V,
 ) -> Surface<V>
@@ -209,8 +173,7 @@ where
   V: WidgetView<State, Action>,
 {
   Surface {
-    theme,
-    level,
+    style,
     padding,
     child,
   }
@@ -219,8 +182,7 @@ where
 /// The view created by [`surface`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct Surface<V> {
-  theme:   &'static Theme,
-  level:   Level,
+  style:   Style,
   padding: f64,
   child:   V,
 }
@@ -244,8 +206,7 @@ where
       ctx.with_id(CHILD, |ctx| self.child.build(ctx, app_state));
     let widget = SurfaceWidget {
       child:   NewWidget::erased(child.new_widget).to_pod(),
-      style:   Style::new(self.theme, self.level),
-      flat:    self.level == Level::Bar,
+      style:   self.style,
       padding: self.padding,
     };
     (ctx.create_pod(widget), child_state)
@@ -259,9 +220,8 @@ where
     mut element: Mut<'_, Self::Element>,
     app_state: &mut State,
   ) {
-    if !std::ptr::eq(self.theme, prev.theme) || self.level != prev.level {
-      element.widget.style = Style::new(self.theme, self.level);
-      element.widget.flat = self.level == Level::Bar;
+    if self.style != prev.style {
+      element.widget.style = self.style;
       element.ctx.request_paint_only();
     }
     if self.padding != prev.padding {

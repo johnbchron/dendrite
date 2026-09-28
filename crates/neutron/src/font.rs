@@ -9,8 +9,8 @@
 //! it everywhere text is shaped:
 //!
 //! - [`DATA`] is registered with the Xilem app at startup;
-//! - [`STACK`] goes on every label, every text field (see [`crate::field`]) and
-//!   the canvas's hand-shaped text.
+//! - [`STACK`] goes on every label, every text field (see [`crate::themed`])
+//!   and the canvas's hand-shaped text.
 
 use std::borrow::Cow;
 

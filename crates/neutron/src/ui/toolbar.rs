@@ -19,10 +19,9 @@ use crate::{
   icons::{Icon, icon},
   keymap::chord,
   state::AppState,
-  surface::{Level, surface},
   theme::Theme,
+  themed::{Anchor, Level, surface, tooltip},
   tokens::{size, space, text},
-  tooltip::{Anchor, tooltip},
 };
 
 /// The bar along the top of the window.

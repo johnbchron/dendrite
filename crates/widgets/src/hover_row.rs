@@ -23,8 +23,6 @@ use xilem::{
   },
 };
 
-use crate::tokens::space;
-
 /// A row: `main` filling the width, `trailing` at the right-hand end and
 /// stashed unless the row is hovered.
 pub struct HoverRowWidget {
@@ -36,6 +34,8 @@ pub struct HoverRowWidget {
   /// `trailing`'s size when last laid out, so its room stays reserved while
   /// it is stashed. `None` until it has been measured once.
   trailing_size: Option<Size>,
+  /// Space kept between `main` and `trailing`.
+  gap:           f64,
 }
 
 impl HoverRowWidget {
@@ -96,7 +96,7 @@ impl Widget for HoverRowWidget {
       self.trailing_size = Some(size);
       size
     };
-    let reserve = trailing.width + space::XS;
+    let reserve = trailing.width + self.gap;
     let width = bc.max().width;
     let main_width = (width - reserve).max(0.0);
     let main_bc = BoxConstraints::new(
@@ -146,14 +146,20 @@ impl Widget for HoverRowWidget {
 const MAIN: ViewId = ViewId::new(0);
 const TRAILING: ViewId = ViewId::new(1);
 
-/// A row of `main`, with `trailing` shown at its end on hover.
-pub fn hover_row<M, T>(main: M, trailing: T) -> HoverRow<M, T> {
-  HoverRow { main, trailing }
+/// A row of `main`, with `trailing` shown at its end on hover and `gap`
+/// logical pixels kept between them.
+pub fn hover_row<M, T>(gap: f64, main: M, trailing: T) -> HoverRow<M, T> {
+  HoverRow {
+    gap,
+    main,
+    trailing,
+  }
 }
 
 /// The view created by [`hover_row`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct HoverRow<M, T> {
+  gap:      f64,
   main:     M,
   trailing: T,
 }
@@ -183,6 +189,7 @@ where
       trailing:      NewWidget::erased(trailing.new_widget).to_pod(),
       stashed:       false,
       trailing_size: None,
+      gap:           self.gap,
     };
     (ctx.create_pod(widget), (main_state, trailing_state))
   }

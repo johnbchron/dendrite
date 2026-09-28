@@ -14,12 +14,7 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
-use super::{Colors, FieldAction, widget::FieldWidget};
-use crate::{
-  focus::{self, FieldKey},
-  font,
-  theme::Theme,
-};
+use super::{FieldAction, Frame, Look, Mount, widget::FieldWidget};
 
 type Callback<State, Action, T> =
   Box<dyn Fn(&mut State, T) -> Action + Send + Sync + 'static>;
@@ -28,7 +23,8 @@ type Callback<State, Action, T> =
 /// As with xilem's `text_input`, the contents must live in app state.
 pub fn field<State, Action, F>(
   contents: String,
-  theme: &'static Theme,
+  look: Look,
+  size: f32,
   on_changed: F,
 ) -> Field<State, Action>
 where
@@ -36,12 +32,12 @@ where
 {
   Field {
     contents,
-    theme,
-    size: crate::tokens::text::BODY,
+    look,
+    size,
     placeholder: ArcStr::default(),
     on_changed: Box::new(on_changed),
     on_enter: None,
-    focus_key: None,
+    mount: None,
     on_focus: None,
     escape_bubbles: false,
   }
@@ -51,12 +47,12 @@ where
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct Field<State, Action> {
   contents:       String,
-  theme:          &'static Theme,
+  look:           Look,
   size:           f32,
   placeholder:    ArcStr,
   on_changed:     Callback<State, Action, String>,
   on_enter:       Option<Callback<State, Action, String>>,
-  focus_key:      Option<FieldKey>,
+  mount:          Option<Box<dyn Mount>>,
   on_focus:       Option<Callback<State, Action, bool>>,
   escape_bubbles: bool,
 }
@@ -100,9 +96,10 @@ impl<State, Action> Field<State, Action> {
     self
   }
 
-  /// Let the key map focus this field by `key` (see [`crate::focus`]).
-  pub fn focus_key(mut self, key: FieldKey) -> Self {
-    self.focus_key = Some(key);
+  /// Report the text area's id as it is mounted and torn down, so the app
+  /// can find this field again when something asks for focus.
+  pub fn mount(mut self, mount: impl Mount) -> Self {
+    self.mount = Some(Box::new(mount));
     self
   }
 
@@ -112,9 +109,9 @@ impl<State, Action> Field<State, Action> {
     let mut props = Properties::new();
     props.insert(Background::Color(Color::TRANSPARENT));
     props.insert(BorderWidth { width: 0.0 });
-    props.insert(PlaceholderColor::new(self.theme.muted));
+    props.insert(PlaceholderColor::new(self.look.muted));
     props.insert(CaretColor {
-      color: self.theme.text,
+      color: self.look.text,
     });
     props
   }
@@ -130,11 +127,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
   fn build(&self, ctx: &mut ViewCtx, _: &mut State) -> (Self::Element, ()) {
     let mut area_props = Properties::new();
     area_props.insert(ContentColor {
-      color: self.theme.text,
+      color: self.look.text,
     });
     let area = widgets::TextArea::new_editable(&self.contents)
       .with_style(StyleProperty::FontSize(self.size))
-      .with_style(StyleProperty::FontStack(font::STACK));
+      .with_style(StyleProperty::FontStack(self.look.font.clone()));
     let input = widgets::TextInput::from_text_area(NewWidget::new_with_props(
       area, area_props,
     ))
@@ -143,14 +140,14 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     // focus reports.
     let area_id = input.area_pod().id();
     ctx.record_action(area_id);
-    if let Some(key) = self.focus_key {
-      focus::register(key, area_id);
+    if let Some(mount) = &self.mount {
+      mount.mounted(area_id);
     }
     let input = NewWidget::new_with_props(input, self.input_props());
     let pod = ctx.with_action_widget(|ctx| {
       ctx.create_pod(FieldWidget::new(
         input,
-        Colors::from_theme(self.theme),
+        Frame::of(&self.look),
         self.escape_bubbles,
       ))
     });
@@ -166,23 +163,24 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     _: &mut State,
   ) {
     FieldWidget::set_escape_bubbles(&mut element, self.escape_bubbles);
-    if !std::ptr::eq(self.theme, prev.theme) {
-      FieldWidget::set_colors(&mut element, Colors::from_theme(self.theme));
+    let restyled = self.look != prev.look;
+    if restyled {
+      FieldWidget::set_colors(&mut element, Frame::of(&self.look));
     }
     let mut input = FieldWidget::child_mut(&mut element);
-    if !std::ptr::eq(self.theme, prev.theme) {
-      input.insert_prop(PlaceholderColor::new(self.theme.muted));
+    if restyled {
+      input.insert_prop(PlaceholderColor::new(self.look.muted));
       input.insert_prop(CaretColor {
-        color: self.theme.text,
+        color: self.look.text,
       });
     }
     if self.placeholder != prev.placeholder {
       widgets::TextInput::set_placeholder(&mut input, self.placeholder.clone());
     }
     let mut area = widgets::TextInput::text_mut(&mut input);
-    if !std::ptr::eq(self.theme, prev.theme) {
+    if restyled {
       area.insert_prop(ContentColor {
-        color: self.theme.text,
+        color: self.look.text,
       });
     }
     if self.size != prev.size {
@@ -207,8 +205,8 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     {
       let mut input = FieldWidget::child_mut(&mut element);
       let area = widgets::TextInput::text_mut(&mut input);
-      if let Some(key) = self.focus_key {
-        focus::unregister(key, area.ctx.widget_id());
+      if let Some(mount) = &self.mount {
+        mount.unmounted(area.ctx.widget_id());
       }
       ctx.teardown_leaf(area);
     }

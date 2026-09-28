@@ -21,7 +21,7 @@ use masonry::{
 
 use self::pointer::Press;
 use super::{
-  CanvasAction, CanvasScene, Insets, LinkMode, camera::Frame, labels::Labels,
+  CanvasAction, CanvasScene, Insets, LinkMode, frame::Frame, labels::Labels,
   paint::Painter, route::Route,
 };
 use crate::theme::Theme;

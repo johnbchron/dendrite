@@ -1,0 +1,7 @@
+[package]
+name = "session"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+base = { path = "../base" }

@@ -27,18 +27,11 @@ pub enum NodeState {
   Pending,
 }
 
-impl NodeState {
-  /// Whether this state counts as "done" for the node.
-  pub fn is_done(self) -> bool {
-    matches!(self, NodeState::Completed | NodeState::Satisfied)
-  }
-}
-
 /// A computed snapshot of derived state for the whole graph.
 #[derive(Clone, Debug, Default)]
 pub struct Derived {
+  /// Each node's status; [`NodeState::Cyclic`] marks the cycle members.
   states: HashMap<NodeId, NodeState>,
-  cyclic: HashSet<NodeId>,
   /// Nodes that are immediately executable: not done, not cyclic, all
   /// requirement targets satisfied. Both Ready tasks and Pending conditions
   /// whose requirements are met land here.
@@ -75,11 +68,7 @@ impl Derived {
       states.insert(node.id, state);
     }
 
-    Self {
-      states,
-      cyclic,
-      ready,
-    }
+    Self { states, ready }
   }
 
   /// The derived state of `node`, if it exists.
@@ -87,14 +76,8 @@ impl Derived {
     self.states.get(&node).copied()
   }
 
-  /// Whether `node` is a member of a cycle.
-  pub fn is_cyclic(&self, node: NodeId) -> bool { self.cyclic.contains(&node) }
-
   /// Whether `node` is immediately executable.
   pub fn is_ready(&self, node: NodeId) -> bool { self.ready.contains(&node) }
-
-  /// All nodes flagged as cycle members.
-  pub fn cyclic_nodes(&self) -> &HashSet<NodeId> { &self.cyclic }
 
   /// All immediately-executable nodes.
   pub fn ready_nodes(&self) -> &HashSet<NodeId> { &self.ready }

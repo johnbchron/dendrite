@@ -8,12 +8,11 @@ use xilem::{
 };
 
 use crate::{
-  hover_row::hover_row,
   icons::Icon,
   state::{AppState, EdgeRow},
   theme::Theme,
+  themed::{Anchor, hover_row, tooltip},
   tokens::space,
-  tooltip::{Anchor, tooltip},
   ui::controls::{body, fill, icon_btn, muted, row_button, state_dot},
 };
 

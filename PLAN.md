@@ -118,9 +118,11 @@ graph** (quests live inside it):
   `QuestCreated`, `QuestClaimed(node)`, `QuestUnclaimed(node)`,
   `OrderHintChanged`, ... Each event is a self-describing payload (serde JSON
   is fine) + seq + ULID.
-- `nodes`, `edges`, `quests`, `quest_claims(quest_id, node_id)` —
-  **projections** materialized from the event log for fast reads; rebuilt on
-  load if out of date. `quest_claims` is a plain join table (many-to-many).
+- No projection tables. The log is replayed in full on open into the
+  in-memory `Graph`, which is the only projection and is what every read goes
+  through. (v1 shipped materialized `nodes`/`edges`/`quests`/`quest_claims`
+  tables plus a `snapshot_seq`; they were a startup cache nothing else read,
+  and schema v2 drops them.)
 - Sync-friendliness: the log is the eventual sync substrate. Undo appends an
   inverse event rather than deleting history (history doubles as audit trail).
 
@@ -134,7 +136,11 @@ crates/
   base/      pure domain model, graph algorithms (deps resolution, Tarjan SCC,
              readiness, quest-scope closure + actionable queries), event types
              + reducer, serde. No I/O, no UI.
-  db/        (new, or folded into base) SQLite event log + projections, migrations.
+  session/   the editing session: graph + undo/redo over an abstract log.
+  db/        the SQLite backend for a session: event log, migrations.
+  app/       all application behaviour, with no UI toolkit: state, commands,
+             the key map, palettes, and the scene a canvas is handed.
+  widgets/   generic masonry/xilem widgets, knowing nothing of this app.
   layout/    (new, pure) Sugiyama: cycle cut → ranking → within-level ordering
              (barycenter crossing-minimization seeded by order_hint) →
              x-coordinate assignment. Incremental-friendly API.
@@ -210,7 +216,7 @@ technical risk (see §6).
 | # | Milestone | Done when |
 |---|-----------|-----------|
 | 1 | Core model | Edges first-class; quest claims + scope-closure & actionable queries; readiness + Tarjan SCC + cycle flagging with property tests |
-| 2 | Persistence | SQLite global DB: event log, projections incl. `quest_claims`, undo/redo via inverse events; round-trip tests |
+| 2 | Persistence | SQLite global DB: event log, undo/redo via inverse events; round-trip tests |
 | 3 | Canvas spike | Custom masonry widget renders N nodes, pan/zoom, hit-test, state styling, hardcoded layout |
 | 4 | Auto layout | Sugiyama incl. cycle cut + order hints, integrated into canvas; within-level reorder gesture |
 | 5 | Canvas editing | Add/rename/complete/edge-create/delete, claim/unclaim gestures, quest switcher, actionable view, side panel, block-reasons hover |

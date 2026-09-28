@@ -5,8 +5,10 @@ version.workspace = true
 
 [dependencies]
 base = { path = "../base" }
+session = { path = "../session" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde_json = "1"
 
 [dev-dependencies]
+session = { path = "../session" }
 tempfile = "3"

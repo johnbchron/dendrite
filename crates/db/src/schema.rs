@@ -5,7 +5,11 @@ use rusqlite::Connection;
 use crate::{DbError, meta::Meta};
 
 /// The current schema version, bumped when the table layout changes.
-const SCHEMA_VERSION: i64 = 1;
+///
+/// Version 2 dropped the `nodes`/`edges`/`quests`/`quest_claims` projection
+/// tables: the log is the only source of truth, and it is replayed in full
+/// on open.
+const SCHEMA_VERSION: i64 = 2;
 
 /// The database's table layout.
 pub(crate) struct Schema<'c>(pub(crate) &'c Connection);
@@ -35,37 +39,16 @@ impl Schema<'_> {
         payload TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS nodes (
-        id         TEXT PRIMARY KEY,
-        name       TEXT NOT NULL,
-        kind       TEXT NOT NULL,
-        order_hint REAL NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS edges (
-        id   TEXT PRIMARY KEY,
-        kind TEXT NOT NULL,
-        from_node TEXT NOT NULL,
-        to_node   TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS quests (
-        id   TEXT PRIMARY KEY,
-        name TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS quest_claims (
-        quest_id TEXT NOT NULL,
-        node_id  TEXT NOT NULL,
-        PRIMARY KEY (quest_id, node_id)
-      );
+      -- Shed a v1 database's projection tables and the position they
+      -- claimed to hold; the log alone rebuilds the graph.
+      DROP TABLE IF EXISTS quest_claims;
+      DROP TABLE IF EXISTS quests;
+      DROP TABLE IF EXISTS edges;
+      DROP TABLE IF EXISTS nodes;
+      DELETE FROM meta WHERE key = 'snapshot_seq';
       ",
     )?;
-    self.0.execute(
-      "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?1)",
-      [SCHEMA_VERSION.to_string()],
-    )?;
-    Ok(())
+    Meta(self.0).set("schema_version", &SCHEMA_VERSION.to_string())
   }
 
   /// The schema version recorded in `meta`, or `None` for a database that

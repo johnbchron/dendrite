@@ -1,7 +1,7 @@
 //! `layout` — pure Sugiyama-style layered-DAG layout for Neutron (PLAN §4).
 //!
-//! Given a [`base::Graph`], produce a deterministic set of node positions for
-//! the canvas. First, [`copies`] decides which shared conditions are drawn
+//! Given a [`base::Graph`], produce a deterministic arrangement the canvas
+//! can place. First, [`copies`] decides which shared conditions are drawn
 //! more than once, and the rest of the pipeline lays out that drawing, in
 //! which every copy is a node of its own. Then comes the classic Sugiyama
 //! sequence:
@@ -38,9 +38,9 @@ mod order;
 mod rank;
 mod tree;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use base::{EdgeId, Graph, NodeId};
+use base::{EdgeId, Graph};
 
 use self::tree::Forest;
 pub use self::{
@@ -50,21 +50,21 @@ pub use self::{
   geom::{Channel, Pos, Size},
 };
 
-/// The computed layout: a position and rank per drawn node, plus the edges
-/// the cycle-cut heuristic reversed (which the UI styles as backward cycle
+/// The computed layout: the graph's shape in rows, plus the edges the
+/// cycle-cut heuristic reversed (which the UI styles as backward cycle
 /// edges, PLAN §5).
+///
+/// There are no coordinates here: a row's height and a slot's width come
+/// from the node sizes, which only the caller knows, so placing is
+/// [`Arrangement::place`]'s job and happens once, with real sizes.
 ///
 /// Everything here is keyed by *drawn* node: a node itself, or one of the
 /// extra copies [`Layout::copies`] maps back to it.
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
-  /// Canvas position of every drawn node, with every node at
-  /// [`LayoutConfig::node_size`].
-  pub positions:      HashMap<NodeId, Pos>,
-  /// The rows the positions were placed from, to re-place with real sizes.
+  /// Which row every drawn node (and every long edge's bend) sits in, and
+  /// in what order: everything placing needs besides the sizes.
   pub arrangement:    Arrangement,
-  /// Rank (row, 0 at the top) of every drawn node.
-  pub ranks:          HashMap<NodeId, usize>,
   /// Edges reversed to break cycles.
   pub reversed_edges: HashSet<EdgeId>,
   /// Which drawn nodes are extra copies of a shared condition.
@@ -72,13 +72,11 @@ pub struct Layout {
 }
 
 impl Layout {
-  /// Lay the graph out with the given configuration, every node at
-  /// [`LayoutConfig::node_size`].
-  ///
-  /// Splits shared conditions into their copies, then runs the full Sugiyama
-  /// pipeline and assigns coordinates. Empty graphs
-  /// yield an empty [`Layout`]. The result's [`Layout::arrangement`] can be
-  /// re-placed once real node sizes are known.
+  /// Arrange the graph with the given configuration: split shared
+  /// conditions into their copies, then run the Sugiyama pipeline down to
+  /// the row order. Empty graphs yield an empty [`Layout`]. Feed the result's
+  /// [`Layout::arrangement`] to [`Arrangement::place`] with the node sizes to
+  /// get coordinates.
   pub fn compute(graph: &Graph, cfg: &LayoutConfig) -> Layout {
     let (drawn, copies) = copies::split(graph);
     let graph = &drawn;
@@ -106,25 +104,11 @@ impl Layout {
       rows: ordering.by_rank,
       links: ordering.links,
     };
-    let positions = arrangement.place(cfg, |_| cfg.node_size).nodes;
-
     Layout {
-      positions,
       arrangement,
-      ranks: layering.ranks,
       reversed_edges: reversed,
       copies,
     }
-  }
-
-  /// Position of `node`, if it was laid out.
-  pub fn pos(&self, node: NodeId) -> Option<Pos> {
-    self.positions.get(&node).copied()
-  }
-
-  /// Rank of `node`, if it was laid out.
-  pub fn rank(&self, node: NodeId) -> Option<usize> {
-    self.ranks.get(&node).copied()
   }
 
   /// Whether `edge` was reversed by the cycle cut.

@@ -196,6 +196,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a38750a2a9617d9f1a1428b408fb909f7256a2766c59b0b07993170959731bb"
 
 [[package]]
+name = "app"
+version = "0.1.0"
+dependencies = [
+ "base",
+ "kurbo",
+ "layout",
+ "peniko",
+ "session",
+ "ui-events",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -773,6 +785,7 @@ dependencies = [
  "base",
  "rusqlite",
  "serde_json",
+ "session",
  "tempfile",
 ]
 
@@ -1783,14 +1796,15 @@ dependencies = [
 name = "neutron"
 version = "0.1.0"
 dependencies = [
+ "app",
  "base",
  "db",
  "dirs",
  "layout",
  "masonry",
  "masonry_winit",
- "tokio",
  "ttf-parser",
+ "widgets",
  "xilem",
 ]
 
@@ -2738,6 +2752,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "session"
+version = "0.1.0"
+dependencies = [
+ "base",
 ]
 
 [[package]]
@@ -3810,6 +3831,15 @@ dependencies = [
  "log",
  "thiserror 2.0.20",
  "web-sys",
+]
+
+[[package]]
+name = "widgets"
+version = "0.1.0"
+dependencies = [
+ "masonry",
+ "tokio",
+ "xilem",
 ]
 
 [[package]]

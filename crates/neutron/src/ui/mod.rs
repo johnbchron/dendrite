@@ -38,15 +38,13 @@ use xilem::{
 };
 
 use crate::{
-  appear::{Motion, appear},
   canvas::{CanvasAction, LinkMode, canvas},
   font,
   icons::{Icon, icon},
   keymap::keymap,
   state::{AppState, Toast},
-  surface::{Level, surface},
   theme::Theme,
-  timer::after,
+  themed::{Level, Motion, after, appear, surface},
   tokens::{motion, size, space, text},
 };
 

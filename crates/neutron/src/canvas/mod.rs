@@ -13,24 +13,24 @@
 //! global graph on every rebuild. All domain logic lives in `base`; all
 //! layout lives in `layout`.
 //!
-//! - [`scene`]: what the app hands the canvas to draw.
-//! - [`camera`]: requests the app makes of the camera, and the transform maths
-//!   behind fitting, revealing and easing.
+//! - [`frame`]: the world→screen transform, and the maths behind fitting,
+//!   revealing and easing it. What the *app* says about the camera lives in
+//!   [`app::camera`], and is re-exported here.
 //! - [`labels`]: shaped node labels and the box sizes they give.
 //! - [`route`]: where edges attach and the curves they follow.
 //! - [`paint`]: drawing nodes and edges into a Vello scene.
 //! - [`widget`]: the Masonry widget; [`view`]: the Xilem view.
 
-mod camera;
+mod frame;
 mod labels;
 mod paint;
 mod route;
-mod scene;
 mod view;
 mod widget;
 
-pub use self::{
+pub use app::{
   camera::{Camera, CameraRequest, Insets, ZoomStep},
   scene::{CanvasAction, CanvasScene, LinkMode, RenderEdge, RenderNode},
-  view::canvas,
 };
+
+pub use self::view::canvas;

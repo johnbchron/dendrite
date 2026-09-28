@@ -1,31 +1,27 @@
 //! Neutron — a dependency-graph task manager on the linebender stack.
 //!
-//! This binary wires the pure crates together behind a Xilem UI: `db` holds
-//! the persistent global graph, `base` computes derived state, `layout` lays
-//! the graph out, and the custom canvas widget in [`canvas`] paints it
-//! (PLAN §4).
+//! This binary is the Xilem UI and nothing else. `app` decides what the
+//! program does, `db` keeps it, `base` computes derived state and `layout`
+//! lays the graph out; here we draw the result and turn input back into
+//! calls on [`app::state::AppState`] (PLAN §4).
+//!
+//! The modules `app` owns are re-exported below under the paths the views
+//! already use, so `crate::theme`, `crate::state` and the rest still name
+//! the one definition. The generic widgets live in `widgets`; [`themed`]
+//! binds them to this app's palette and tokens.
 
-mod appear;
 mod canvas;
-mod divider;
 mod driver;
-mod field;
 mod focus;
 mod font;
-mod hover_row;
 mod icons;
 mod keymap;
-mod query;
-mod state;
-mod surface;
-mod theme;
-mod timer;
-mod tokens;
-mod tooltip;
+mod themed;
 mod ui;
 
 use std::path::PathBuf;
 
+pub use app::{query, state, theme, tokens};
 use xilem::{
   EventLoop, WindowOptions, Xilem, masonry::theme::default_property_set,
   winit::error::EventLoopError,
@@ -45,7 +41,7 @@ fn main() -> Result<(), EventLoopError> {
     }))
     .unwrap_or_else(|| PathBuf::from("neutron.db"));
 
-  let store = match db::Store::open(&path) {
+  let store = match db::open(&path) {
     Ok(store) => store,
     Err(e) => {
       eprintln!("neutron: cannot open {}: {e}", path.display());

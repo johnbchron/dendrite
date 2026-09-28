@@ -1,9 +1,30 @@
 //! Tests for the Sugiyama layout pipeline (PLAN §4, Milestone 4).
 
 use base::{Edge, EdgeId, EdgeKind, Graph, NodeId, NodeKind};
-use layout::{Layout, LayoutConfig, Size, Slot};
+use layout::{Layout, LayoutConfig, Pos, Size, Slot};
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
+
+/// Every drawn node's centre, with every box at the default size. The
+/// layout carries no coordinates of its own; the caller places it once it
+/// knows the sizes, and these tests have none to measure.
+fn placed(l: &Layout) -> std::collections::HashMap<NodeId, Pos> {
+  let cfg = LayoutConfig::default();
+  l.arrangement.place(&cfg, |_| cfg.node_size).nodes
+}
+
+/// Where `node`'s box lands, at the default size.
+fn pos(l: &Layout, node: NodeId) -> Option<Pos> {
+  placed(l).get(&node).copied()
+}
+
+/// `node`'s rank: the row of the arrangement it sits in, 0 at the top.
+fn rank(l: &Layout, node: NodeId) -> Option<usize> {
+  l.arrangement
+    .rows
+    .iter()
+    .position(|row| row.contains(&Slot::Node(node)))
+}
 
 /// Build a task graph from `n` nodes (ids 0..n, order_hint = id) and edges
 /// given as `(edge_id, from, to)`.
@@ -29,67 +50,16 @@ fn build(n: u128, edges: &[(u128, u128, u128)]) -> Graph {
 }
 
 #[test]
-fn every_node_gets_a_position_and_rank() {
-  let g = build(4, &[(10, 0, 1), (11, 1, 2), (12, 1, 3)]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  for i in 0..4 {
-    assert!(l.pos(nid(i)).is_some(), "node {i} positioned");
-    assert!(l.rank(nid(i)).is_some(), "node {i} ranked");
-  }
-}
-
-#[test]
 fn dependent_ranks_above_requirement() {
   // 0 -> 1 -> 2: "0 requires 1 requires 2". Goal 0 at top (rank 0),
   // requirements strictly below.
   let g = build(3, &[(10, 0, 1), (11, 1, 2)]);
   let l = Layout::compute(&g, &LayoutConfig::default());
-  assert_eq!(l.rank(nid(0)), Some(0), "goal at the top");
-  assert!(l.rank(nid(0)).unwrap() < l.rank(nid(1)).unwrap());
-  assert!(l.rank(nid(1)).unwrap() < l.rank(nid(2)).unwrap());
+  assert_eq!(rank(&l, nid(0)), Some(0), "goal at the top");
+  assert!(rank(&l, nid(0)).unwrap() < rank(&l, nid(1)).unwrap());
+  assert!(rank(&l, nid(1)).unwrap() < rank(&l, nid(2)).unwrap());
   // y increases downward with rank.
-  assert!(l.pos(nid(0)).unwrap().y < l.pos(nid(2)).unwrap().y);
-}
-
-#[test]
-fn non_reversed_edges_point_downward() {
-  let g = build(5, &[
-    (10, 0, 1),
-    (11, 0, 2),
-    (12, 1, 3),
-    (13, 2, 3),
-    (14, 3, 4),
-  ]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  for e in g.edges() {
-    if l.is_reversed(e.id) {
-      continue;
-    }
-    let rf = l.rank(e.from).unwrap();
-    let rt = l.rank(e.to).unwrap();
-    assert!(
-      rf < rt,
-      "edge {:?} should point downward: {rf} < {rt}",
-      e.id
-    );
-  }
-}
-
-#[test]
-fn layout_is_deterministic() {
-  let g = build(6, &[
-    (10, 0, 2),
-    (11, 1, 2),
-    (12, 2, 3),
-    (13, 2, 4),
-    (14, 3, 5),
-    (15, 4, 5),
-  ]);
-  let cfg = LayoutConfig::default();
-  let a = Layout::compute(&g, &cfg);
-  let b = Layout::compute(&g, &cfg);
-  assert_eq!(a.positions, b.positions);
-  assert_eq!(a.ranks, b.ranks);
+  assert!(pos(&l, nid(0)).unwrap().y < pos(&l, nid(2)).unwrap().y);
 }
 
 #[test]
@@ -101,9 +71,9 @@ fn order_hint_seeds_within_level_order() {
   g.insert_node(base::Node::new(nid(2), "b", NodeKind::task(), 1.0));
   let l = Layout::compute(&g, &LayoutConfig::default());
   // Same rank (both roots), ordered by hint: node 2 (hint 1) left of node 1.
-  assert_eq!(l.rank(nid(1)), l.rank(nid(2)));
+  assert_eq!(rank(&l, nid(1)), rank(&l, nid(2)));
   assert!(
-    l.pos(nid(2)).unwrap().x < l.pos(nid(1)).unwrap().x,
+    pos(&l, nid(2)).unwrap().x < pos(&l, nid(1)).unwrap().x,
     "lower order_hint sits further left"
   );
 }
@@ -119,7 +89,7 @@ fn ranks_are_centred_on_a_shared_axis() {
   // either side.
   let mut row: Vec<f64> = [1, 2, 3]
     .iter()
-    .map(|i| l.pos(nid(*i)).unwrap().x)
+    .map(|i| pos(&l, nid(*i)).unwrap().x)
     .collect();
   row.sort_by(f64::total_cmp);
   let pitch = cfg.node_size.w + cfg.x_gap;
@@ -127,7 +97,7 @@ fn ranks_are_centred_on_a_shared_axis() {
 
   // A single-node rank is centred too, so the goal sits above the middle
   // requirement rather than above the leftmost one.
-  assert_eq!(l.pos(nid(0)).unwrap().x, 0.0);
+  assert_eq!(pos(&l, nid(0)).unwrap().x, 0.0);
 }
 
 #[test]
@@ -137,7 +107,7 @@ fn even_count_rank_straddles_the_axis() {
   let g = build(3, &[(10, 0, 1), (11, 0, 2)]);
   let cfg = LayoutConfig::default();
   let l = Layout::compute(&g, &cfg);
-  let (x1, x2) = (l.pos(nid(1)).unwrap().x, l.pos(nid(2)).unwrap().x);
+  let (x1, x2) = (pos(&l, nid(1)).unwrap().x, pos(&l, nid(2)).unwrap().x);
   assert_eq!(x1 + x2, 0.0, "row straddles the axis");
   assert_eq!((x2 - x1).abs(), cfg.node_size.w + cfg.x_gap);
 }
@@ -188,7 +158,7 @@ fn independent_trees_do_not_interleave() {
   let tree_a = [0, 2, 4];
   let tree_b = [1, 3, 5];
   let xs = |ids: &[u128]| -> Vec<f64> {
-    ids.iter().map(|i| l.pos(nid(*i)).unwrap().x).collect()
+    ids.iter().map(|i| pos(&l, nid(*i)).unwrap().x).collect()
   };
   let (a, b) = (xs(&tree_a), xs(&tree_b));
   let a_max = a.iter().copied().fold(f64::MIN, f64::max);
@@ -205,7 +175,7 @@ fn independent_trees_do_not_interleave() {
   };
   assert!((gap - cfg.tree_gap).abs() < 1e-9, "gap was {gap}");
   // Rows still line up across trees.
-  assert_eq!(l.pos(nid(0)).unwrap().y, l.pos(nid(1)).unwrap().y);
+  assert_eq!(pos(&l, nid(0)).unwrap().y, pos(&l, nid(1)).unwrap().y);
 }
 
 #[test]
@@ -215,9 +185,9 @@ fn a_lone_tree_is_centred_in_its_own_column() {
   let g = build(4, &[(10, 0, 1), (11, 0, 2)]);
   let l = Layout::compute(&g, &LayoutConfig::default());
   let (x0, x1, x2) = (
-    l.pos(nid(0)).unwrap().x,
-    l.pos(nid(1)).unwrap().x,
-    l.pos(nid(2)).unwrap().x,
+    pos(&l, nid(0)).unwrap().x,
+    pos(&l, nid(1)).unwrap().x,
+    pos(&l, nid(2)).unwrap().x,
   );
   assert!((x0 - (x1 + x2) / 2.0).abs() < 1e-9);
 }
@@ -236,7 +206,7 @@ fn a_node_sits_over_its_median_requirement() {
     (15, 5, 6),
   ]);
   let l = Layout::compute(&g, &LayoutConfig::default());
-  let x = |i| l.pos(nid(i)).unwrap().x;
+  let x = |i| pos(&l, nid(i)).unwrap().x;
   let mut below = [x(3), x(4), x(5)];
   below.sort_by(f64::total_cmp);
   assert!(
@@ -292,21 +262,10 @@ fn a_reversed_long_edge_still_gets_channels() {
 }
 
 #[test]
-fn cyclic_graph_still_ranks_all_nodes() {
-  // 2-cycle 0 <-> 1 plus a tail. Layout must not panic, must rank every
-  // node, and must reverse at least one edge.
-  let g = build(3, &[(10, 0, 1), (11, 1, 0), (12, 1, 2)]);
-  let l = Layout::compute(&g, &LayoutConfig::default());
-  assert_eq!(l.ranks.len(), 3);
-  assert!(l.positions.len() == 3);
-  assert!(!l.reversed_edges.is_empty(), "a back edge was reversed");
-}
-
-#[test]
 fn self_loop_is_reversed_and_does_not_hang() {
   let g = build(1, &[(10, 0, 0)]);
   let l = Layout::compute(&g, &LayoutConfig::default());
-  assert_eq!(l.rank(nid(0)), Some(0));
+  assert_eq!(rank(&l, nid(0)), Some(0));
   assert!(l.is_reversed(EdgeId::from_u128(10)));
 }
 
@@ -337,8 +296,7 @@ mod props {
     fn total_coverage((n, edges) in arb_graph()) {
       let g = build_props(n, &edges);
       let l = Layout::compute(&g, &LayoutConfig::default());
-      prop_assert_eq!(l.positions.len() as u128, n);
-      prop_assert_eq!(l.ranks.len() as u128, n);
+      prop_assert_eq!(placed(&l).len() as u128, n);
     }
 
     /// Non-reversed edges always point strictly downward in rank.
@@ -350,7 +308,7 @@ mod props {
         if e.from == e.to || l.is_reversed(e.id) {
           continue;
         }
-        prop_assert!(l.rank(e.from).unwrap() < l.rank(e.to).unwrap());
+        prop_assert!(rank(&l, e.from).unwrap() < rank(&l, e.to).unwrap());
       }
     }
 
@@ -364,7 +322,7 @@ mod props {
       let placed = l.arrangement.place(&cfg, |_| cfg.node_size);
       let (hw, hh) = (cfg.node_size.w / 2.0, cfg.node_size.h / 2.0);
       for e in g.edges() {
-        let span = l.rank(e.from).unwrap().abs_diff(l.rank(e.to).unwrap());
+        let span = rank(&l, e.from).unwrap().abs_diff(rank(&l, e.to).unwrap());
         let got = placed.channels.get(&e.id).map_or(0, Vec::len);
         prop_assert_eq!(got, span.saturating_sub(1));
       }
@@ -419,8 +377,8 @@ mod props {
       let g = build_props(n, &edges);
       let cfg = LayoutConfig::default();
       prop_assert_eq!(
-        Layout::compute(&g, &cfg).positions,
-        Layout::compute(&g, &cfg).positions
+        Layout::compute(&g, &cfg).arrangement,
+        Layout::compute(&g, &cfg).arrangement
       );
     }
   }
@@ -452,8 +410,7 @@ mod copies {
 
   /// The drawn nodes that draw `node`.
   fn drawn(l: &Layout, node: u128) -> Vec<NodeId> {
-    let mut out: Vec<NodeId> = l
-      .positions
+    let mut out: Vec<NodeId> = placed(l)
       .keys()
       .copied()
       .filter(|d| l.copies.node(*d) == nid(node))
@@ -493,8 +450,8 @@ mod copies {
     assert_eq!(l.copies.end(&edge(11)), nid(2));
     let other = l.copies.end(&edge(12));
     assert_ne!(other, nid(2));
-    assert_eq!(l.rank(nid(2)), Some(1));
-    assert_eq!(l.rank(other), Some(2));
+    assert_eq!(rank(&l, nid(2)), Some(1));
+    assert_eq!(rank(&l, other), Some(2));
     assert!(
       l.arrangement
         .rows
@@ -522,10 +479,10 @@ mod copies {
   fn tasks_and_conditions_with_requirements_are_drawn_once() {
     let task = build(3, &[(10, 0, 2), (11, 1, 2)]);
     assert_eq!(layout(&task).copies.count(nid(2)), 1);
-    assert_eq!(layout(&task).positions.len(), 3);
+    assert_eq!(placed(&layout(&task)).len(), 3);
 
     let gated = with_conditions(4, &[(10, 0, 2), (11, 1, 2), (12, 2, 3)], &[2]);
     assert_eq!(layout(&gated).copies.count(nid(2)), 1);
-    assert_eq!(layout(&gated).positions.len(), 4);
+    assert_eq!(placed(&layout(&gated)).len(), 4);
   }
 }

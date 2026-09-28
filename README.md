@@ -10,18 +10,20 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 | Crate | Purpose | Status |
 |-------|---------|--------|
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
-| `db` | SQLite event log (append-only source of truth) + materialized projections + undo/redo via inverse events. One database for the whole global graph. | ✅ complete, round-trip tested |
+| `session` | The editing session: the graph as it stands, and undo/redo via inverse events, over an abstract append-only log (the `Backend` trait). Pure — no I/O, no SQL, no platform. | ✅ complete, tested through `db` |
+| `db` | The SQLite `Backend`: an append-only event log (the source of truth) plus UI preferences, replayed on open. One database for the whole global graph. | ✅ complete, round-trip tested |
+| `app` | Everything Neutron *does*, minus how it is drawn: selection, the inspector's reasoning, link mode, quests and their lens, the command palette, the Now tray, the key map, the colour palettes, and the scene handed to a canvas. Depends only on `base`, `layout`, `session` and the pure linebender vocabulary crates (`kurbo`, `peniko`, `ui-events`) — no toolkit, no platform. | ✅ complete, tested |
 | `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → Brandes–Köpf coordinate assignment. | ✅ complete, tested |
-| `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), a root key map, and the command layer wiring gestures to events. | 🚧 editing done, text sync to come |
+| `widgets` | The Masonry widgets and Xilem views the toolkit does not ship: an entrance animation, a draggable divider, a framed text field, a hover-revealed row, an elevated surface, a keyed timer, a tooltip. Each takes the colours, sizes and font it paints with, so none of them knows anything about Neutron. | ✅ complete |
+| `neutron` | The Xilem UI and nothing else: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), and the glue that delivers input to `app` and paints what it says. | 🚧 editing done, text sync to come |
 
 ## Milestone status (PLAN §8)
 
 - **M1 Core model** — ✅ done. Edges first-class; quest claims + scope-closure &
   actionable queries; readiness + Tarjan SCC + cycle flagging, with property
   tests (Tarjan validated against an independent mutual-reachability oracle).
-- **M2 Persistence** — ✅ done. SQLite event log, projections incl.
-  `quest_claims`, undo/redo via inverse events (log stays monotonic),
-  on-disk round-trip tests.
+- **M2 Persistence** — ✅ done. SQLite event log, undo/redo via inverse
+  events (log stays monotonic), on-disk round-trip tests.
 - **M3 Canvas spike** — ✅ done. Custom Masonry widget renders the graph with
   Vello, pan (drag) + zoom (wheel, about cursor), click hit-testing/selection,
   and per-state node styling; laid out by the real `layout` crate.
@@ -33,9 +35,9 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
   inspector, command palette and a full key map are all wired. Drag-to-create
   edges on the canvas is not done (link mode covers it).
 - **M6 Text sync (RON)** — ☐ not started.
-- **M7 Scale & polish** — ◑ viewport culling, per-revision caching of
-  derived state and layout, and snapshot loading are done; incremental
-  relayout, the minimap and focus mode are not started.
+- **M7 Scale & polish** — ◑ viewport culling and per-revision caching of
+  derived state and layout are done; incremental relayout, the minimap and
+  focus mode are not started.
 
 ## Build & run
 

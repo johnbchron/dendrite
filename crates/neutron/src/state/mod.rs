@@ -1,5 +1,5 @@
 //! Application state and the command layer that turns UI gestures into
-//! [`base::Event`]s committed through the [`db::Store`] (PLAN §3, §4).
+//! [`base::Event`]s committed through the editing [`Store`] (PLAN §3, §4).
 //!
 //! `AppState` owns the store (the persistent global graph) and the ephemeral
 //! view state — the current selection, the active quest lens, and the rename
@@ -7,9 +7,10 @@
 //! the store on demand.
 //!
 //! The store is wrapped in a [`Mutex`] because Xilem's `WidgetView` bound is
-//! `Send + Sync` and rusqlite's `Connection` is `!Sync`. The app is
-//! single-threaded, so the lock is uncontended; each read method takes it
-//! exactly once (the `std` mutex is not re-entrant).
+//! `Send + Sync` and the SQLite backend's `Connection` is `!Sync`. That is
+//! the backend's constraint, not the session's — a `Sync` backend would not
+//! need the lock. The app is single-threaded, so it is uncontended; each
+//! read method takes it exactly once (the `std` mutex is not re-entrant).
 //!
 //! The methods are grouped by what they serve:
 //!

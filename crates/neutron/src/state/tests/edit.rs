@@ -117,7 +117,7 @@ fn new_nodes_attach_to_the_selection_in_one_step() {
 
 #[test]
 fn renaming_commits_per_keystroke_as_one_undo_step() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   state.add_task();
   let id = state.selected.expect("a new task is selected");
@@ -153,7 +153,7 @@ fn renaming_commits_per_keystroke_as_one_undo_step() {
 
 #[test]
 fn selecting_another_node_closes_the_live_edit() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   state.add_task();
   let a = state.selected.unwrap();

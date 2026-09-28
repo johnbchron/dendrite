@@ -1,8 +1,8 @@
-//! Persistence tests for the [`db::Store`] (PLAN Milestone 2): commit +
-//! read-back, on-disk round-trip, and undo/redo over a monotonic log.
+//! Tests for the SQLite backend and the session it drives (PLAN Milestone
+//! 2): commit + read-back, on-disk round-trip, and undo/redo over a
+//! monotonic log.
 
 use base::{EdgeId, EdgeKind, Event, NodeId, NodeKind, QuestId};
-use db::Store;
 use rusqlite::Connection;
 
 fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
@@ -10,6 +10,13 @@ fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
 fn eid(n: u128) -> EdgeId { EdgeId::from_u128(n) }
 
 fn qid(n: u128) -> QuestId { QuestId::from_u128(n) }
+
+/// The `DbError` behind a boxed session error. Opening reports SQLite's own
+/// errors; the session only passes them along.
+fn db_error(e: session::Error) -> db::DbError {
+  *e.downcast::<db::DbError>()
+    .unwrap_or_else(|e| panic!("not a db error: {e}"))
+}
 
 /// A representative batch touching nodes, edges and quests.
 fn sample_batch() -> Vec<Event> {
@@ -49,7 +56,7 @@ fn sample_batch() -> Vec<Event> {
 
 #[test]
 fn commit_updates_the_in_memory_graph() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   store.commit(sample_batch()).unwrap();
 
   let g = store.graph();
@@ -66,12 +73,12 @@ fn persists_and_reloads_from_disk() {
   let path = dir.path().join("neutron.db");
 
   let before = {
-    let mut store = Store::open(&path).unwrap();
+    let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
     store.graph().clone()
   }; // store dropped, connection closed
 
-  let reopened = Store::open(&path).unwrap();
+  let reopened = db::open(&path).unwrap();
   assert_eq!(
     reopened.graph(),
     &before,
@@ -81,7 +88,7 @@ fn persists_and_reloads_from_disk() {
 
 #[test]
 fn undo_and_redo_walk_the_graph_while_the_log_only_grows() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
 
   // Group 1: add a node.
   store
@@ -128,7 +135,7 @@ fn settings_round_trip_and_survive_reopen() {
   let path = dir.path().join("settings.db");
 
   {
-    let store = Store::open(&path).unwrap();
+    let store = db::open(&path).unwrap();
     assert_eq!(store.setting("palette").unwrap(), None, "unset key is None");
     store.set_setting("palette", "umber").unwrap();
     // Writing again replaces rather than failing on the primary key.
@@ -136,7 +143,7 @@ fn settings_round_trip_and_survive_reopen() {
     assert_eq!(store.setting("palette").unwrap().as_deref(), Some("frost"));
   }
 
-  let reopened = Store::open(&path).unwrap();
+  let reopened = db::open(&path).unwrap();
   assert_eq!(
     reopened.setting("palette").unwrap().as_deref(),
     Some("frost"),
@@ -151,7 +158,7 @@ fn settings_round_trip_and_survive_reopen() {
 
 #[test]
 fn settings_are_not_events() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let before = store.event_count().unwrap();
   store.set_setting("palette", "graphite").unwrap();
   assert_eq!(
@@ -164,7 +171,7 @@ fn settings_are_not_events() {
 
 #[test]
 fn amended_commits_undo_as_one_group() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   store.commit(sample_batch()).unwrap();
   let rename = |name: &str| Event::NodeRenamed {
     node: nid(1),
@@ -189,7 +196,7 @@ fn amended_commits_undo_as_one_group() {
 
 #[test]
 fn amending_with_nothing_to_amend_is_a_plain_commit() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   store.commit_amend(sample_batch()).unwrap();
   assert!(store.can_undo());
   store.undo().unwrap();
@@ -201,7 +208,7 @@ fn a_newer_schema_is_refused_and_left_untouched() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   {
-    let mut store = Store::open(&path).unwrap();
+    let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
   }
   let conn = Connection::open(&path).unwrap();
@@ -216,9 +223,11 @@ fn a_newer_schema_is_refused_and_left_untouched() {
     .unwrap();
   drop(conn);
 
-  match Store::open(&path) {
-    Err(db::DbError::NewerSchema { found, .. }) => assert_eq!(found, 99),
-    Err(e) => panic!("wrong error: {e}"),
+  match db::open(&path) {
+    Err(e) => match db_error(e) {
+      db::DbError::NewerSchema { found, .. } => assert_eq!(found, 99),
+      e => panic!("wrong error: {e}"),
+    },
     Ok(_) => panic!("a newer schema was opened"),
   }
   // Nothing was written: the version and the log are as the newer build
@@ -243,7 +252,7 @@ fn an_unreadable_event_is_reported_by_position() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   {
-    let mut store = Store::open(&path).unwrap();
+    let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
   }
   let conn = Connection::open(&path).unwrap();
@@ -258,9 +267,11 @@ fn an_unreadable_event_is_reported_by_position() {
     .unwrap();
   drop(conn);
 
-  match Store::open(&path) {
-    Err(db::DbError::BadEvent { seq, .. }) => assert_eq!(seq, bad_seq),
-    Err(e) => panic!("wrong error: {e}"),
+  match db::open(&path) {
+    Err(e) => match db_error(e) {
+      db::DbError::BadEvent { seq, .. } => assert_eq!(seq, bad_seq),
+      e => panic!("wrong error: {e}"),
+    },
     Ok(_) => panic!("an unreadable event was skipped"),
   }
 }
@@ -270,7 +281,7 @@ fn a_v1_database_sheds_its_projection_tables() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   let before = {
-    let mut store = Store::open(&path).unwrap();
+    let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
     store.graph().clone()
   };
@@ -289,7 +300,7 @@ fn a_v1_database_sheds_its_projection_tables() {
     .unwrap();
   drop(conn);
 
-  let reopened = Store::open(&path).unwrap();
+  let reopened = db::open(&path).unwrap();
   assert_eq!(
     reopened.graph(),
     &before,
@@ -319,7 +330,7 @@ fn every_committed_event_is_replayed_on_reopening() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   let after = {
-    let mut store = Store::open(&path).unwrap();
+    let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
     store
       .commit(vec![Event::NodeRenamed {
@@ -329,16 +340,16 @@ fn every_committed_event_is_replayed_on_reopening() {
       .unwrap();
     store.graph().clone()
   };
-  let reopened = Store::open(&path).unwrap();
+  let reopened = db::open(&path).unwrap();
   assert_eq!(reopened.graph(), &after);
   assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "renamed");
 }
 
 #[test]
 fn revision_moves_with_every_graph_change_and_only_then() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   let mut seen = vec![store.revision()];
-  let mut changed = |store: &Store| {
+  let mut changed = |store: &db::Store| {
     assert!(!seen.contains(&store.revision()), "revision reused");
     seen.push(store.revision());
   };
@@ -366,7 +377,7 @@ fn revision_moves_with_every_graph_change_and_only_then() {
 fn a_typed_rename_is_logged_once() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
-  let mut store = Store::open(&path).unwrap();
+  let mut store = db::open(&path).unwrap();
   store.commit(sample_batch()).unwrap();
   let before = store.event_count().unwrap();
 
@@ -392,13 +403,13 @@ fn a_typed_rename_is_logged_once() {
   drop(store);
 
   // And the log replays to the same end state.
-  let reopened = Store::open(&path).unwrap();
+  let reopened = db::open(&path).unwrap();
   assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "Ship");
 }
 
 #[test]
 fn history_is_never_rewritten() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   store.commit(sample_batch()).unwrap();
   let rename = |name: &str| Event::NodeRenamed {
     node: nid(1),
@@ -426,7 +437,7 @@ fn history_is_never_rewritten() {
 
 #[test]
 fn undo_and_redo_name_the_step_they_would_take() {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   assert_eq!(store.undo_label(), None);
   store.commit(sample_batch()).unwrap();
   assert_eq!(store.undo_label(), Some("add task"));

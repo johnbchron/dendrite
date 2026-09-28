@@ -773,6 +773,7 @@ dependencies = [
  "base",
  "rusqlite",
  "serde_json",
+ "session",
  "tempfile",
 ]
 
@@ -1789,6 +1790,7 @@ dependencies = [
  "layout",
  "masonry",
  "masonry_winit",
+ "session",
  "tokio",
  "ttf-parser",
  "xilem",
@@ -2738,6 +2740,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "session"
+version = "0.1.0"
+dependencies = [
+ "base",
 ]
 
 [[package]]

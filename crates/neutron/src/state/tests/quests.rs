@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn renaming_a_quest_commits_trims_and_undoes() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   state.new_quest_named(String::new());
   let id = state.active_quest.expect("new quest became the lens");
@@ -39,7 +39,7 @@ fn renaming_a_quest_commits_trims_and_undoes() {
 
 #[test]
 fn renaming_a_quest_in_the_global_view_is_a_no_op() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   state.new_quest_named(String::new());
   state.set_active_quest(None);

@@ -136,7 +136,8 @@ crates/
   base/      pure domain model, graph algorithms (deps resolution, Tarjan SCC,
              readiness, quest-scope closure + actionable queries), event types
              + reducer, serde. No I/O, no UI.
-  db/        (new, or folded into base) SQLite event log, migrations.
+  session/   the editing session: graph + undo/redo over an abstract log.
+  db/        the SQLite backend for a session: event log, migrations.
   layout/    (new, pure) Sugiyama: cycle cut → ranking → within-level ordering
              (barycenter crossing-minimization seeded by order_hint) →
              x-coordinate assignment. Incremental-friendly API.

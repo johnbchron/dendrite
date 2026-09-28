@@ -45,7 +45,7 @@ fn main() -> Result<(), EventLoopError> {
     }))
     .unwrap_or_else(|| PathBuf::from("neutron.db"));
 
-  let store = match db::Store::open(&path) {
+  let store = match db::open(&path) {
     Ok(store) => store,
     Err(e) => {
       eprintln!("neutron: cannot open {}: {e}", path.display());

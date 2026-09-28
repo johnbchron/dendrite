@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn palette_choice_defaults_persists_and_survives_a_bad_id() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   assert_eq!(state.theme().id, Theme::DEFAULT.id, "default when unset");
 
@@ -22,7 +22,7 @@ fn palette_choice_defaults_persists_and_survives_a_bad_id() {
 #[test]
 fn a_stored_palette_is_restored_on_open_unless_it_is_unknown() {
   let open_with = |id| {
-    let store = Store::open_in_memory().unwrap();
+    let store = db::open_in_memory().unwrap();
     store.set_setting("palette", id).unwrap();
     AppState::new(store).theme().id
   };
@@ -47,7 +47,7 @@ fn camera_requests_bump_the_epoch_every_time() {
 
 #[test]
 fn inspector_resize_measures_from_the_press_anchor() {
-  let store = Store::open_in_memory().unwrap();
+  let store = db::open_in_memory().unwrap();
   let mut state = AppState::new(store);
   assert_eq!(state.inspector_width(), INSPECTOR_WIDTH);
 

@@ -25,7 +25,7 @@ type LensKey = (u64, QuestId);
 
 /// Whole-graph computations that depend only on the graph.
 pub(super) struct Derivations {
-  /// The [`Store::revision`] these were computed at.
+  /// The [`Store::revision`](db::Store::revision) these were computed at.
   revision:           u64,
   /// Readiness, cycles, satisfaction.
   pub(super) derived: Derived,

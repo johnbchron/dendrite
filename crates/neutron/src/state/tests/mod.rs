@@ -34,7 +34,7 @@ use crate::{
 /// - "Build frontend" requires the condition "Design signed off";
 /// - the quest "v1 Launch" claims "Ship v1".
 pub(super) fn demo_store() -> Store {
-  let mut store = Store::open_in_memory().unwrap();
+  let mut store = db::open_in_memory().unwrap();
   let ship = NodeId::new();
   let backend = NodeId::new();
   let frontend = NodeId::new();

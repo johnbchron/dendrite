@@ -3,6 +3,9 @@
 #
 # Usage: scripts/subset-icons.sh [lucide-static version]
 #
+# The bundled font was last built from lucide-static 1.48.0; pass that
+# version to add glyphs without moving the codepoints already in use.
+#
 # The glyph list below must match `Icon` in crates/dendrite/src/icons.rs;
 # `cargo test -p dendrite icons` fails if an Icon's codepoint is missing from
 # the bundled font. Needs curl, python3 and fonttools (pyftsubset); under
@@ -13,7 +16,7 @@ NAMES=(
   undo-2 redo-2 zoom-in zoom-out scan settings search plus check x ellipsis
   chevron-down chevron-up chevron-right link square octagon flag zap trash-2
   rotate-ccw arrow-right command crosshair palette circle-alert
-  corner-down-left history
+  corner-down-left history clock calendar-range map-pin wallet tag hourglass
 )
 
 root=$(cd "$(dirname "$0")/.." && pwd)

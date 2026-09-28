@@ -303,6 +303,7 @@ impl Widget for CanvasWidget {
           self.link.as_ref(),
           self.labels.get(node.id),
           self.labels.badge(node.copies),
+          node.glyph.and_then(|g| self.labels.glyph(g)),
         );
       }
     }

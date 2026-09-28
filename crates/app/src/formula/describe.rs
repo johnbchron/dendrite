@@ -6,8 +6,8 @@
 //! Home" (plans/formula-conditions.md, invariant 4).
 
 use base::{
-  Amount, Atom, Explanation, Graph, Minutes, Moment, Node, Resource, Truth,
-  Unit,
+  Amount, Atom, Explanation, Graph, Minutes, Moment, Node, Resource, Span,
+  Truth, Unit, WeekdaySet,
 };
 use jiff::{
   SignedDuration, Timestamp,
@@ -169,6 +169,19 @@ pub fn amount(resource: &Resource, value: Amount) -> String {
   }
 }
 
+/// `resource`'s balance as it would be typed back: "320.00", "2 h", "3".
+pub fn plain_amount(resource: &Resource) -> String {
+  let value = resource.balance;
+  match &resource.unit {
+    Unit::Money { minor_digits, .. } => {
+      let sign = if value < 0 { "-" } else { "" };
+      format!("{sign}{}", decimal(value.unsigned_abs(), *minor_digits))
+    }
+    Unit::Minutes => minutes(value.clamp(0, u32::MAX.into()) as Minutes),
+    Unit::Count { .. } => value.to_string(),
+  }
+}
+
 /// What holding `value` of `resource` reads as: money and time name the
 /// resource, since there may be several ("$50.00 in Fun budget"); a count
 /// names itself ("3 batteries").
@@ -182,22 +195,25 @@ fn holding(resource: &Resource, value: Amount) -> String {
 /// `value` minor units of `currency`: "$50.00", "CHF 12.50", "¥500".
 pub fn money(currency: &str, minor_digits: u8, value: Amount) -> String {
   let sign = if value < 0 { "-" } else { "" };
-  let value = value.unsigned_abs();
-  let scale = 10u64.pow(minor_digits.into());
-  let number = if minor_digits == 0 {
-    (value / scale).to_string()
-  } else {
-    format!(
-      "{}.{:0width$}",
-      value / scale,
-      value % scale,
-      width = minor_digits.into()
-    )
-  };
+  let number = decimal(value.unsigned_abs(), minor_digits);
   match currency_symbol(currency) {
     Some(symbol) => format!("{sign}{symbol}{number}"),
     None => format!("{sign}{currency} {number}"),
   }
+}
+
+/// `value` minor units with `digits` decimal places: "320.00".
+fn decimal(value: u64, digits: u8) -> String {
+  let scale = 10u64.pow(digits.into());
+  if digits == 0 {
+    return value.to_string();
+  }
+  format!(
+    "{}.{:0width$}",
+    value / scale,
+    value % scale,
+    width = digits.into()
+  )
 }
 
 /// The symbol written before amounts of `currency`, where it is
@@ -225,6 +241,58 @@ pub fn plural(noun: &str) -> String {
     format!("{stem}ies")
   } else {
     format!("{noun}s")
+  }
+}
+
+/// A schedule window: "Weekdays 09:00 – 17:00", "Fri 22:00 – 02:00",
+/// "Thu 24 Dec 09:00 – Thu 24 Dec 12:00".
+pub fn span(span: &Span, today: Date) -> String {
+  match span {
+    Span::Weekly { days, start, end } => {
+      if start == end {
+        format!("{} all day", weekdays(*days))
+      } else {
+        format!("{} {start} \u{2013} {end}", weekdays(*days))
+      }
+    }
+    Span::Once { start, end } => {
+      let same_day = start.civil().date() == end.civil().date();
+      let end_text = if same_day {
+        let t = end.civil();
+        format!("{:02}:{:02}", t.hour(), t.minute())
+      } else {
+        moment(*end, today)
+      };
+      let start_text = {
+        let t = start.civil();
+        let day = moment(Moment::on(t.date()), today);
+        format!("{day} {:02}:{:02}", t.hour(), t.minute())
+      };
+      format!("{start_text} \u{2013} {end_text}")
+    }
+  }
+}
+
+/// A set of weekdays: "Every day", "Weekdays", "Weekends", "Mon, Wed, Fri".
+pub fn weekdays(days: WeekdaySet) -> String {
+  if days == WeekdaySet::EVERY_DAY {
+    return "Every day".into();
+  }
+  if days == WeekdaySet::WORKDAYS {
+    return "Weekdays".into();
+  }
+  if days == WeekdaySet::WEEKEND {
+    return "Weekends".into();
+  }
+  let names: Vec<&str> = (0..7)
+    .filter_map(|i| Weekday::from_monday_zero_offset(i).ok())
+    .filter(|d| days.contains(*d))
+    .map(weekday)
+    .collect();
+  if names.is_empty() {
+    "No days".into()
+  } else {
+    names.join(", ")
   }
 }
 

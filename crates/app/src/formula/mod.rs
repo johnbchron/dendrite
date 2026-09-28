@@ -9,7 +9,7 @@
 pub mod describe;
 pub mod phrase;
 
-use jiff::{Timestamp, tz::TimeZone};
+use jiff::{Timestamp, civil::DateTime, tz::TimeZone};
 
 /// Where the app reads the time and the zone floating moments are read in.
 pub trait Clock: Send + Sync {
@@ -28,4 +28,10 @@ impl Clock for SystemClock {
   fn now(&self) -> Timestamp { Timestamp::now() }
 
   fn zone(&self) -> TimeZone { TimeZone::system() }
+}
+
+/// The instant `dt` names in `zone`: the moment just after a DST gap for a
+/// time the gap skips, the first of a time a fold repeats.
+fn literal_instant(dt: DateTime, zone: &TimeZone) -> Timestamp {
+  base::Moment::new(dt).instant(zone)
 }

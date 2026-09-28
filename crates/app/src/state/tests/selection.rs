@@ -34,7 +34,7 @@ fn reasons_and_primary_actions_follow_the_state() {
   let Reason::WaitingOn(unmet) = &ship.reason else {
     panic!("{:?}", ship.reason)
   };
-  let names: Vec<_> = unmet.iter().map(|(_, n)| n.as_str()).collect();
+  let names: Vec<_> = unmet.iter().map(|n| n.name.as_str()).collect();
   assert_eq!(names, ["Build backend", "Build frontend"]);
   assert_eq!(ship.primary, Primary::Complete { enabled: false });
   // Pressing it anyway does nothing.
@@ -73,7 +73,11 @@ fn a_cycle_names_its_members() {
   assert_eq!(info.state, NodeState::Cyclic);
   assert_eq!(
     info.reason,
-    Reason::CycleWith(vec![(ship, "Ship v1".into())])
+    Reason::CycleWith(vec![Named {
+      node: ship,
+      name: "Ship v1".into(),
+      why:  None,
+    }])
   );
   assert_eq!(info.primary, Primary::Complete { enabled: false });
 }
@@ -128,7 +132,11 @@ fn reason_sentences_count_and_flag_cycles() {
   );
   assert_eq!(Reason::AllMet(1).sentence(), "Its one requirement met.");
   assert_eq!(Reason::AllMet(3).sentence(), "3 requirements, all met.");
-  let peer = vec![(NodeId::from_u128(1), "Peer".to_string())];
+  let peer = vec![Named {
+    node: NodeId::from_u128(1),
+    name: "Peer".into(),
+    why:  None,
+  }];
   assert!(Reason::CycleWith(peer.clone()).is_alert());
   assert!(!Reason::WaitingOn(peer.clone()).is_alert());
   assert_eq!(Reason::WaitingOn(peer.clone()).nodes(), peer.as_slice());

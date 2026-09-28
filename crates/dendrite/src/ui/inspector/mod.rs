@@ -10,6 +10,8 @@ mod edges;
 mod link;
 mod quests;
 mod reason;
+mod referent;
+mod source;
 
 use masonry::{
   peniko::Color,
@@ -24,7 +26,12 @@ use xilem::{
 };
 
 use self::{
-  edges::edge_list, link::link_block, quests::quest_list, reason::reason_line,
+  edges::edge_list,
+  link::link_block,
+  quests::quest_list,
+  reason::reason_line,
+  referent::referent_card,
+  source::{source_block, title_offers},
 };
 use super::controls::{
   chip, fill, icon_btn, label, muted, primary_btn, row_button, section, spacer,
@@ -157,18 +164,52 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
 
   let quests = quest_list(data, &info.quests);
 
-  flex_col((
-    header,
+  let (title, card) = match &info.formula {
+    // A formula condition is named by its atom, so its title is not
+    // editable; what it reads is, in the card.
+    Some(formula) => (
+      flex_row((
+        icon(Icon::for_category(formula.glyph), size::ICON, theme.muted),
+        fill(
+          label(formula.title.clone())
+            .text_size(text::TITLE)
+            .color(theme.text),
+        ),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .gap(space::S.px())
+      .boxed(),
+      referent_card(data, formula),
+    ),
     // The name field *is* the title: one place, committed as it is typed so
     // the canvas follows along and nothing is lost by clicking away.
-    field(data.name_draft.clone(), theme, |s: &mut AppState, v| {
-      s.rename_selected_to(v);
-    })
-    .size(text::TITLE)
-    .focus_key(FieldKey::Title)
-    .on_enter(|s: &mut AppState, _| s.finish_rename_selected()),
+    // A manual condition's name may read as a formula: offered under it,
+    // and taken by Enter when the reading is clear.
+    None => (
+      flex_col((
+        field(data.name_draft.clone(), theme, |s: &mut AppState, v| {
+          s.rename_selected_to(v);
+        })
+        .size(text::TITLE)
+        .focus_key(FieldKey::Title)
+        .on_enter(|s: &mut AppState, _| s.finish_rename_selected()),
+        title_offers(data),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::XS.px())
+      .boxed(),
+      None,
+    ),
+  };
+  let source = source_block(data);
+
+  flex_col((
+    header,
+    title,
     reason_line(&info.reason, theme),
     actions,
+    source,
+    card,
     more,
     quests,
     section(format!("Requires · {}", info.requirements.len()), theme),

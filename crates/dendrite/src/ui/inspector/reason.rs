@@ -13,11 +13,12 @@ use crate::{
   state::{AppState, Reason},
   theme::Theme,
   tokens::{size, space, text},
-  ui::controls::{body, label},
+  ui::controls::{body, label, muted},
 };
 
 /// Why the node is in its state: one sentence, then — when other nodes are
-/// the reason — each of them as a row that goes to it.
+/// the reason — each of them as a row that goes to it, with the facts
+/// behind a formula condition under its name.
 pub(super) fn reason_line(
   reason: &Reason,
   theme: &'static Theme,
@@ -26,14 +27,19 @@ pub(super) fn reason_line(
   let rows: Vec<_> = reason
     .nodes()
     .iter()
-    .map(|(id, name)| {
-      let id = *id;
+    .map(|named| {
+      let id = named.node;
       icon_row(
         theme,
         false,
         Icon::ArrowRight,
         theme.muted,
-        body(name.clone(), theme),
+        flex_col((
+          body(named.name.clone(), theme),
+          named.why.clone().map(|why| muted(why, theme)),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(0.0.px()),
         move |s: &mut AppState| s.go_to(id),
       )
       .into_any_flex()

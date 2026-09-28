@@ -2,7 +2,7 @@
 
 use base::{EdgeId, EdgeKind, Event, NodeId, NodeKind};
 
-use super::{AppState, LiveEdit};
+use super::{AppState, LiveEdit, selection::Primary};
 use crate::{focus::FieldKey, formula::describe};
 
 impl AppState {
@@ -40,17 +40,31 @@ impl AppState {
     self.focus_requests.request(FieldKey::Title);
   }
 
-  /// Toggle the selected node's completion / satisfaction bit.
+  /// The selection's primary action: toggle a node's completion or
+  /// satisfaction bit, or for a formula condition, change the fact it
+  /// reads (see [`Primary`]).
   ///
   /// A task that is not Ready cannot be completed (PLAN §5): it would claim
   /// work done whose requirements are not.
   pub fn toggle_selected(&mut self) {
     let Some(id) = self.selected else { return };
-    if self
-      .selected_info()
-      .is_some_and(|info| !info.primary.enabled())
-    {
+    let Some(primary) = self.selected_info().map(|info| info.primary) else {
       return;
+    };
+    match primary {
+      _ if !primary.enabled() => return,
+      Primary::Here { place, here } => {
+        return self.set_place((!here).then_some(place));
+      }
+      Primary::Toggle { context, .. } => return self.toggle_context(context),
+      Primary::SetBalance => {
+        return self.focus_requests.request(FieldKey::Balance);
+      }
+      Primary::EditSchedule => {
+        return self.focus_requests.request(FieldKey::Span);
+      }
+      Primary::SetFreeTime => return self.edit_free_time(),
+      _ => {}
     }
     let event = {
       let store = self.lock();
@@ -96,9 +110,14 @@ impl AppState {
   }
 
   /// Enter in the name field: close the live edit, so further typing is a
-  /// new undo step, and tidy the draft to the name the graph holds.
+  /// new undo step, and tidy the draft to the name the graph holds. A
+  /// manual condition whose name clearly reads as a formula ("after oct 1",
+  /// "at home") becomes that formula condition.
   pub fn finish_rename_selected(&mut self) {
     self.live_edit = None;
+    if let Some(offer) = self.title_reading() {
+      return self.make_automatic(offer);
+    }
     let Some(id) = self.selected else { return };
     let name = self.lock().graph().node(id).map(|n| n.name.clone());
     if let Some(name) = name {

@@ -27,4 +27,14 @@ pub enum FieldKey {
   QuestName,
   /// The quest switcher's search.
   QuestSearch,
+  /// The name of the referent behind the selected formula condition.
+  ReferentName,
+  /// The selected resource's balance.
+  Balance,
+  /// The field that adds a window to the selected schedule.
+  Span,
+  /// The Now tray's free time.
+  FreeUntil,
+  /// The selected condition's "Satisfied by" form.
+  Source,
 }

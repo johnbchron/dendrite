@@ -52,6 +52,18 @@ impl Session {
   /// appended to the log. On success the inverse is pushed to the undo
   /// stack and the redo stack is cleared.
   pub fn commit(&mut self, events: Vec<Event>) -> Result<(), Error> {
+    let label = events.first().map(Event::describe).unwrap_or_default();
+    self.commit_labelled(events, label)
+  }
+
+  /// [`commit`](Session::commit) a batch whose undo step is named `label`
+  /// rather than after its first event: for a gesture made of several
+  /// kinds of event, such as turning a condition into another kind.
+  pub fn commit_labelled(
+    &mut self,
+    events: Vec<Event>,
+    label: &'static str,
+  ) -> Result<(), Error> {
     if events.is_empty() {
       return Ok(());
     }
@@ -60,7 +72,7 @@ impl Session {
     self.last_seq = self.backend.append(&events)?;
     self.undo.push(Group {
       events: inverse,
-      label:  events[0].describe(),
+      label,
     });
     self.redo.clear();
     self.tail = events.last().map(|e| (self.last_seq, e.clone()));

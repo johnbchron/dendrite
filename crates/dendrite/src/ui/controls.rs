@@ -107,6 +107,34 @@ where
     .hovered_border_color(theme.accent)
 }
 
+/// Declaring free time in one press: 30 minutes, an hour or two from now,
+/// or none.
+pub(super) fn free_presets(
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  flex_row((
+    group(
+      theme,
+      (
+        seg("30 min", theme, false, true, |s: &mut AppState| {
+          s.set_free_for(30)
+        }),
+        seg("1 h", theme, false, true, |s: &mut AppState| {
+          s.set_free_for(60)
+        }),
+        seg("2 h", theme, false, true, |s: &mut AppState| {
+          s.set_free_for(120)
+        }),
+      ),
+    ),
+    seg("Clear", theme, false, true, |s: &mut AppState| {
+      s.set_free_until(None)
+    }),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Center)
+  .gap(space::XS.px())
+}
+
 /// A flat icon-only button, sized like a [`seg`] so it can sit in a
 /// [`group`] beside them. `active` fills it, as for a toggle that is on.
 pub(super) fn icon_btn<F>(

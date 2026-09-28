@@ -10,12 +10,15 @@
 
 use std::{collections::BTreeSet, time::Duration};
 
-use base::{ContextId, Facts, PlaceId};
+use base::{ContextId, Facts, Moment, PlaceId};
 use jiff::{SignedDuration, Timestamp, civil::Date};
 use session::Session;
 
 use super::AppState;
-use crate::formula::describe;
+use crate::{
+  focus::FieldKey,
+  formula::{describe, phrase},
+};
 
 /// The longest the app goes without looking at the clock, to catch what a
 /// timer set for the horizon cannot: sleep, a changed clock, a new zone.
@@ -130,6 +133,96 @@ impl AppState {
       .checked_add(SignedDuration::from_mins(minutes.into()))
       .ok();
     self.set_free_until(until);
+  }
+
+  /// Declared free time in words: "Until 15:30 · 1 h 20 min left", or
+  /// "Ended at 15:30"; `None` when none is declared.
+  pub fn free_summary(&self) -> Option<String> {
+    let until = self.declared.free_until?;
+    let (now, zone) = (self.clock.now(), self.clock.zone());
+    let at =
+      describe::moment(Moment::new(zone.to_datetime(until)), self.today());
+    // Today's date goes without saying.
+    let at = at
+      .strip_prefix(&describe::moment(Moment::on(self.today()), self.today()))
+      .map(str::trim)
+      .filter(|time| !time.is_empty())
+      .map_or(at.clone(), str::to_string);
+    let left = until.duration_since(now).as_mins();
+    Some(if left > 0 {
+      format!(
+        "Until {at} \u{b7} {} left",
+        describe::minutes(left.min(u32::MAX.into()) as u32)
+      )
+    } else {
+      format!("Ended at {at}")
+    })
+  }
+
+  /// The free time field changed.
+  pub fn set_free_text(&mut self, text: String) { self.free_draft = text; }
+
+  /// Enter in the free time field: "15:30" or "3pm" is free until then,
+  /// "1h" is free for that long. The field clears once it is understood.
+  pub fn apply_free_text(&mut self) {
+    let (now, zone) = (self.clock.now(), self.clock.zone());
+    if let Some(until) = phrase::until(&self.free_draft, now, &zone) {
+      self.set_free_until(Some(until));
+      self.free_draft.clear();
+    }
+  }
+
+  /// Open the Now tray at its free time field.
+  pub fn edit_free_time(&mut self) {
+    self.now_open = true;
+    self.focus_requests.request(FieldKey::FreeUntil);
+  }
+
+  /// Every place, by name, for the place picker.
+  pub fn place_choices(&self) -> Vec<(PlaceId, String)> {
+    let store = self.lock();
+    let mut places: Vec<(PlaceId, String)> = store
+      .graph()
+      .places()
+      .map(|p| (p.id, p.name.clone()))
+      .collect();
+    places.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    places
+  }
+
+  /// The name of where I declared I am.
+  pub fn place_name(&self) -> Option<String> {
+    let place = self.declared.place?;
+    self.lock().graph().place(place).map(|p| p.name.clone())
+  }
+
+  /// Every context, by name, and whether it is on, for the context bar.
+  pub fn context_chips(&self) -> Vec<(ContextId, String, bool)> {
+    let store = self.lock();
+    let mut chips: Vec<(ContextId, String, bool)> = store
+      .graph()
+      .contexts()
+      .map(|c| (c.id, c.name.clone(), self.declared.contexts.contains(&c.id)))
+      .collect();
+    chips.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    chips
+  }
+
+  /// Whether the Now tray's place picker is showing.
+  pub fn place_picker_open(&self) -> bool { self.place_picker }
+
+  /// Show or hide the place picker, opening the tray to show it (C).
+  pub fn toggle_place_picker(&mut self) {
+    self.place_picker = !self.place_picker;
+    if self.place_picker {
+      self.now_open = true;
+    }
+  }
+
+  /// Choose where I am from the picker, and close it.
+  pub fn pick_place(&mut self, place: Option<PlaceId>) {
+    self.set_place(place);
+    self.place_picker = false;
   }
 
   /// Change the declared facts, save them, and invalidate what was derived

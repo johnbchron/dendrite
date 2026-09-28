@@ -40,6 +40,8 @@ pub enum PaletteAct {
   Zoom(ZoomStep),
   /// Open or close the Now tray.
   ToggleNow,
+  /// Open the place picker, in the Now tray.
+  PickPlace,
   /// Open the quest switcher.
   OpenQuests,
   /// Switch palette (colour theme), by id.
@@ -185,6 +187,7 @@ impl AppState {
       PaletteAct::Fit => self.recenter(),
       PaletteAct::Zoom(step) => self.zoom(step),
       PaletteAct::ToggleNow => self.toggle_now(),
+      PaletteAct::PickPlace => self.toggle_place_picker(),
       PaletteAct::OpenQuests => self.toggle_picker(),
       PaletteAct::Theme(id) => self.set_theme(id),
       PaletteAct::Primary => self.toggle_selected(),

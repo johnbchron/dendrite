@@ -98,6 +98,9 @@ impl Binding {
       Key::Character(c) if plain && letter_is(c, "a") => {
         Some(Run(Command::Now))
       }
+      Key::Character(c) if plain && letter_is(c, "c") => {
+        Some(Run(Command::Place))
+      }
       Key::Character(c) if cmd && (c == "=" || c == "+") => {
         Some(Run(Command::Zoom(ZoomStep::In)))
       }

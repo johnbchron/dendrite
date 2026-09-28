@@ -9,6 +9,7 @@
 
 use std::borrow::Cow;
 
+use app::scene::Category;
 use masonry::{
   parley::style::{FontFamily, FontStack},
   peniko::Color,
@@ -52,7 +53,20 @@ macro_rules! icons {
 
 icons! {
   /// Go to a node.
-  ArrowRight = 0xe049,  /// A satisfied requirement; the active choice in a list.
+  ArrowRight = 0xe049,
+  /// A condition on a start or end date.
+  Clock = 0xe087,
+  /// A condition on a schedule's windows.
+  CalendarRange = 0xe2bd,
+  /// A condition on free time.
+  Hourglass = 0xe296,
+  /// A condition on a place.
+  MapPin = 0xe111,
+  /// A condition on a context.
+  Tag = 0xe17f,
+  /// A condition on a resource.
+  Wallet = 0xe204,
+  /// A satisfied requirement; the active choice in a list.
   Check = 0xe06c,
   /// Opens a menu; collapses a tray.
   ChevronDown = 0xe06d,
@@ -94,6 +108,20 @@ icons! {
   ZoomIn = 0xe1b6,
   /// Zoom out.
   ZoomOut = 0xe1b7,
+}
+
+impl Icon {
+  /// The glyph that marks a formula condition about `category`.
+  pub fn for_category(category: Category) -> Self {
+    match category {
+      Category::Date => Icon::Clock,
+      Category::Window => Icon::CalendarRange,
+      Category::FreeTime => Icon::Hourglass,
+      Category::Place => Icon::MapPin,
+      Category::Resource => Icon::Wallet,
+      Category::Context => Icon::Tag,
+    }
+  }
 }
 
 /// An icon at `size` logical pixels, uncoloured: a plain [`Label`] for

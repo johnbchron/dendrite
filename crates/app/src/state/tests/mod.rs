@@ -9,6 +9,7 @@ mod palette;
 mod quests;
 mod scene;
 mod selection;
+mod source;
 
 use std::sync::Arc;
 

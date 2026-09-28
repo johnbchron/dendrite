@@ -13,7 +13,11 @@ use masonry::{
   vello::Scene,
 };
 
-use super::{LinkMode, RenderEdge, RenderNode, labels::PAD_X, route::Route};
+use super::{
+  LinkMode, RenderEdge, RenderNode,
+  labels::{GLYPH_W, PAD_X},
+  route::Route,
+};
 use crate::theme::Theme;
 
 /// How far a condition's corners are cut back, in world units.
@@ -131,10 +135,10 @@ impl<'a> Painter<'a> {
     );
   }
 
-  /// Paint a single node in `rect`: shape, fill, border and `label`, and
-  /// for a copy of a shared condition, its `badge` ("×3"). In `link` mode,
-  /// nodes a click cannot add fade back and nodes that would close a cycle
-  /// get a warning ring.
+  /// Paint a single node in `rect`: shape, fill, border and `label`, the
+  /// `glyph` of a formula condition before it, and for a copy of a shared
+  /// condition, its `badge` ("×3"). In `link` mode, nodes a click cannot
+  /// add fade back and nodes that would close a cycle get a warning ring.
   pub(super) fn node(
     &mut self,
     node: &RenderNode,
@@ -142,6 +146,7 @@ impl<'a> Painter<'a> {
     link: Option<&LinkMode>,
     label: Option<&TextLayout<BrushIndex>>,
     badge: Option<&TextLayout<BrushIndex>>,
+    glyph: Option<&TextLayout<BrushIndex>>,
   ) {
     let (fill, border) = self.theme.for_state(node.state);
     let taken = link.is_some_and(|l| l.taken.contains(&node.node));
@@ -174,13 +179,30 @@ impl<'a> Painter<'a> {
       );
     }
 
+    // The glyph sits at the start of the label's row, centred on the box.
+    let mut text_x = rect.x0 + PAD_X;
+    if node.glyph.is_some() {
+      if let Some(glyph) = glyph {
+        let h = glyph.height() as f64;
+        let origin = Point::new(text_x, rect.center().y - h / 2.0);
+        render_text(
+          self.scene,
+          self.tf * Affine::translate(origin.to_vec2()),
+          glyph,
+          &[Brush::Solid(self.theme.muted)],
+          true,
+        );
+      }
+      text_x += GLYPH_W;
+    }
+
     // Labels are shaped in the layout pass; one is only missing if this
     // paint raced a scene change, and the next frame will have it.
     if let Some(text) = label {
       // Centred vertically, so a box held open at its minimum height does
       // not leave a one-line label stuck to its top.
       let text_h = text.height() as f64;
-      let origin = Point::new(rect.x0 + PAD_X, rect.center().y - text_h / 2.0);
+      let origin = Point::new(text_x, rect.center().y - text_h / 2.0);
       render_text(
         self.scene,
         self.tf * Affine::translate(origin.to_vec2()),

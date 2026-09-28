@@ -159,6 +159,11 @@ impl AppState {
       key("A"),
     ));
     rows.push(command(
+      PaletteAct::PickPlace,
+      "Set where I am".into(),
+      key("C"),
+    ));
+    rows.push(command(
       PaletteAct::OpenQuests,
       "Switch quest".into(),
       key("Q"),

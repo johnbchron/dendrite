@@ -49,6 +49,8 @@ pub enum Command {
   Quests,
   /// Open or close the Now tray.
   Now,
+  /// Open or close the place picker, in the Now tray.
+  Place,
   /// Open (or close) the command palette; `nodes_only` to search nodes.
   Palette {
     /// Search nodes only (opened with `/`).

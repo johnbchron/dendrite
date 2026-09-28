@@ -219,3 +219,87 @@ fn contexts_match_any_phrase_and_with_makes_one() {
 fn nothing_for_nothing() {
   assert!(offers("   ", &Graph::new(), TODAY).is_empty());
 }
+
+#[test]
+fn schedule_windows() {
+  use base::{Span, WeekdaySet};
+  let tod = |s: &str| s.parse::<TimeOfDay>().unwrap();
+  let weekly = |days, start, end| {
+    Some(Span::Weekly {
+      days,
+      start: tod(start),
+      end: tod(end),
+    })
+  };
+  assert_eq!(
+    span("weekdays 9:00-17:00", TODAY),
+    weekly(WeekdaySet::WORKDAYS, "09:00", "17:00")
+  );
+  assert_eq!(
+    span("Sat, Sun 10am - 4pm", TODAY),
+    weekly(WeekdaySet::WEEKEND, "10:00", "16:00")
+  );
+  let fri_to_mon = [
+    Weekday::Friday,
+    Weekday::Saturday,
+    Weekday::Sunday,
+    Weekday::Monday,
+  ]
+  .into_iter()
+  .collect();
+  assert_eq!(
+    span("fri-mon 22:00-02:00", TODAY),
+    weekly(fri_to_mon, "22:00", "02:00")
+  );
+  // A date makes a one-off window; one past midnight ends the next day.
+  assert_eq!(
+    span("dec 24 9am-12pm", TODAY),
+    Some(Span::Once {
+      start: at(2026, 12, 24, 9, 0),
+      end:   at(2026, 12, 24, 12, 0),
+    })
+  );
+  assert_eq!(
+    span("dec 31 22:00-01:00", TODAY),
+    Some(Span::Once {
+      start: at(2026, 12, 31, 22, 0),
+      end:   at(2027, 1, 1, 1, 0),
+    })
+  );
+  assert_eq!(span("weekdays", TODAY), None);
+  assert_eq!(span("someday 9:00-10:00", TODAY), None);
+}
+
+#[test]
+fn balances_in_a_unit() {
+  let usd = Unit::Money {
+    currency:     "USD".into(),
+    minor_digits: 2,
+  };
+  assert_eq!(amount("320", &usd), Some(32_000));
+  assert_eq!(amount("$ 12.5", &usd), Some(1_250));
+  assert_eq!(amount("USD 3", &usd), Some(300));
+  assert_eq!(amount("-4.10", &usd), Some(-410));
+  assert_eq!(amount("12.345", &usd), None);
+  assert_eq!(amount("2h 30m", &Unit::Minutes), Some(150));
+  assert_eq!(amount("90", &Unit::Minutes), Some(90));
+  let count = Unit::Count {
+    noun: "battery".into(),
+  };
+  assert_eq!(amount("3", &count), Some(3));
+  assert_eq!(amount("three", &count), None);
+}
+
+#[test]
+fn free_time_ends() {
+  use jiff::tz::TimeZone;
+  let zone = TimeZone::UTC;
+  let now: jiff::Timestamp = "2026-09-28T12:00Z".parse().unwrap();
+  let until = |s| until(s, now, &zone).map(|t| t.to_string());
+  assert_eq!(until("15:30"), Some("2026-09-28T15:30:00Z".into()));
+  assert_eq!(until("3pm"), Some("2026-09-28T15:00:00Z".into()));
+  // A time already past today is tomorrow's.
+  assert_eq!(until("9am"), Some("2026-09-29T09:00:00Z".into()));
+  assert_eq!(until("1h 30m"), Some("2026-09-28T13:30:00Z".into()));
+  assert_eq!(until("soon"), None);
+}

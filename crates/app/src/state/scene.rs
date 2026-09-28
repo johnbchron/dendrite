@@ -10,7 +10,7 @@ use session::Session;
 use super::AppState;
 use crate::{
   formula::describe,
-  scene::{CanvasScene, RenderEdge, RenderNode},
+  scene::{CanvasScene, Category, RenderEdge, RenderNode},
 };
 
 /// Which nodes a lens shows, and which of those it dims.
@@ -106,6 +106,7 @@ impl AppState {
           copies:   lay.copies.count(node.id),
           label:    describe::node_name(graph, node, today),
           kind:     node.kind.clone(),
+          glyph:    node.kind.atom().map(Category::of),
           state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),
           dimmed:   lens.dims(node.id),

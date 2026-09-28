@@ -210,3 +210,13 @@ fn escape_always_resolves_and_releases_never_do() {
   up.state = KeyState::Up;
   assert_eq!(Binding::for_key(&up, Flags::default()), None);
 }
+
+#[test]
+fn c_opens_the_place_picker() {
+  let c = character("c", Modifiers::empty());
+  assert_eq!(
+    Binding::for_key(&c, Flags::default()),
+    Some(Binding::Run(Command::Place))
+  );
+  assert_eq!(Binding::for_key(&c, QUERY), None);
+}

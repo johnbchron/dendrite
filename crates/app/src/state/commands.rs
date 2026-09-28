@@ -50,6 +50,7 @@ impl AppState {
       Command::Fit => self.recenter(),
       Command::Quests => self.toggle_picker(),
       Command::Now => self.toggle_now(),
+      Command::Place => self.toggle_place_picker(),
       Command::Palette { nodes_only } => {
         if self.palette_open() {
           self.close_popovers();

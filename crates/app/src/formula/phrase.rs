@@ -11,7 +11,11 @@ use base::{
   Amount, Atom, ContextId, Event, Graph, Minutes, Moment, PlaceId, Resource,
   ResourceId, ScheduleId, Span, TimeOfDay, Unit, WeekdaySet,
 };
-use jiff::civil::{Date, Time, Weekday};
+use jiff::{
+  Timestamp,
+  civil::{Date, Time, Weekday},
+  tz::TimeZone,
+};
 
 use super::describe::{atom_label, currency_symbol, plural};
 use crate::query;
@@ -130,6 +134,33 @@ pub fn offers(text: &str, graph: &Graph, today: Date) -> Vec<Offer> {
     }
   }
   out
+}
+
+/// Whether `offer` is a clear reading of `text`, clear enough to act on
+/// without choosing it from a list: a date, an amount or a duration, a
+/// referent named with its lead word ("at home", "during …", "with sam"),
+/// or one named exactly. A loose match on a name ("on" for Online) is an
+/// offer, not a reading.
+pub fn explicit(text: &str, offer: &Offer, graph: &Graph) -> bool {
+  if !offer.define.is_empty() {
+    return true;
+  }
+  let text = text.trim().to_lowercase();
+  let name = match &offer.atom {
+    Atom::After { .. }
+    | Atom::Before { .. }
+    | Atom::Free { .. }
+    | Atom::Has { .. } => return true,
+    Atom::At { place } => graph.place(*place).map(|p| p.name.as_str()),
+    Atom::Within { schedule } => {
+      graph.schedule(*schedule).map(|s| s.name.as_str())
+    }
+    Atom::In { context } => graph.context(*context).map(|c| c.name.as_str()),
+  };
+  let led = ["at ", "@", "during ", "on ", "with "]
+    .iter()
+    .any(|lead| text.starts_with(lead));
+  led || name.is_some_and(|n| n.eq_ignore_ascii_case(&text))
 }
 
 /// Offers for `name` among `referents`: each that matches, best first, then
@@ -397,6 +428,123 @@ fn decimal(number: &str, digits: u8) -> Option<Amount> {
   whole
     .checked_mul(10i64.checked_pow(digits.into())?)?
     .checked_add(frac)
+}
+
+/// A schedule window typed as days, or a date, then a time range:
+/// "weekdays 9:00-17:00", "mon, wed 9am - 5pm", "sat-sun 10:00-16:00".
+/// An end at or before the start wraps past midnight ("fri 22:00-02:00").
+/// A date instead of days makes a one-off window ("dec 24 9am-12pm").
+pub fn span(text: &str, today: Date) -> Option<Span> {
+  let text = text
+    .trim()
+    .to_lowercase()
+    .replace(" - ", "-")
+    .replace(',', " ");
+  let words: Vec<&str> = text.split_whitespace().collect();
+  let (range, days) = words.split_last()?;
+  let (start, end) = range.split_once('-')?;
+  let (start, end) = (time_of_day(start)?, time_of_day(end)?);
+  if let Some(days) = weekday_set(days) {
+    let (start, end) = (
+      TimeOfDay::new(start.hour(), start.minute())?,
+      TimeOfDay::new(end.hour(), end.minute())?,
+    );
+    return Some(Span::Weekly { days, start, end });
+  }
+  let day = day_of(days, today)?;
+  let end_day = if end <= start {
+    day.tomorrow().ok()?
+  } else {
+    day
+  };
+  Some(Span::Once {
+    start: Moment::new(day.to_datetime(start)),
+    end:   Moment::new(end_day.to_datetime(end)),
+  })
+}
+
+/// "weekdays", "weekends", "every day", "daily", "mon wed fri", "mon-fri".
+fn weekday_set(words: &[&str]) -> Option<WeekdaySet> {
+  match words {
+    ["weekdays" | "workdays"] => return Some(WeekdaySet::WORKDAYS),
+    ["weekends" | "weekend"] => return Some(WeekdaySet::WEEKEND),
+    ["daily"] | ["every", "day"] | ["everyday"] => {
+      return Some(WeekdaySet::EVERY_DAY);
+    }
+    [range] if let Some((a, b)) = range.split_once('-') => {
+      let (a, b) = (
+        weekday(a)?.to_monday_zero_offset(),
+        weekday(b)?.to_monday_zero_offset(),
+      );
+      // From the first day round to the last: "fri-mon" wraps the week.
+      let mut days = vec![a];
+      let mut d = a;
+      while d != b {
+        d = (d + 1) % 7;
+        days.push(d);
+      }
+      return days
+        .into_iter()
+        .map(|d| Weekday::from_monday_zero_offset(d).ok())
+        .collect();
+    }
+    _ => {}
+  }
+  if words.is_empty() {
+    return None;
+  }
+  words
+    .iter()
+    .map(|w| weekday(w))
+    .collect::<Option<Vec<_>>>()
+    .map(|days| days.into_iter().collect())
+}
+
+/// A balance typed for a resource counted in `unit`: "320", "$320.50" or
+/// "-12" for money, "2h 30m" or "150" for time, "3" for a count.
+pub fn amount(text: &str, unit: &Unit) -> Option<Amount> {
+  let text = text.trim().replace(' ', "");
+  let (negative, text) = match text.strip_prefix('-') {
+    Some(rest) => (true, rest.to_string()),
+    None => (false, text),
+  };
+  let value = match unit {
+    Unit::Money {
+      currency,
+      minor_digits,
+    } => {
+      let number = currency_symbol(currency)
+        .and_then(|sym| text.strip_prefix(sym))
+        .or_else(|| text.strip_prefix(currency.as_str()))
+        .unwrap_or(&text);
+      decimal(number, *minor_digits)?
+    }
+    Unit::Minutes => match text.parse::<Amount>() {
+      Ok(minutes) => minutes,
+      Err(_) => duration(&text.to_lowercase())?.into(),
+    },
+    Unit::Count { .. } => text.parse().ok()?,
+  };
+  Some(if negative { -value } else { value })
+}
+
+/// When free time typed as "15:30", "3pm" or "1h 30m" ends: a time of day
+/// is the next one from `now`, a duration runs from `now`.
+pub fn until(text: &str, now: Timestamp, zone: &TimeZone) -> Option<Timestamp> {
+  let text = text.trim().to_lowercase().replace(' ', "");
+  if let Some(time) = time_of_day(&text) {
+    let today = zone.to_datetime(now).date();
+    let at = super::literal_instant(today.to_datetime(time), zone);
+    return Some(if at > now {
+      at
+    } else {
+      super::literal_instant(today.tomorrow().ok()?.to_datetime(time), zone)
+    });
+  }
+  let minutes = duration(&text)?;
+  now
+    .checked_add(jiff::SignedDuration::from_mins(minutes.into()))
+    .ok()
 }
 
 /// "1h free", "free for 30 min", "45m": a free-time atom's minutes.

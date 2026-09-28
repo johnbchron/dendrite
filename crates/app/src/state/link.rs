@@ -113,11 +113,16 @@ impl AppState {
     self.selected_copy = copy;
   }
 
-  /// Enter in the requirement search: link the best match and disarm.
+  /// Enter in the requirement search: link the best match and disarm. A
+  /// node that matches comes first; failing one, the first formula the
+  /// text reads as.
   pub fn link_best_match(&mut self) {
     if let Some((target, _)) = self.candidate_requirements().0.first() {
       let target = *target;
       self.add_requirement(target);
+      self.cancel_link();
+    } else if let Some(offer) = self.atom_offers().into_iter().next() {
+      self.require_offer(offer.offer);
       self.cancel_link();
     }
   }
@@ -154,16 +159,28 @@ impl AppState {
   }
 
   /// Formulas [`Self::link_filter`] reads as, for the requirement search,
-  /// leaving out any the selection already requires.
+  /// leaving out any the selection already requires and any already listed
+  /// as a node match.
   pub fn atom_offers(&self) -> Vec<AtomOffer> {
     let Some(id) = self.selected else {
       return Vec::new();
     };
+    // A formula node the text already matches by name is listed as a node.
+    let listed: HashSet<NodeId> = self
+      .candidate_requirements()
+      .0
+      .into_iter()
+      .map(|(n, _)| n)
+      .collect();
     let store = self.lock();
     let graph = store.graph();
     phrase::offers(&self.link_filter, graph, self.today())
       .into_iter()
-      .filter(|o| !graph.requirements_of(id).any(|e| e.to == o.atom.node_id()))
+      .filter(|o| {
+        let node = o.atom.node_id();
+        !listed.contains(&node)
+          && !graph.requirements_of(id).any(|e| e.to == node)
+      })
       .map(|offer| AtomOffer {
         used_by: graph.dependents_of(offer.atom.node_id()).count(),
         offer,

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use base::{EdgeId, NodeId, NodeKind, NodeState};
+use base::{Atom, EdgeId, NodeId, NodeKind, NodeState};
 use layout::Arrangement;
 
 /// One box as the canvas needs to draw and hit-test it: a node, or one of
@@ -19,6 +19,9 @@ pub struct RenderNode {
   pub label:    String,
   /// Task vs. condition — selects the shape.
   pub kind:     NodeKind,
+  /// For a formula condition, what its atom is about — selects the glyph
+  /// drawn beside the label.
+  pub glyph:    Option<Category>,
   /// Derived status — selects the fill/border colours.
   pub state:    NodeState,
   /// Whether this node is the current selection.
@@ -26,6 +29,37 @@ pub struct RenderNode {
   /// Whether this node is only pulled into the active quest's scope (not
   /// claimed) — rendered dimmed (PLAN §5).
   pub dimmed:   bool,
+}
+
+/// What a formula condition is about, for the glyph that marks it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Category {
+  /// A start or end date (`After`, `Before`).
+  Date,
+  /// A schedule's windows (`Within`).
+  Window,
+  /// Free time (`Free`).
+  FreeTime,
+  /// A place (`At`).
+  Place,
+  /// A resource (`Has`).
+  Resource,
+  /// A context (`In`).
+  Context,
+}
+
+impl Category {
+  /// What `atom` is about.
+  pub fn of(atom: &Atom) -> Self {
+    match atom {
+      Atom::After { .. } | Atom::Before { .. } => Category::Date,
+      Atom::Within { .. } => Category::Window,
+      Atom::Free { .. } => Category::FreeTime,
+      Atom::At { .. } => Category::Place,
+      Atom::Has { .. } => Category::Resource,
+      Atom::In { .. } => Category::Context,
+    }
+  }
 }
 
 /// One edge between two rendered nodes, plus styling flags.

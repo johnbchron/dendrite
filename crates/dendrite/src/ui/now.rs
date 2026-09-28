@@ -5,6 +5,10 @@
 //! node — no cap, scrolling when long — grouped by quest in the global view,
 //! then under Soon the tasks only the clock is holding back, soonest first.
 //! Choosing a row selects that node and brings it into view.
+//!
+//! Open, it leads with the context bar, where the facts formula conditions
+//! read are declared: where I am (C opens the picker), how long I am free,
+//! and which contexts are on.
 
 use masonry::{
   peniko::Color,
@@ -19,11 +23,15 @@ use xilem::{
   },
 };
 
-use super::controls::{body, fill, label, muted, row_button, section, spacer};
+use super::controls::{
+  body, fill, free_presets, label, muted, row_button, section, seg, spacer,
+};
 use crate::{
+  focus::FieldKey,
   icons::{Icon, icon},
   state::AppState,
-  themed::{Level, surface},
+  theme::Theme,
+  themed::{FocusKey as _, Level, field, surface},
   tokens::{radius, size, space, text},
 };
 
@@ -141,13 +149,119 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     .height(height.px())
   });
 
+  let bar = open.then(|| context_bar(data, theme));
+
   sized_box(surface(
     theme,
     Level::Card,
     space::XS,
-    flex_col((header, list))
+    flex_col((header, bar, list))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
       .gap(space::XS.px()),
   ))
   .width(WIDTH.px())
+}
+
+/// The facts formula conditions read, declared here: the place (with its
+/// picker), free time, and the contexts, each a chip that turns on and off.
+fn context_bar(
+  data: &mut AppState,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  let place = row_button(
+    theme,
+    data.place_picker_open(),
+    flex_row((
+      icon(Icon::MapPin, size::ICON, theme.muted),
+      fill(body(
+        data.place_name().unwrap_or_else(|| "Set place".into()),
+        theme,
+      )),
+      muted("C", theme),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px()),
+    |s: &mut AppState| s.toggle_place_picker(),
+  );
+
+  let picker = data.place_picker_open().then(|| {
+    let current = data.place();
+    let mut rows = vec![
+      row_button(
+        theme,
+        current.is_none(),
+        muted("Nowhere I've named", theme),
+        |s: &mut AppState| s.pick_place(None),
+      )
+      .into_any_flex(),
+    ];
+    for (id, name) in data.place_choices() {
+      rows.push(
+        row_button(
+          theme,
+          current == Some(id),
+          body(name, theme),
+          move |s: &mut AppState| s.pick_place(Some(id)),
+        )
+        .into_any_flex(),
+      );
+    }
+    flex_col(rows)
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::HAIR.px())
+  });
+
+  let free = flex_col((
+    flex_row((
+      icon(Icon::Hourglass, size::ICON, theme.muted),
+      fill(muted(
+        data
+          .free_summary()
+          .unwrap_or_else(|| "Free time not set".into()),
+        theme,
+      )),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px()),
+    field(data.free_draft.clone(), theme, |s: &mut AppState, v| {
+      s.set_free_text(v)
+    })
+    .size(text::CONTROL)
+    .placeholder("Free until 15:30, or for 1h")
+    .focus_key(FieldKey::FreeUntil)
+    .on_enter(|s: &mut AppState, _| s.apply_free_text()),
+    free_presets(theme),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Fill)
+  .gap(space::XS.px());
+
+  let chips: Vec<_> = data
+    .context_chips()
+    .into_iter()
+    .map(|(id, name, on)| {
+      seg(name, theme, on, true, move |s: &mut AppState| {
+        s.toggle_context(id)
+      })
+      .into_any_flex()
+    })
+    .collect();
+  let contexts = (!chips.is_empty()).then(|| {
+    flex_row((
+      icon(Icon::Tag, size::ICON, theme.muted),
+      flex_row(chips)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(space::XS.px()),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::S.px())
+  });
+
+  sized_box(
+    flex_col((place, picker, free, contexts))
+      .cross_axis_alignment(CrossAxisAlignment::Fill)
+      .gap(space::XS.px()),
+  )
+  .padding(Padding::from_vh(space::XS, space::XS))
+  .corner_radius(radius::CONTROL)
+  .background_color(theme.sunken)
 }

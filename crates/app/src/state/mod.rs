@@ -36,8 +36,10 @@ mod navigate;
 mod now;
 mod palette;
 mod quests;
+mod referents;
 mod scene;
 mod selection;
+mod source;
 mod switcher;
 #[cfg(test)]
 mod tests;
@@ -61,7 +63,8 @@ pub use self::{
   link::AtomOffer,
   now::SoonItem,
   palette::{PaletteRow, RowKind},
-  selection::{EdgeRow, Reason},
+  selection::{EdgeRow, FormulaInfo, Named, Primary, Reason, ReferentInfo},
+  source::{SourceDraft, SourceKind, Target},
   switcher::QuestChoice,
   toast::Toast,
 };
@@ -139,6 +142,15 @@ pub struct AppState {
   facts_revision:     u64,
   /// When [`AppState::tick`] last looked at the clock.
   checked_at:         Timestamp,
+  /// Editable text for the selected formula's referent: its name, a
+  /// resource's balance, a window to add to a schedule.
+  drafts:             referents::Drafts,
+  /// Editable text for the Now tray's free time field.
+  pub free_draft:     String,
+  /// Whether the Now tray's place picker is showing.
+  place_picker:       bool,
+  /// The selected condition's "Satisfied by" form, while it is open.
+  source:             Option<SourceDraft>,
 }
 
 /// A text field that commits as it is typed in.
@@ -148,6 +160,10 @@ enum LiveEdit {
   NodeName(NodeId),
   /// The quest switcher's rename field, for this quest.
   QuestName(QuestId),
+  /// A referent's name field, for the referent with this raw id.
+  ReferentName(u128),
+  /// A resource's balance field, for the resource with this raw id.
+  Balance(u128),
 }
 
 impl AppState {
@@ -188,6 +204,10 @@ impl AppState {
       declared,
       facts_revision: 0,
       checked_at,
+      drafts: referents::Drafts::default(),
+      free_draft: String::new(),
+      place_picker: false,
+      source: None,
     };
     state.theme = state.stored_theme();
     state
@@ -202,6 +222,14 @@ impl AppState {
     if let Err(e) = self.lock().commit(events) {
       // A local single-user tool: surface to the log and keep running rather
       // than crash mid-edit.
+      eprintln!("commit failed: {e}");
+    }
+  }
+
+  /// Commit `events` as one undo step named `label`.
+  fn commit_as(&mut self, events: Vec<Event>, label: &'static str) {
+    self.live_edit = None;
+    if let Err(e) = self.lock().commit_labelled(events, label) {
       eprintln!("commit failed: {e}");
     }
   }

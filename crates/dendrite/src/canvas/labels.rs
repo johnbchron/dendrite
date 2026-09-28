@@ -1,16 +1,23 @@
 //! Node labels: shaped once per text and kept, and the box size each gives
-//! its node.
+//! its node; and the glyphs that mark formula conditions.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+  borrow::Cow,
+  collections::{HashMap, HashSet},
+};
 
+use app::scene::Category;
 use base::NodeId;
 use masonry::{
   core::{BrushIndex, StyleProperty},
-  parley::{FontContext, Layout as TextLayout, LayoutContext, LineHeight},
+  parley::{
+    FontContext, Layout as TextLayout, LayoutContext, LineHeight,
+    style::{FontFamily, FontStack},
+  },
 };
 
 use super::RenderNode;
-use crate::font;
+use crate::{font, icons};
 
 /// Width of every node box in world (graph) units, and so the width its
 /// label wraps at. Height follows the label (see [`Labels::box_size`]).
@@ -28,12 +35,23 @@ const MIN_LINES: f64 = 2.0;
 /// Type size of the count on a copy of a shared condition ("×3").
 pub(super) const BADGE_SIZE: f32 = 10.5;
 
-/// Shaped labels, keyed by box, each with the text it was shaped from so a
-/// rename reshapes it; and the copy counts ("×3") the boxes show.
+/// Size of the glyph that marks a formula condition, and the room it and
+/// its gap take from the label.
+const GLYPH_SIZE: f32 = 14.0;
+pub(super) const GLYPH_W: f64 = 20.0;
+
+/// What a label was shaped from: its text, and whether a glyph shares its
+/// row (which narrows it).
+type Shaped = (String, Option<Category>);
+
+/// Shaped labels, keyed by box, each with what it was shaped from so a
+/// rename reshapes it; the copy counts ("×3") the boxes show; and the glyph
+/// for each kind of formula condition.
 #[derive(Default)]
 pub(super) struct Labels {
-  cache:  HashMap<NodeId, (String, TextLayout<BrushIndex>)>,
+  cache:  HashMap<NodeId, (Shaped, TextLayout<BrushIndex>)>,
   badges: HashMap<usize, TextLayout<BrushIndex>>,
+  glyphs: HashMap<Category, TextLayout<BrushIndex>>,
 }
 
 impl Labels {
@@ -47,6 +65,7 @@ impl Labels {
   pub(super) fn clear(&mut self) {
     self.cache.clear();
     self.badges.clear();
+    self.glyphs.clear();
   }
 
   /// Shape any label in `nodes` not already shaped from its current text.
@@ -63,29 +82,48 @@ impl Labels {
     for node in nodes {
       if node.copies > 1 && !self.badges.contains_key(&node.copies) {
         let count = format!("\u{d7}{}", node.copies);
-        let badge = Self::shape_one(font_cx, layout_cx, &count, BADGE_SIZE);
+        let badge =
+          Self::shape_one(font_cx, layout_cx, &count, BADGE_SIZE, font::STACK);
         self.badges.insert(node.copies, badge);
       }
+      if let Some(category) = node.glyph
+        && !self.glyphs.contains_key(&category)
+      {
+        let glyph = String::from(icons::Icon::for_category(category).glyph());
+        let stack =
+          FontStack::Single(FontFamily::Named(Cow::Borrowed(icons::FAMILY)));
+        let layout =
+          Self::shape_one(font_cx, layout_cx, &glyph, GLYPH_SIZE, stack);
+        self.glyphs.insert(category, layout);
+      }
+      let shaped = (node.label.clone(), node.glyph);
       let fresh = self
         .cache
         .get(&node.id)
-        .is_some_and(|(text, _)| text == &node.label);
+        .is_some_and(|(from, _)| *from == shaped);
       if fresh {
         continue;
       }
-      let mut text =
-        Self::shape_one(font_cx, layout_cx, &node.label, LABEL_SIZE);
-      text.break_all_lines(Some((NODE_W - 2.0 * PAD_X) as f32));
-      self.cache.insert(node.id, (node.label.clone(), text));
+      let mut text = Self::shape_one(
+        font_cx,
+        layout_cx,
+        &node.label,
+        LABEL_SIZE,
+        font::STACK,
+      );
+      let glyph_w = if node.glyph.is_some() { GLYPH_W } else { 0.0 };
+      text.break_all_lines(Some((NODE_W - 2.0 * PAD_X - glyph_w) as f32));
+      self.cache.insert(node.id, (shaped, text));
     }
   }
 
-  /// Shape `text` at `size` in the app face, unbroken.
+  /// Shape `text` at `size` in `stack`, unbroken.
   fn shape_one(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<BrushIndex>,
     text: &str,
     size: f32,
+    stack: FontStack<'static>,
   ) -> TextLayout<BrushIndex> {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(size));
@@ -95,7 +133,7 @@ impl Labels {
     // A hand-rolled widget has to ask for the app face itself, or parley
     // picks its own default and the canvas ends up in a different typeface
     // to the panel.
-    builder.push_default(StyleProperty::FontStack(font::STACK));
+    builder.push_default(StyleProperty::FontStack(stack));
     let mut layout = TextLayout::new();
     builder.build_into(&mut layout, text);
     layout.break_all_lines(None);
@@ -105,6 +143,14 @@ impl Labels {
   /// The shaped label of `node`, if it has one.
   pub(super) fn get(&self, node: NodeId) -> Option<&TextLayout<BrushIndex>> {
     self.cache.get(&node).map(|(_, text)| text)
+  }
+
+  /// The shaped glyph for a formula condition about `category`.
+  pub(super) fn glyph(
+    &self,
+    category: Category,
+  ) -> Option<&TextLayout<BrushIndex>> {
+    self.glyphs.get(&category)
   }
 
   /// The shaped count for a node drawn `copies` times, if it is shaped.

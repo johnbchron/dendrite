@@ -1,4 +1,4 @@
-# Neutron — Planning Document
+# Dendrite — Planning Document
 
 Status: **all review questions resolved — awaiting final approval**
 Date: 2026-09-08
@@ -144,10 +144,10 @@ crates/
   layout/    (new, pure) Sugiyama: cycle cut → ranking → within-level ordering
              (barycenter crossing-minimization seeded by order_hint) →
              x-coordinate assignment. Incremental-friendly API.
-  neutron/   xilem app: state, custom canvas widget, panels, wiring.
+  dendrite/  xilem app: state, custom canvas widget, panels, wiring.
 ```
 
-Rationale: `base` and `layout` stay pure and exhaustively testable; `neutron`
+Rationale: `base` and `layout` stay pure and exhaustively testable; `dendrite`
 holds only glue and painting. The custom canvas widget is a masonry custom
 widget (hit-testing + pan/zoom + vello painting) — flagged as the highest
 technical risk (see §6).

@@ -1,4 +1,4 @@
-//! Neutron's palette and design tokens, bound to the generic [`widgets`].
+//! Dendrite's palette and design tokens, bound to the generic [`widgets`].
 //!
 //! The widget crate knows nothing about this app: each of its views takes
 //! the colours, sizes and font it should paint with. This module is the one

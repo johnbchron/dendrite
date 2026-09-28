@@ -74,7 +74,7 @@ impl Frame {
 }
 
 /// Told when the field's text area is mounted and when it goes, so the app
-/// can keep its own map from names to widgets (see `neutron::focus`).
+/// can keep its own map from names to widgets (see `dendrite::focus`).
 ///
 /// Masonry will typically only move focus while handling an event, so
 /// something that merely wants focus moved has to look the widget up.

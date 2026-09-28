@@ -630,7 +630,7 @@ impl<const EDITABLE: bool> Widget for TextArea<EDITABLE> {
                             drv.move_right();
                         }
                     }
-                    // Neutron patch: in text without line breaks there is no
+                    // Dendrite patch: in text without line breaks there is no
                     // line to move to, so leave Up and Down unhandled for the
                     // widgets above (a list whose highlight they move).
                     Key::Named(NamedKey::ArrowUp) if self.editor.raw_text().contains('\n') => {
@@ -697,7 +697,7 @@ impl<const EDITABLE: bool> Widget for TextArea<EDITABLE> {
 
                         edited = true;
                     }
-                    // Neutron patch: a chord with the command modifier is a
+                    // Dendrite patch: a chord with the command modifier is a
                     // shortcut, not text; leave it unhandled for the app.
                     Key::Character(sp) if EDITABLE && !action_mod && sp.as_str() == " " => {
                         self.editor

@@ -36,7 +36,7 @@ impl fmt::Display for DbError {
       DbError::NewerSchema { found, supported } => write!(
         f,
         "database schema version {found} is newer than this build supports \
-         ({supported}); open it with a newer build of Neutron"
+         ({supported}); open it with a newer build of Dendrite"
       ),
       DbError::BadEvent { seq, error } => write!(
         f,

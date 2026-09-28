@@ -1,4 +1,4 @@
-//! `app` — everything Neutron does, minus how it is drawn.
+//! `app` — everything Dendrite does, minus how it is drawn.
 //!
 //! The application's whole behaviour lives here: what is selected, what the
 //! inspector says about it, link mode, quests and their lens, the command

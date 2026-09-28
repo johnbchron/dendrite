@@ -1,4 +1,4 @@
-# Neutron
+# Dendrite
 
 A dependency-graph task manager built in Rust on the [linebender](https://linebender.org)
 stack (Xilem / Masonry / Vello). All tasks live in one global, flat, fully
@@ -12,10 +12,10 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
 | `session` | The editing session: the graph as it stands, and undo/redo via inverse events, over an abstract append-only log (the `Backend` trait). Pure — no I/O, no SQL, no platform. | ✅ complete, tested through `db` |
 | `db` | The SQLite `Backend`: an append-only event log (the source of truth) plus UI preferences, replayed on open. One database for the whole global graph. | ✅ complete, round-trip tested |
-| `app` | Everything Neutron *does*, minus how it is drawn: selection, the inspector's reasoning, link mode, quests and their lens, the command palette, the Now tray, the key map, the colour palettes, and the scene handed to a canvas. Depends only on `base`, `layout`, `session` and the pure linebender vocabulary crates (`kurbo`, `peniko`, `ui-events`) — no toolkit, no platform. | ✅ complete, tested |
+| `app` | Everything Dendrite *does*, minus how it is drawn: selection, the inspector's reasoning, link mode, quests and their lens, the command palette, the Now tray, the key map, the colour palettes, and the scene handed to a canvas. Depends only on `base`, `layout`, `session` and the pure linebender vocabulary crates (`kurbo`, `peniko`, `ui-events`) — no toolkit, no platform. | ✅ complete, tested |
 | `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → Brandes–Köpf coordinate assignment. | ✅ complete, tested |
-| `widgets` | The Masonry widgets and Xilem views the toolkit does not ship: an entrance animation, a draggable divider, a framed text field, a hover-revealed row, an elevated surface, a keyed timer, a tooltip. Each takes the colours, sizes and font it paints with, so none of them knows anything about Neutron. | ✅ complete |
-| `neutron` | The Xilem UI and nothing else: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), and the glue that delivers input to `app` and paints what it says. | 🚧 editing done, text sync to come |
+| `widgets` | The Masonry widgets and Xilem views the toolkit does not ship: an entrance animation, a draggable divider, a framed text field, a hover-revealed row, an elevated surface, a keyed timer, a tooltip. Each takes the colours, sizes and font it paints with, so none of them knows anything about Dendrite. | ✅ complete |
+| `dendrite` | The Xilem UI and nothing else: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), and the glue that delivers input to `app` and paints what it says. | 🚧 editing done, text sync to come |
 
 ## Milestone status (PLAN §8)
 
@@ -47,11 +47,11 @@ fontconfig, wayland/xkb, …):
 ```sh
 nix develop        # or: direnv allow
 cargo test         # 128 tests across the workspace
-cargo run -p neutron
+cargo run -p dendrite
 ```
 
-The app opens or creates `neutron/neutron.db` in the platform data directory
-(e.g. `~/.local/share` on Linux; override with `NEUTRON_DB=/path/to.db`). A new
+The app opens or creates `dendrite/dendrite.db` in the platform data directory
+(e.g. `~/.local/share` on Linux; override with `DENDRITE_DB=/path/to.db`). A new
 database starts empty.
 
 ### Using it

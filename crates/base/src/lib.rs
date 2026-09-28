@@ -1,4 +1,4 @@
-//! `base` — the pure domain model and graph algorithms for Neutron.
+//! `base` — the pure domain model and graph algorithms for Dendrite.
 //!
 //! One global, flat, fully cross-linkable graph of [`Node`]s joined by
 //! first-class [`Edge`]s; [`Quest`]s are lenses that *claim* nodes without

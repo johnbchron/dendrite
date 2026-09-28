@@ -174,7 +174,7 @@ use_self = "warn"
 wildcard_dependencies = "warn"
 
 [lints.rust]
-# Neutron patch: crates.io builds cap this crate's lints; as a path
+# Dendrite patch: crates.io builds cap this crate's lints; as a path
 # dependency it would warn about expectations newer rustc no longer meets.
 unfulfilled_lint_expectations = "allow"
 elided_lifetimes_in_paths = "warn"

@@ -4,7 +4,7 @@
  wildcard_dependencies = "warn"
  
  [lints.rust]
-+# Neutron patch: crates.io builds cap this crate's lints; as a path
++# Dendrite patch: crates.io builds cap this crate's lints; as a path
 +# dependency it would warn about expectations newer rustc no longer meets.
 +unfulfilled_lint_expectations = "allow"
  elided_lifetimes_in_paths = "warn"
@@ -17,7 +17,7 @@
                          }
                      }
 -                    Key::Named(NamedKey::ArrowUp) => {
-+                    // Neutron patch: in text without line breaks there is no
++                    // Dendrite patch: in text without line breaks there is no
 +                    // line to move to, so leave Up and Down unhandled for the
 +                    // widgets above (a list whose highlight they move).
 +                    Key::Named(NamedKey::ArrowUp) if self.editor.raw_text().contains('\n') => {
@@ -38,7 +38,7 @@
                          edited = true;
                      }
 -                    Key::Character(sp) if EDITABLE && sp.as_str() == " " => {
-+                    // Neutron patch: a chord with the command modifier is a
++                    // Dendrite patch: a chord with the command modifier is a
 +                    // shortcut, not text; leave it unhandled for the app.
 +                    Key::Character(sp) if EDITABLE && !action_mod && sp.as_str() == " " => {
                          self.editor

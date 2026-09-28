@@ -1,9 +1,9 @@
-//! `widgets` — the Masonry widgets and Xilem views Neutron needed and the
+//! `widgets` — the Masonry widgets and Xilem views Dendrite needed and the
 //! toolkit does not ship.
 //!
-//! Nothing here knows anything about Neutron. Each widget takes the colours,
+//! Nothing here knows anything about Dendrite. Each widget takes the colours,
 //! sizes and font it should use, so the palette and the design tokens stay
-//! with the app; `neutron::themed` is where this app binds them.
+//! with the app; `dendrite::themed` is where this app binds them.
 //!
 //! - [`appear`]: a surface that eases the last few pixels into place.
 //! - [`divider`]: a draggable split, reporting travel from a fixed anchor.

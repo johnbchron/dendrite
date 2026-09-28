@@ -1,4 +1,4 @@
-//! `layout` — pure Sugiyama-style layered-DAG layout for Neutron (PLAN §4).
+//! `layout` — pure Sugiyama-style layered-DAG layout for Dendrite (PLAN §4).
 //!
 //! Given a [`base::Graph`], produce a deterministic arrangement the canvas
 //! can place. First, [`copies`] decides which shared conditions are drawn

@@ -1,5 +1,5 @@
 [package]
-name = "neutron"
+name = "dendrite"
 edition.workspace = true
 version.workspace = true
 

@@ -70,7 +70,7 @@ fn commit_updates_the_in_memory_graph() {
 #[test]
 fn persists_and_reloads_from_disk() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
 
   let before = {
     let mut store = db::open(&path).unwrap();
@@ -206,7 +206,7 @@ fn amending_with_nothing_to_amend_is_a_plain_commit() {
 #[test]
 fn a_newer_schema_is_refused_and_left_untouched() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
   {
     let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
@@ -250,7 +250,7 @@ fn a_newer_schema_is_refused_and_left_untouched() {
 #[test]
 fn an_unreadable_event_is_reported_by_position() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
   {
     let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
@@ -279,7 +279,7 @@ fn an_unreadable_event_is_reported_by_position() {
 #[test]
 fn a_v1_database_sheds_its_projection_tables() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
   let before = {
     let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
@@ -328,7 +328,7 @@ fn a_v1_database_sheds_its_projection_tables() {
 #[test]
 fn every_committed_event_is_replayed_on_reopening() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
   let after = {
     let mut store = db::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
@@ -376,7 +376,7 @@ fn revision_moves_with_every_graph_change_and_only_then() {
 #[test]
 fn a_typed_rename_is_logged_once() {
   let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
+  let path = dir.path().join("dendrite.db");
   let mut store = db::open(&path).unwrap();
   store.commit(sample_batch()).unwrap();
   let before = store.event_count().unwrap();

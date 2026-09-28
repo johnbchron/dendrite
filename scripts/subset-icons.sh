@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Rebuild crates/neutron/assets/lucide-subset.ttf from lucide-static.
+# Rebuild crates/dendrite/assets/lucide-subset.ttf from lucide-static.
 #
 # Usage: scripts/subset-icons.sh [lucide-static version]
 #
-# The glyph list below must match `Icon` in crates/neutron/src/icons.rs;
-# `cargo test -p neutron icons` fails if an Icon's codepoint is missing from
+# The glyph list below must match `Icon` in crates/dendrite/src/icons.rs;
+# `cargo test -p dendrite icons` fails if an Icon's codepoint is missing from
 # the bundled font. Needs curl, python3 and fonttools (pyftsubset); under
 # Nix: `nix shell nixpkgs#python3Packages.fonttools -c scripts/subset-icons.sh`.
 set -euo pipefail
@@ -32,6 +32,6 @@ PY
 )
 pyftsubset "$work/package/font/lucide.ttf" --unicodes="$unicodes" \
   --no-hinting --desubroutinize \
-  --output-file="$root/crates/neutron/assets/lucide-subset.ttf"
-cp "$work/package/LICENSE" "$root/crates/neutron/assets/Lucide-LICENSE.txt"
+  --output-file="$root/crates/dendrite/assets/lucide-subset.ttf"
+cp "$work/package/LICENSE" "$root/crates/dendrite/assets/Lucide-LICENSE.txt"
 echo "lucide-static $version: ${#NAMES[@]} glyphs"

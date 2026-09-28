@@ -10,7 +10,7 @@ An unmodified copy of `masonry` 0.4.0 from crates.io with
 - **Command-key chords are not text.** Upstream inserts the plain letter for
   Ctrl+K (Cmd+K on macOS), so shortcuts pressed in a text field typed into it.
   The patched field leaves such chords unhandled, so they reach the app's key
-  map (`crates/neutron/src/keymap.rs`). Ctrl+A/C/X/V keep their usual meaning.
+  map (`crates/dendrite/src/keymap.rs`). Ctrl+A/C/X/V keep their usual meaning.
 - **Up and Down pass through single-line text.** With no line to move to,
   they are left unhandled, so a search field can move the highlight of the
   list under it.

@@ -1,4 +1,4 @@
-//! Neutron — a dependency-graph task manager on the linebender stack.
+//! Dendrite — a dependency-graph task manager on the linebender stack.
 //!
 //! This binary is the Xilem UI and nothing else. `app` decides what the
 //! program does, `db` keeps it, `base` computes derived state and `layout`
@@ -31,20 +31,20 @@ use crate::{driver::FocusDriver, state::AppState};
 
 fn main() -> Result<(), EventLoopError> {
   // One database for the whole global graph (PLAN §3). Defaults to a file in
-  // the working directory; override with $NEUTRON_DB.
-  let path: PathBuf = std::env::var_os("NEUTRON_DB")
+  // the working directory; override with $DENDRITE_DB.
+  let path: PathBuf = std::env::var_os("DENDRITE_DB")
     .map(PathBuf::from)
     .or(dirs::data_dir().map(|pb| {
-      let path = pb.join("neutron");
+      let path = pb.join("dendrite");
       std::fs::create_dir_all(&path).expect("failed to create database dir");
-      path.join("neutron.db")
+      path.join("dendrite.db")
     }))
-    .unwrap_or_else(|| PathBuf::from("neutron.db"));
+    .unwrap_or_else(|| PathBuf::from("dendrite.db"));
 
   let store = match db::open(&path) {
     Ok(store) => store,
     Err(e) => {
-      eprintln!("neutron: cannot open {}: {e}", path.display());
+      eprintln!("dendrite: cannot open {}: {e}", path.display());
       std::process::exit(1);
     }
   };
@@ -52,7 +52,7 @@ fn main() -> Result<(), EventLoopError> {
   let focus_requests = state.focus_requests();
 
   let app =
-    Xilem::new_simple(state, ui::app_logic, WindowOptions::new("Neutron"))
+    Xilem::new_simple(state, ui::app_logic, WindowOptions::new("Dendrite"))
       .with_font(font::DATA.to_vec())
       .with_font(icons::DATA.to_vec());
 

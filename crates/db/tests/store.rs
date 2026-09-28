@@ -1,6 +1,5 @@
 //! Persistence tests for the [`db::Store`] (PLAN Milestone 2): commit +
-//! read-back, on-disk round-trip, projection consistency, and undo/redo
-//! over a monotonic log.
+//! read-back, on-disk round-trip, and undo/redo over a monotonic log.
 
 use base::{EdgeId, EdgeKind, Event, NodeId, NodeKind, QuestId};
 use db::Store;
@@ -12,7 +11,7 @@ fn eid(n: u128) -> EdgeId { EdgeId::from_u128(n) }
 
 fn qid(n: u128) -> QuestId { QuestId::from_u128(n) }
 
-/// A representative batch touching every projection table.
+/// A representative batch touching nodes, edges and quests.
 fn sample_batch() -> Vec<Event> {
   vec![
     Event::NodeAdded {
@@ -78,24 +77,6 @@ fn persists_and_reloads_from_disk() {
     &before,
     "reloaded graph equals the pre-drop graph"
   );
-}
-
-#[test]
-fn projection_tables_mirror_the_graph() {
-  let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
-  let mut store = Store::open(&path).unwrap();
-  store.commit(sample_batch()).unwrap();
-  drop(store);
-
-  // Inspect the raw projection tables with an independent connection.
-  let conn = Connection::open(&path).unwrap();
-  let count =
-    |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
-  assert_eq!(count("SELECT COUNT(*) FROM nodes"), 2);
-  assert_eq!(count("SELECT COUNT(*) FROM edges"), 1);
-  assert_eq!(count("SELECT COUNT(*) FROM quests"), 1);
-  assert_eq!(count("SELECT COUNT(*) FROM quest_claims"), 1);
 }
 
 #[test]
@@ -180,7 +161,7 @@ fn settings_round_trip_and_survive_reopen() {
   // The migration's own meta row is untouched by preference writes.
   assert_eq!(
     reopened.setting("schema_version").unwrap().as_deref(),
-    Some("1")
+    Some("2")
   );
 }
 
@@ -300,110 +281,73 @@ fn an_unreadable_event_is_reported_by_position() {
   }
 }
 
-/// Overwrite the payload of the event at `seq` with something unreadable.
-fn corrupt_event(path: &std::path::Path, seq: i64) {
-  let conn = Connection::open(path).unwrap();
-  conn
-    .execute("UPDATE events SET payload = 'garbage' WHERE seq = ?1", [
-      seq,
-    ])
-    .unwrap();
-}
-
 #[test]
-fn opening_loads_the_snapshot_instead_of_replaying_it() {
+fn a_v1_database_sheds_its_projection_tables() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   let before = {
     let mut store = Store::open(&path).unwrap();
     store.commit(sample_batch()).unwrap();
     store.graph().clone()
-  }; // closing writes the snapshot
+  };
+  // Put the database back into its v1 shape: the projection tables, the
+  // position they claimed to hold, and the old version.
+  let conn = Connection::open(&path).unwrap();
+  conn
+    .execute_batch(
+      "CREATE TABLE nodes (id TEXT PRIMARY KEY);
+       CREATE TABLE edges (id TEXT PRIMARY KEY);
+       CREATE TABLE quests (id TEXT PRIMARY KEY);
+       CREATE TABLE quest_claims (quest_id TEXT, node_id TEXT);
+       INSERT INTO meta (key, value) VALUES ('snapshot_seq', '1');
+       UPDATE meta SET value = '1' WHERE key = 'schema_version';",
+    )
+    .unwrap();
+  drop(conn);
 
-  // An event the snapshot already covers is never read again, so breaking
-  // it does not matter.
-  corrupt_event(&path, 1);
   let reopened = Store::open(&path).unwrap();
-  assert_eq!(reopened.graph(), &before);
+  assert_eq!(
+    reopened.graph(),
+    &before,
+    "the log still rebuilds the graph"
+  );
+  assert_eq!(
+    reopened.setting("schema_version").unwrap().as_deref(),
+    Some("2")
+  );
+  assert_eq!(reopened.setting("snapshot_seq").unwrap(), None);
+  drop(reopened);
+
+  let conn = Connection::open(&path).unwrap();
+  let tables: i64 = conn
+    .query_row(
+      "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN \
+       ('nodes', 'edges', 'quests', 'quest_claims')",
+      [],
+      |r| r.get(0),
+    )
+    .unwrap();
+  assert_eq!(tables, 0, "the projection tables are gone");
 }
 
 #[test]
-fn events_after_the_snapshot_are_replayed() {
+fn every_committed_event_is_replayed_on_reopening() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
-  {
-    let mut store = Store::open(&path).unwrap();
-    store.commit(sample_batch()).unwrap();
-  }
   let after = {
     let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
     store
       .commit(vec![Event::NodeRenamed {
         node: nid(1),
         name: "renamed".into(),
       }])
       .unwrap();
-    let graph = store.graph().clone();
-    // A crash: the event is in the log, but the snapshot never caught up.
-    std::mem::forget(store);
-    graph
+    store.graph().clone()
   };
   let reopened = Store::open(&path).unwrap();
   assert_eq!(reopened.graph(), &after);
   assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "renamed");
-}
-
-#[test]
-fn an_unreadable_snapshot_falls_back_to_a_full_replay() {
-  let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
-  let before = {
-    let mut store = Store::open(&path).unwrap();
-    store.commit(sample_batch()).unwrap();
-    store.graph().clone()
-  };
-  let conn = Connection::open(&path).unwrap();
-  conn
-    .execute("UPDATE nodes SET kind = 'garbage'", [])
-    .unwrap();
-  drop(conn);
-
-  let reopened = Store::open(&path).unwrap();
-  assert_eq!(reopened.graph(), &before);
-}
-
-#[test]
-fn commits_do_not_rewrite_the_snapshot_every_time() {
-  let dir = tempfile::tempdir().unwrap();
-  let path = dir.path().join("neutron.db");
-  let mut store = Store::open(&path).unwrap();
-  store.commit(sample_batch()).unwrap();
-  // Still open: the snapshot tables have not been touched by the commit.
-  let conn = Connection::open(&path).unwrap();
-  let nodes: i64 = conn
-    .query_row("SELECT COUNT(*) FROM nodes", [], |r| r.get(0))
-    .unwrap();
-  assert_eq!(nodes, 0);
-  drop(conn);
-
-  // Enough commits and it catches up mid-session.
-  for i in 0..db::SNAPSHOT_EVERY {
-    store
-      .commit(vec![Event::NodeRenamed {
-        node: nid(1),
-        name: format!("n{i}"),
-      }])
-      .unwrap();
-  }
-  let conn = Connection::open(&path).unwrap();
-  let name: String = conn
-    .query_row(
-      "SELECT name FROM nodes WHERE id = ?1",
-      [nid(1).to_string()],
-      |r| r.get(0),
-    )
-    .unwrap();
-  assert!(name.starts_with('n'), "snapshot caught up, got {name}");
 }
 
 #[test]
@@ -497,29 +441,20 @@ fn history_is_never_rewritten() {
 }
 
 #[test]
-fn rewriting_a_snapshotted_row_refreshes_the_snapshot() {
+fn an_amended_rename_reopens_at_its_final_value() {
   let dir = tempfile::tempdir().unwrap();
   let path = dir.path().join("neutron.db");
   let rename = |name: &str| Event::NodeRenamed {
     node: nid(1),
     name: name.into(),
   };
-  let mut store = Store::open(&path).unwrap();
-  store.commit(sample_batch()).unwrap();
-  // Pad the log so the next commit lands exactly on a snapshot.
-  let pad = db::SNAPSHOT_EVERY - 1 - store.event_count().unwrap() as i64;
-  for _ in 0..pad {
-    store
-      .commit(vec![Event::OrderHintChanged {
-        node:       nid(2),
-        order_hint: 1.0,
-      }])
-      .unwrap();
+  {
+    let mut store = Store::open(&path).unwrap();
+    store.commit(sample_batch()).unwrap();
+    store.commit(vec![rename("first")]).unwrap();
+    // Rewrites the row just logged rather than appending to it.
+    store.commit_amend(vec![rename("final")]).unwrap();
   }
-  store.commit(vec![rename("first")]).unwrap(); // snapshot taken here
-  store.commit_amend(vec![rename("final")]).unwrap(); // rewrites that row
-  std::mem::forget(store); // no snapshot on close
-
   let reopened = Store::open(&path).unwrap();
   assert_eq!(reopened.graph().node(nid(1)).unwrap().name, "final");
 }

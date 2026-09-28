@@ -3,7 +3,7 @@
 
 use base::{Event, Graph};
 
-use crate::{DbError, SNAPSHOT_EVERY, Store, snapshot::Snapshot};
+use crate::{DbError, Store};
 
 /// A single event as stored in (and read back from) the log.
 struct StoredEvent {
@@ -24,20 +24,17 @@ impl StoredEvent {
 }
 
 impl Store {
-  /// Fold every stored event after `after`, in `seq` order, into `graph`.
-  /// Returns the graph and the `seq` of the last event in the log.
-  pub(crate) fn replay(
-    &self,
-    mut graph: Graph,
-    after: i64,
-  ) -> Result<(Graph, i64), DbError> {
-    let mut stmt = self.conn.prepare(
-      "SELECT seq, payload FROM events WHERE seq > ?1 ORDER BY seq ASC",
-    )?;
-    let rows = stmt.query_map([after], |row| {
+  /// Fold every stored event, in `seq` order, into a fresh graph. Returns
+  /// it and the `seq` of the last event in the log (0 for an empty log).
+  pub(crate) fn replay(&self) -> Result<(Graph, i64), DbError> {
+    let mut stmt = self
+      .conn
+      .prepare("SELECT seq, payload FROM events ORDER BY seq ASC")?;
+    let rows = stmt.query_map([], |row| {
       Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
-    let mut last = after;
+    let mut graph = Graph::new();
+    let mut last = 0;
     for row in rows {
       let (seq, payload) = row?;
       let event: Event = serde_json::from_str(&payload)
@@ -58,9 +55,7 @@ impl Store {
     Ok(n as u64)
   }
 
-  /// Append `events` to the log, in one transaction. When the log has run
-  /// [`SNAPSHOT_EVERY`] events past the snapshot, the snapshot is rewritten
-  /// in the same transaction.
+  /// Append `events` to the log, in one transaction.
   pub(crate) fn persist(&mut self, events: &[Event]) -> Result<(), DbError> {
     // Serialize + mint ids up front so a failure leaves the DB untouched.
     let stored: Vec<StoredEvent> = events
@@ -77,15 +72,8 @@ impl Store {
       }
     }
     let last_seq = tx.last_insert_rowid();
-    let snapshot = last_seq - self.snapshot_seq >= SNAPSHOT_EVERY;
-    if snapshot {
-      Snapshot(&tx).save(&self.graph, last_seq)?;
-    }
     tx.commit()?;
     self.last_seq = last_seq;
-    if snapshot {
-      self.snapshot_seq = last_seq;
-    }
     Ok(())
   }
 }

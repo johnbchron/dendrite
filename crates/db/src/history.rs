@@ -3,7 +3,7 @@
 
 use base::Event;
 
-use crate::{DbError, Store, snapshot::Snapshot};
+use crate::{DbError, Store};
 
 /// One undoable step: the events committed together, and a short verb
 /// phrase naming it ("rename").
@@ -36,9 +36,9 @@ impl Store {
   /// Apply and persist a batch of events as one undoable group.
   ///
   /// The batch is folded into the in-memory graph (yielding its inverse),
-  /// then the events are appended to the log and the projections rebuilt in
-  /// a single transaction. On success the inverse is pushed to the undo
-  /// stack and the redo stack is cleared.
+  /// then the events are appended to the log in a single transaction. On
+  /// success the inverse is pushed to the undo stack and the redo stack is
+  /// cleared.
   pub fn commit(&mut self, events: Vec<Event>) -> Result<(), DbError> {
     if events.is_empty() {
       return Ok(());
@@ -108,15 +108,7 @@ impl Store {
       "UPDATE events SET payload = ?1 WHERE seq = ?2",
       (&payload, seq),
     )?;
-    // A snapshot taken since the row was first written holds its old value.
-    let stale = seq <= self.snapshot_seq;
-    if stale {
-      Snapshot(&tx).save(&self.graph, self.last_seq)?;
-    }
     tx.commit()?;
-    if stale {
-      self.snapshot_seq = self.last_seq;
-    }
     self.redo.clear();
     self.tail = Some((seq, event));
     Ok(())

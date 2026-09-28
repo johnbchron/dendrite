@@ -10,7 +10,7 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 | Crate | Purpose | Status |
 |-------|---------|--------|
 | `base` | Pure domain model + graph algorithms: nodes/edges/quests, readiness, Tarjan cycle detection, quest scope + actionable queries, the `Event` log reducer with inverse generation for undo. No I/O, no UI. | ✅ complete, property-tested |
-| `db` | SQLite event log (append-only source of truth) + materialized projections + undo/redo via inverse events. One database for the whole global graph. | ✅ complete, round-trip tested |
+| `db` | SQLite event log (append-only source of truth), replayed on open into the in-memory graph, + undo/redo via inverse events. One database for the whole global graph. | ✅ complete, round-trip tested |
 | `layout` | Pure Sugiyama layered-DAG layout: feedback-arc cycle cut → longest-path ranking (top-down) → barycenter within-level ordering seeded by `order_hint`, with long edges given a reserved channel in every rank they skip → Brandes–Köpf coordinate assignment. | ✅ complete, tested |
 | `neutron` | The Xilem app: a custom Masonry+Vello canvas widget (pan/zoom/hit-test/state styling, link-mode feedback), floating chrome over it (top bar, inspector card, Now tray, quest switcher, command palette), a root key map, and the command layer wiring gestures to events. | 🚧 editing done, text sync to come |
 
@@ -19,9 +19,8 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
 - **M1 Core model** — ✅ done. Edges first-class; quest claims + scope-closure &
   actionable queries; readiness + Tarjan SCC + cycle flagging, with property
   tests (Tarjan validated against an independent mutual-reachability oracle).
-- **M2 Persistence** — ✅ done. SQLite event log, projections incl.
-  `quest_claims`, undo/redo via inverse events (log stays monotonic),
-  on-disk round-trip tests.
+- **M2 Persistence** — ✅ done. SQLite event log, undo/redo via inverse
+  events (log stays monotonic), on-disk round-trip tests.
 - **M3 Canvas spike** — ✅ done. Custom Masonry widget renders the graph with
   Vello, pan (drag) + zoom (wheel, about cursor), click hit-testing/selection,
   and per-state node styling; laid out by the real `layout` crate.
@@ -33,9 +32,9 @@ containers. See [`PLAN.md`](./PLAN.md) for the full design.
   inspector, command palette and a full key map are all wired. Drag-to-create
   edges on the canvas is not done (link mode covers it).
 - **M6 Text sync (RON)** — ☐ not started.
-- **M7 Scale & polish** — ◑ viewport culling, per-revision caching of
-  derived state and layout, and snapshot loading are done; incremental
-  relayout, the minimap and focus mode are not started.
+- **M7 Scale & polish** — ◑ viewport culling and per-revision caching of
+  derived state and layout are done; incremental relayout, the minimap and
+  focus mode are not started.
 
 ## Build & run
 

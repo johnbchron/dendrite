@@ -17,6 +17,7 @@ pub mod formula;
 pub mod graph;
 pub mod ids;
 pub mod model;
+pub mod prune;
 pub mod quest;
 pub mod referent;
 
@@ -32,5 +33,6 @@ pub use ids::{
 };
 pub use jiff;
 pub use model::{ConditionSource, Edge, EdgeKind, Node, NodeKind, Quest};
+pub use prune::prune;
 pub use quest::{QuestScope, actionable, claiming_quests, scope};
 pub use referent::{Context, Place, Resource, Schedule, Span, Unit};

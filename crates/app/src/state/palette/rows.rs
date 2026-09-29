@@ -168,6 +168,13 @@ impl AppState {
       "Switch quest".into(),
       key("Q"),
     ));
+    if let Some(summary) = self.prune_summary() {
+      rows.push(command(
+        PaletteAct::Prune,
+        format!("Prune unused: {summary}"),
+        None,
+      ));
+    }
     for t in Theme::ALL {
       if t.id != self.theme.id {
         rows.push(command(

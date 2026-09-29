@@ -971,3 +971,101 @@ mod group_props {
     }
   }
 }
+
+#[test]
+fn pruning_removes_orphans_and_unused_referents_and_undoes() {
+  let (errands, store, home, city) = (
+    PlaceId::from_u128(1),
+    PlaceId::from_u128(2),
+    PlaceId::from_u128(3),
+    PlaceId::from_u128(4),
+  );
+  let (cash, spare) = (ResourceId::from_u128(5), ResourceId::from_u128(6));
+  let hours = ScheduleId::from_u128(7);
+  let (online, phone) = (ContextId::from_u128(8), ContextId::from_u128(9));
+  let place = |place, name: &str, within| Event::PlaceDefined {
+    place,
+    name: name.into(),
+    within,
+  };
+  let resource = |resource, name: &str| Event::ResourceDefined {
+    resource,
+    name: name.into(),
+    unit: Unit::Minutes,
+    balance: 0,
+  };
+  let context = |context, name: &str| Event::ContextDefined {
+    context,
+    name: name.into(),
+  };
+  let mut g = Graph::new();
+  apply(&mut g, &[
+    place(errands, "Errands", None),
+    place(store, "Hardware store", Some(errands)),
+    place(city, "Chicago", None),
+    place(home, "Home", Some(city)),
+    resource(cash, "Cash"),
+    resource(spare, "Spare"),
+    Event::ScheduleDefined {
+      schedule: hours,
+      name:     "Hours".into(),
+      spans:    vec![],
+    },
+    context(online, "Online"),
+    context(phone, "Phone"),
+  ]);
+  add_task(&mut g, 1);
+  // Required: At(Errands), Has(Cash). Standing alone: In(Phone), After.
+  let required = [Atom::At { place: errands }, Atom::Has {
+    resource: cash,
+    at_least: 30,
+  }];
+  for (i, atom) in required.iter().enumerate() {
+    apply(&mut g, &[atom.node_added(), Event::EdgeAdded {
+      edge: eid(i as u128 + 1),
+      kind: base::EdgeKind::Dependency,
+      from: nid(1),
+      to:   atom.node_id(),
+    }]);
+  }
+  let lonely = [Atom::In { context: phone }, after("2026-10-01")];
+  for atom in &lonely {
+    apply(&mut g, &[atom.node_added()]);
+  }
+  let before = g.clone();
+
+  // Online is active, so it stays although no atom uses it.
+  let mut now = facts(Timestamp::UNIX_EPOCH, &chicago());
+  now.contexts.insert(online);
+  let events = base::prune(&g, &now);
+  let mut orphans: Vec<NodeId> = lonely.iter().map(Atom::node_id).collect();
+  orphans.sort();
+  let mut expected: Vec<Event> = orphans
+    .into_iter()
+    .map(|node| Event::NodeRemoved { node })
+    .collect();
+  expected.extend([
+    Event::PlaceRemoved { place: home },
+    Event::PlaceRemoved { place: city },
+    Event::ResourceRemoved { resource: spare },
+    Event::ScheduleRemoved { schedule: hours },
+    Event::ContextRemoved { context: phone },
+  ]);
+  assert_eq!(events, expected);
+
+  let (_, inverse) = base::apply_group(&mut g, events);
+  assert!(g.place(errands).is_some() && g.place(store).is_some());
+  assert!(g.resource(cash).is_some() && g.context(online).is_some());
+  assert!(base::prune(&g, &now).is_empty(), "pruning is idempotent");
+  apply(&mut g, &inverse);
+  assert_eq!(g, before);
+
+  // Standing at Home keeps Home and the city it lies in.
+  let mut at_home = facts(Timestamp::UNIX_EPOCH, &chicago());
+  at_home.places.insert(home);
+  assert!(
+    !base::prune(&before, &at_home)
+      .iter()
+      .any(|e| matches!(e, Event::PlaceRemoved { .. }))
+  );
+}

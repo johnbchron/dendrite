@@ -44,6 +44,8 @@ pub enum PaletteAct {
   PickPlace,
   /// Open the quest switcher.
   OpenQuests,
+  /// Remove unused formula conditions and referents.
+  Prune,
   /// Switch palette (colour theme), by id.
   Theme(&'static str),
   /// The selection's primary action (complete, reopen, satisfy...).
@@ -189,6 +191,7 @@ impl AppState {
       PaletteAct::ToggleNow => self.toggle_now(),
       PaletteAct::PickPlace => self.toggle_place_picker(),
       PaletteAct::OpenQuests => self.toggle_picker(),
+      PaletteAct::Prune => self.prune(),
       PaletteAct::Theme(id) => self.set_theme(id),
       PaletteAct::Primary => self.toggle_selected(),
       PaletteAct::Require => {

@@ -267,3 +267,37 @@ fn a_loose_match_is_offered_but_not_taken() {
   state.rename_selected_to("after oct 1".into());
   assert!(state.title_offers().is_empty());
 }
+
+#[test]
+fn a_place_left_unused_is_pruned_from_the_palette_in_one_step() {
+  let (mut state, _) = signoff_selected();
+  state.choose_source(SourceKind::Place);
+  state.set_source_text("hardware store".into());
+  state.apply_source();
+  assert_eq!(state.place_choices().len(), 1);
+  // Back to manual: the place outlives the atom that defined it.
+  state.choose_source(SourceKind::Manual);
+  state.set_source_text("Design signed off".into());
+  state.apply_source();
+  assert_eq!(state.place_choices().len(), 1);
+
+  let prune = |state: &mut AppState| {
+    state.set_palette_text("prune".into());
+    let (rows, _) = state.palette_rows();
+    rows.into_iter().find(|r| r.act == PaletteAct::Prune)
+  };
+  assert_eq!(
+    prune(&mut state).map(|r| r.label),
+    Some("Prune unused: 1 place".into())
+  );
+  state.run_palette(PaletteAct::Prune);
+  assert!(state.place_choices().is_empty());
+  assert_eq!(
+    state.toast().map(|t| t.text.as_str()),
+    Some("Pruned 1 place")
+  );
+  assert_eq!(prune(&mut state), None, "nothing is left to prune");
+
+  state.undo();
+  assert_eq!(state.place_choices().len(), 1);
+}

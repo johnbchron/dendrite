@@ -5,8 +5,12 @@
 //! Every edit is an event, so it is undoable and synced like any other; the
 //! atom points at the referent by id, so none of them changes which node
 //! the condition is.
+//!
+//! Referents outlive the atoms that introduced them, so pruning removes
+//! those no atom uses any more, with the formula conditions nothing
+//! requires (see [`base::prune`]).
 
-use base::{Atom, Event};
+use base::{Atom, Event, NodeId};
 
 use super::{AppState, LiveEdit};
 use crate::formula::{describe, phrase};
@@ -224,4 +228,63 @@ impl AppState {
     };
     self.commit(vec![event]);
   }
+
+  /// What [`prune`](Self::prune) would remove, in words ("2 places, 1
+  /// context"), or `None` when there is nothing to prune.
+  pub fn prune_summary(&self) -> Option<String> {
+    let events = base::prune(self.lock().graph(), &self.facts());
+    summarise(&events)
+  }
+
+  /// Remove every formula condition nothing requires and every referent
+  /// no atom uses, as one undo step.
+  pub fn prune(&mut self) {
+    let events = base::prune(self.lock().graph(), &self.facts());
+    let Some(summary) = summarise(&events) else {
+      return;
+    };
+    let removed: Vec<NodeId> = events
+      .iter()
+      .filter_map(|e| match e {
+        Event::NodeRemoved { node } => Some(*node),
+        _ => None,
+      })
+      .collect();
+    self.commit_as(events, "prune");
+    if self.selected.is_some_and(|s| removed.contains(&s)) {
+      self.select(None);
+    }
+    let revision = self.lock().revision();
+    self.toasts.show(format!("Pruned {summary}"), revision);
+  }
+}
+
+/// Count `events`' removals by kind, as "1 condition, 2 places".
+fn summarise(events: &[Event]) -> Option<String> {
+  let mut counts = [0usize; 5];
+  for event in events {
+    let slot = match event {
+      Event::NodeRemoved { .. } => 0,
+      Event::PlaceRemoved { .. } => 1,
+      Event::ResourceRemoved { .. } => 2,
+      Event::ScheduleRemoved { .. } => 3,
+      Event::ContextRemoved { .. } => 4,
+      _ => continue,
+    };
+    counts[slot] += 1;
+  }
+  let nouns = [
+    ("condition", "conditions"),
+    ("place", "places"),
+    ("resource", "resources"),
+    ("schedule", "schedules"),
+    ("context", "contexts"),
+  ];
+  let parts: Vec<String> = counts
+    .iter()
+    .zip(nouns)
+    .filter(|(n, _)| **n > 0)
+    .map(|(&n, (one, many))| format!("{n} {}", if n == 1 { one } else { many }))
+    .collect();
+  (!parts.is_empty()).then(|| parts.join(", "))
 }

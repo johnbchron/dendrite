@@ -438,9 +438,11 @@ impl AppState {
   }
 
   /// Replace condition `old` with `target`, moving to it every edge into
-  /// `old` and every quest claim on it, as one undo step; then select it.
+  /// `old` and, unless it is a formula, every quest claim on it, as one
+  /// undo step; then select it.
   /// `old`'s own requirements go with it.
   fn replace_condition(&mut self, old: NodeId, target: Target) {
+    let automatic = matches!(target, Target::Formula(_));
     let (new, events, label) = {
       let store = self.lock();
       let graph = store.graph();
@@ -479,7 +481,7 @@ impl AppState {
         }
       };
       if new != old {
-        events.extend(moved_links(graph, old, new));
+        events.extend(moved_links(graph, old, new, !automatic));
         events.push(Event::NodeRemoved { node: old });
       }
       (new, events, label)
@@ -491,8 +493,14 @@ impl AppState {
 
 /// The edges and claims that make `new` stand where `old` did: an edge
 /// from each of `old`'s dependents that does not already require `new`,
-/// and a claim for each quest that claims `old` but not `new`.
-fn moved_links(graph: &Graph, old: NodeId, new: NodeId) -> Vec<Event> {
+/// and, if `claims` (`new` is claimable), a claim for each quest that claims
+/// `old` but not `new`.
+fn moved_links(
+  graph: &Graph,
+  old: NodeId,
+  new: NodeId,
+  claims: bool,
+) -> Vec<Event> {
   let mut events = Vec::new();
   let mut requiring: HashSet<NodeId> =
     graph.dependents_of(new).map(|e| e.from).collect();
@@ -505,6 +513,9 @@ fn moved_links(graph: &Graph, old: NodeId, new: NodeId) -> Vec<Event> {
         to:   new,
       });
     }
+  }
+  if !claims {
+    return events;
   }
   for quest in base::claiming_quests(graph, old) {
     if !base::claiming_quests(graph, new).contains(&quest) {

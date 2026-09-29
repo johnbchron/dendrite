@@ -86,10 +86,14 @@ impl AppState {
     };
     let lens = Lens::new(graph, self.active_quest);
     let quests = base::all_quests_scope(graph);
-    let membership = |node| {
-      if quests.claimed.contains(&node) {
+    // A formula condition is shared too widely for a bar to say anything
+    // about it.
+    let membership = |node: &base::Node| {
+      if !node.kind.claimable() {
+        Membership::None
+      } else if quests.claimed.contains(&node.id) {
         Membership::Direct
-      } else if quests.pulled_in.contains(&node) {
+      } else if quests.pulled_in.contains(&node.id) {
         Membership::Indirect
       } else {
         Membership::None
@@ -120,7 +124,7 @@ impl AppState {
           state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),
           dimmed:   lens.dims(node.id),
-          quest:    membership(node.id),
+          quest:    membership(node),
         })
       })
       .collect();

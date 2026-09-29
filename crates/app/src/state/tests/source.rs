@@ -73,8 +73,10 @@ fn a_manual_condition_becomes_a_date_in_place_and_undoes_in_one_step() {
   ]);
 }
 
+/// A quest cannot claim a formula condition, so a claim on a manual one is
+/// dropped when it becomes automatic, not moved.
 #[test]
-fn claims_move_with_the_condition() {
+fn claims_do_not_follow_a_condition_into_a_formula() {
   let (mut state, _) = signoff_selected();
   let quest = state.quest_rows().iter().find_map(|r| match r.choice {
     QuestChoice::Quest(q) => Some(q),
@@ -87,8 +89,16 @@ fn claims_move_with_the_condition() {
   state.set_source_text("1h".into());
   state.apply_source();
   let free = Atom::Free { at_least: 60 }.node_id();
+  assert_eq!(state.selected, Some(free));
+  assert!(base::claiming_quests(state.lock().graph(), free).is_empty());
+
+  // Nor can it be claimed afresh.
+  assert!(state.unclaimed_quests().is_empty());
+  state.claim_selected(quest);
+  state.new_quest_with_selected();
   let store = state.lock();
-  assert!(store.graph().quest(quest).unwrap().claims.contains(&free));
+  assert!(base::claiming_quests(store.graph(), free).is_empty());
+  assert_eq!(store.graph().quests().count(), 1);
 }
 
 #[test]

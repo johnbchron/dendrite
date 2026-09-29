@@ -20,7 +20,8 @@ use crate::{
 /// affects global state (PLAN §2, §5).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct QuestScope {
-  /// Nodes the quest directly claims (and that still exist).
+  /// Nodes the quest directly claims (and that still exist and are
+  /// claimable).
   pub claimed:   HashSet<NodeId>,
   /// Nodes reachable through the requirement closure but not claimed.
   pub pulled_in: HashSet<NodeId>,
@@ -62,11 +63,12 @@ pub fn all_quests_scope(graph: &Graph) -> QuestScope {
   close(graph, graph.quests().flat_map(|q| q.claims.iter().copied()))
 }
 
-/// `claims` (those that still resolve to real nodes) plus their requirement
-/// closure.
+/// `claims` (those that still resolve to real, claimable nodes) plus their
+/// requirement closure.
 fn close(graph: &Graph, claims: impl Iterator<Item = NodeId>) -> QuestScope {
-  let claimed: HashSet<NodeId> =
-    claims.filter(|n| graph.node(*n).is_some()).collect();
+  let claimed: HashSet<NodeId> = claims
+    .filter(|n| graph.node(*n).is_some_and(|node| node.kind.claimable()))
+    .collect();
 
   let mut visited: HashSet<NodeId> = claimed.clone();
   let mut frontier: Vec<NodeId> = claimed.iter().copied().collect();

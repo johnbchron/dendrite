@@ -238,10 +238,14 @@ impl AppState {
 
   /// Quest membership for the selection: add it to each quest that does not
   /// claim it, take it out of each that does, or start a quest with it.
+  /// None for a formula condition, which no quest claims.
   fn membership_rows(&self) -> Vec<PaletteRow> {
     let Some(info) = self.selected_info() else {
       return Vec::new();
     };
+    if info.formula.is_some() {
+      return Vec::new();
+    }
     let name = self.name_draft.trim().to_string();
     let row = PaletteRow::quest;
     let mut rows: Vec<PaletteRow> = self

@@ -158,7 +158,11 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .gap(space::S.px())
   .must_fill_major_axis(true);
 
-  let quests = quest_list(data, &info.quests);
+  // No quest claims a formula condition, so it has no quests to list.
+  let quests = info
+    .formula
+    .is_none()
+    .then(|| quest_list(data, &info.quests));
 
   let (title, card) = match &info.formula {
     // A formula condition is named by its atom, so its title is not

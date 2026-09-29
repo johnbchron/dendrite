@@ -1,6 +1,6 @@
 //! The quest lens, and which quests claim the selection.
 
-use base::{Event, QuestId};
+use base::{Event, NodeId, QuestId};
 
 use super::{AppState, LiveEdit, chrome::Popover};
 use crate::focus::FieldKey;
@@ -119,10 +119,22 @@ impl AppState {
   /// Show or hide the inspector's list of quests to add the selection to.
   pub fn toggle_quests(&mut self) { self.quests_open = !self.quests_open; }
 
+  /// The selected node, if a quest could claim it (it is not a formula
+  /// condition).
+  fn claimable_selection(&self) -> Option<NodeId> {
+    let node = self.selected?;
+    let store = self.lock();
+    store
+      .graph()
+      .node(node)
+      .is_some_and(|n| n.kind.claimable())
+      .then_some(node)
+  }
+
   /// The quests that do not claim the selected node, by name: the ones it
-  /// could be added to.
+  /// could be added to. None for a node no quest can claim.
   pub fn unclaimed_quests(&self) -> Vec<(QuestId, String)> {
-    let Some(node) = self.selected else {
+    let Some(node) = self.claimable_selection() else {
       return Vec::new();
     };
     let store = self.lock();
@@ -137,9 +149,11 @@ impl AppState {
     quests
   }
 
-  /// Add the selected node to `quest` (claim it).
+  /// Add the selected node to `quest` (claim it), unless no quest can.
   pub fn claim_selected(&mut self, quest: QuestId) {
-    let Some(node) = self.selected else { return };
+    let Some(node) = self.claimable_selection() else {
+      return;
+    };
     self.quests_open = false;
     self.commit(vec![Event::QuestClaimed { quest, node }]);
   }
@@ -154,8 +168,11 @@ impl AppState {
 
   /// Start a quest with the selected node in it, as one undo step: switch
   /// to its lens and put the cursor in its name, as a new quest does.
+  /// Nothing, for a node no quest can claim.
   pub fn new_quest_with_selected(&mut self) {
-    let Some(node) = self.selected else { return };
+    let Some(node) = self.claimable_selection() else {
+      return;
+    };
     let quest = QuestId::new();
     self.quests_open = false;
     self.commit(vec![

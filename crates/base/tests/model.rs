@@ -193,6 +193,26 @@ fn all_quests_scope_unions_every_quest() {
 }
 
 #[test]
+fn a_claim_on_a_formula_condition_is_ignored() {
+  // The quest claims 1 and the formula condition 2; nothing requires 2.
+  let mut g = build(&[(1, false)], &[], &[]);
+  let atom = base::Atom::Free { at_least: 60 };
+  let formula = atom.node_id();
+  g.insert_node(base::Node {
+    id:         formula,
+    name:       String::new(),
+    kind:       NodeKind::formula(atom),
+    order_hint: 0.0,
+  });
+  let mut quest = Quest::new(qid(100), "epic");
+  quest.claims.extend([nid(1), formula]);
+  g.insert_quest(quest);
+
+  assert_eq!(scope(&g, qid(100)).claimed, HashSet::from([nid(1)]));
+  assert!(!all_quests_scope(&g).contains(formula));
+}
+
+#[test]
 fn actionable_is_the_ready_frontier_of_scope() {
   // 1 requires 2 requires 3. Only the deepest incomplete node (3) is ready.
   let mut g = build(&[(1, false), (2, false), (3, false)], &[], &[

@@ -1,3 +1,5 @@
+use base::Atom;
+
 use super::*;
 
 #[test]
@@ -143,6 +145,27 @@ fn navigation_moves_through_the_copies_as_drawn() {
   state.canvas_click(Some(signoff), Some(under_ship), false);
   state.run(Command::Nav(Direction::Up));
   assert_eq!(state.selected, Some(ship));
+}
+
+/// A formula condition is never marked, however it is reached, but still
+/// shows in the lens of a quest whose work requires it.
+#[test]
+fn a_formula_condition_has_no_quest_bar() {
+  let mut state = AppState::new(demo_store());
+  let signoff = node_named(&state, "Design signed off");
+  state.select(Some(signoff));
+  state.choose_source(SourceKind::FreeTime);
+  state.set_source_text("1h".into());
+  state.apply_source();
+  let free = Atom::Free { at_least: 60 }.node_id();
+
+  let ship = node_named(&state, "Ship v1");
+  let quest = base::claiming_quests(state.lock().graph(), ship)[0];
+  state.set_active_quest(Some(quest));
+  let scene = state.scene();
+  let node = scene.nodes.iter().find(|n| n.node == free).unwrap();
+  assert_eq!(node.quest, Membership::None);
+  assert!(node.dimmed, "pulled in, not claimed");
 }
 
 /// Every box is marked with how it belongs to the quests, across all of

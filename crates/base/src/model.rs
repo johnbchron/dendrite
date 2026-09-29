@@ -65,6 +65,12 @@ impl NodeKind {
     }
   }
 
+  /// Whether a quest can claim this node. A formula condition is shared by
+  /// everything that asks the same thing of the world, so it belongs to no
+  /// quest of its own; it shows in a lens only when claimed work requires
+  /// it.
+  pub fn claimable(&self) -> bool { self.atom().is_none() }
+
   /// The stored completion/satisfaction bit: a completed task or a
   /// satisfied manual condition. Always `false` for a formula condition,
   /// whose truth depends on facts; gating reads

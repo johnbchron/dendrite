@@ -43,13 +43,6 @@
 
       linux-packages = with pkgs; [
         pkg-config
-        
-        alsa-lib udev
-
-        fontconfig freetype
-
-        libxkbcommon wayland
-        # xorg.libX11 xorg.libXcursor xorg.libXi xorg.libXrandr
 
         vulkan-headers vulkan-loader
         vulkan-tools vulkan-tools-lunarg
@@ -65,7 +58,7 @@
         );
 
       linux-devshell = pkgs.devshell.mkShell (let
-        packages = common-packages ++ linux-packages;
+        packages = common-packages ++ linux-packages ++ linux-runtime-libs;
       in {
         inherit packages;
         motd = "\n  Welcome to the {2}$(basename $PRJ_ROOT){reset} shell.\n";
@@ -74,9 +67,16 @@
           { name = "PKG_CONFIG_PATH"; value = make-pkg-config-path packages; }
         ];
       });
-      # Libraries winit and wgpu `dlopen` at runtime, so the linker never
-      # records them; they go on the binary's RPATH instead.
-      linux-runtime-libs = with pkgs; [ libxkbcommon wayland vulkan-loader ];
+      # Libraries the binary `dlopen`s at runtime, so the linker never records
+      # them; they go on the binary's RPATH instead. winit loads the Wayland
+      # and X11 client libraries, wgpu loads Vulkan or (as a fallback) EGL/GL,
+      # and fontique loads fontconfig to find system fonts for fallback.
+      linux-runtime-libs = with pkgs; [
+        wayland libxkbcommon
+        libx11 libxcb libxcursor libxi
+        vulkan-loader libglvnd
+        fontconfig
+      ];
 
       meta = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
       common-args = {
@@ -85,9 +85,7 @@
         inherit src;
         strictDeps = true;
         nativeBuildInputs = with pkgs; [ pkg-config ];
-        buildInputs = lib.optionals pkgs.stdenv.isLinux (with pkgs; [
-          alsa-lib udev fontconfig freetype
-        ]) ++ lib.optionals pkgs.stdenv.isDarwin [ pkgs.apple-sdk ];
+        buildInputs = lib.optionals pkgs.stdenv.isDarwin [ pkgs.apple-sdk ];
       };
 
       # `buildDepsOnly` stubs out every path crate, but the patched masonry

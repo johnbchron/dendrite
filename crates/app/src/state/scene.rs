@@ -10,7 +10,7 @@ use session::Session;
 use super::AppState;
 use crate::{
   formula::describe,
-  scene::{CanvasScene, Category, RenderEdge, RenderNode},
+  scene::{CanvasScene, Category, Membership, RenderEdge, RenderNode},
 };
 
 /// Which nodes a lens shows, and which of those it dims.
@@ -85,6 +85,16 @@ impl AppState {
       None => &cached.layout,
     };
     let lens = Lens::new(graph, self.active_quest);
+    let quests = base::all_quests_scope(graph);
+    let membership = |node| {
+      if quests.claimed.contains(&node) {
+        Membership::Direct
+      } else if quests.pulled_in.contains(&node) {
+        Membership::Indirect
+      } else {
+        Membership::None
+      }
+    };
     let today = self.today();
 
     // One box per drawn node: every node in view, and every extra copy of
@@ -110,6 +120,7 @@ impl AppState {
           state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),
           dimmed:   lens.dims(node.id),
+          quest:    membership(node.id),
         })
       })
       .collect();

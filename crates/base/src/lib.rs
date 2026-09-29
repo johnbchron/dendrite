@@ -34,5 +34,7 @@ pub use ids::{
 pub use jiff;
 pub use model::{ConditionSource, Edge, EdgeKind, Node, NodeKind, Quest};
 pub use prune::prune;
-pub use quest::{QuestScope, actionable, claiming_quests, scope};
+pub use quest::{
+  QuestScope, actionable, all_quests_scope, claiming_quests, scope,
+};
 pub use referent::{Context, Place, Resource, Schedule, Span, Unit};

@@ -29,6 +29,22 @@ pub struct RenderNode {
   /// Whether this node is only pulled into the active quest's scope (not
   /// claimed) — rendered dimmed (PLAN §5).
   pub dimmed:   bool,
+  /// How this node belongs to any quest, whatever the lens — marked on its
+  /// box.
+  pub quest:    Membership,
+}
+
+/// How a node belongs to the quests, across all of them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Membership {
+  /// No quest claims it or anything that requires it.
+  #[default]
+  None,
+  /// No quest claims it, but it is required, maybe transitively, by
+  /// something a quest claims.
+  Indirect,
+  /// Some quest claims it.
+  Direct,
 }
 
 /// What a formula condition is about, for the glyph that marks it.

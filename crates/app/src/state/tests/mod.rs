@@ -28,6 +28,7 @@ use crate::{
   camera::CameraRequest,
   focus::FieldKey,
   keymap::{Command, Direction},
+  scene::Membership,
 };
 
 /// A store holding the small demo graph the app used to seed on first run:

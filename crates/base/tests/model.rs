@@ -6,7 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 use base::{
   Derived, Edge, EdgeKind, Event, Facts, Graph, NodeId, NodeKind, NodeState,
-  Quest, QuestId, actionable, apply_batch, cycle_peers, cyclic_nodes, scope,
+  Quest, QuestId, actionable, all_quests_scope, apply_batch, cycle_peers,
+  cyclic_nodes, scope,
 };
 use jiff::{Timestamp, tz::TimeZone};
 
@@ -167,6 +168,28 @@ fn scope_pulls_in_requirement_closure() {
   assert_eq!(s.claimed, HashSet::from([nid(1)]));
   assert_eq!(s.pulled_in, HashSet::from([nid(2), nid(3)]));
   assert_eq!(s.len(), 3);
+}
+
+#[test]
+fn all_quests_scope_unions_every_quest() {
+  // A claims 1 (1 -> 2); B claims 2 and 3 (3 -> 4). 2 is pulled into A but
+  // claimed by B, so it counts as claimed; 5 is in no quest.
+  let mut g = build(
+    &[(1, false), (2, false), (3, false), (4, false), (5, false)],
+    &[],
+    &[(10, 1, 2), (11, 3, 4)],
+  );
+  let mut a = Quest::new(qid(100), "a");
+  a.claims.insert(nid(1));
+  g.insert_quest(a);
+  let mut b = Quest::new(qid(101), "b");
+  b.claims.extend([nid(2), nid(3)]);
+  g.insert_quest(b);
+
+  let s = all_quests_scope(&g);
+  assert_eq!(s.claimed, HashSet::from([nid(1), nid(2), nid(3)]));
+  assert_eq!(s.pulled_in, HashSet::from([nid(4)]));
+  assert!(!s.contains(nid(5)));
 }
 
 #[test]

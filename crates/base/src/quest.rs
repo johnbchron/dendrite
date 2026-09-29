@@ -52,14 +52,21 @@ pub fn scope(graph: &Graph, quest: QuestId) -> QuestScope {
   let Some(q) = graph.quest(quest) else {
     return QuestScope::default();
   };
+  close(graph, q.claims.iter().copied())
+}
 
-  // Seed the frontier with claims that still resolve to real nodes.
-  let claimed: HashSet<NodeId> = q
-    .claims
-    .iter()
-    .copied()
-    .filter(|n| graph.node(*n).is_some())
-    .collect();
+/// The scope of every quest at once: the nodes some quest claims, and the
+/// nodes only pulled in beneath them. A node claimed by one quest and
+/// pulled into another counts as claimed.
+pub fn all_quests_scope(graph: &Graph) -> QuestScope {
+  close(graph, graph.quests().flat_map(|q| q.claims.iter().copied()))
+}
+
+/// `claims` (those that still resolve to real nodes) plus their requirement
+/// closure.
+fn close(graph: &Graph, claims: impl Iterator<Item = NodeId>) -> QuestScope {
+  let claimed: HashSet<NodeId> =
+    claims.filter(|n| graph.node(*n).is_some()).collect();
 
   let mut visited: HashSet<NodeId> = claimed.clone();
   let mut frontier: Vec<NodeId> = claimed.iter().copied().collect();

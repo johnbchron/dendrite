@@ -2,11 +2,13 @@
 
 use std::collections::HashMap;
 
+use app::scene::Membership;
 use base::{EdgeId, NodeId, NodeKind};
 use masonry::{
   core::{BrushIndex, render_text},
   kurbo::{
-    Affine, BezPath, Circle, Point, Rect, RoundedRect, Shape, Size, Stroke,
+    Affine, BezPath, Cap, Circle, Line, Point, Rect, RoundedRect, Shape, Size,
+    Stroke,
   },
   parley::Layout as TextLayout,
   peniko::{Brush, Color, Fill},
@@ -26,6 +28,9 @@ const CHAMFER: f64 = 10.0;
 pub(super) const COPY_RING: f64 = 5.0;
 /// Space either side of a copy count inside its pill.
 const BADGE_PAD: f64 = 5.0;
+/// How far the quest bar sits in from a box's left edge, and stops short
+/// of its top and bottom (clear of a condition's cut corners).
+const QUEST_INSET: (f64, f64) = (4.5, 9.0);
 
 /// One paint pass: the scene being drawn into, the world→screen transform
 /// and the palette.
@@ -168,6 +173,8 @@ impl<'a> Painter<'a> {
       }
     }
 
+    self.quest_bar(rect, node.quest, node.dimmed || taken);
+
     if link.is_some_and(|l| l.closes_cycle.contains(&node.node)) {
       let ring = RoundedRect::from_rect(rect.inflate(4.0, 4.0), 11.0);
       self.scene.stroke(
@@ -217,6 +224,28 @@ impl<'a> Painter<'a> {
     {
       self.badge(rect, text, border);
     }
+  }
+
+  /// A bar down the inside of `rect`'s left edge for a node in a quest:
+  /// solid in the accent when a quest claims it, thin and muted when it is
+  /// only required by something claimed. Faded with the rest of a `dimmed`
+  /// box.
+  fn quest_bar(&mut self, rect: Rect, quest: Membership, dimmed: bool) {
+    let (color, width) = match quest {
+      Membership::None => return,
+      Membership::Indirect => (self.theme.muted, 1.5),
+      Membership::Direct => (self.theme.accent, 3.0),
+    };
+    let color = if dimmed { Theme::dim(color) } else { color };
+    let (dx, dy) = QUEST_INSET;
+    let x = rect.x0 + dx;
+    self.scene.stroke(
+      &Stroke::new(width).with_caps(Cap::Round),
+      self.tf,
+      &Brush::Solid(color),
+      None,
+      &Line::new((x, rect.y0 + dy), (x, rect.y1 - dy)),
+    );
   }
 
   /// A copy count in a pill straddling the top edge of `rect`, towards its

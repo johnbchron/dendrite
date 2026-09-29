@@ -144,3 +144,52 @@ fn navigation_moves_through_the_copies_as_drawn() {
   state.run(Command::Nav(Direction::Up));
   assert_eq!(state.selected, Some(ship));
 }
+
+/// Every box is marked with how it belongs to the quests, across all of
+/// them and whatever the lens: claimed, required by something claimed, or
+/// neither.
+#[test]
+fn nodes_are_marked_with_their_quest_membership() {
+  let mut state = AppState::new(demo_store());
+  let ship = node_named(&state, "Ship v1");
+  let backend = node_named(&state, "Build backend");
+  let membership = |state: &AppState, node| {
+    state
+      .scene()
+      .nodes
+      .iter()
+      .find(|n| n.node == node)
+      .map(|n| n.quest)
+  };
+
+  // "v1 Launch" claims Ship v1, which requires everything else.
+  assert_eq!(membership(&state, ship), Some(Membership::Direct));
+  assert!(
+    state
+      .scene()
+      .nodes
+      .iter()
+      .filter(|n| n.node != ship)
+      .all(|n| n.quest == Membership::Indirect)
+  );
+
+  // Claimed by a second quest, Build backend is direct, in its lens too.
+  state.select(Some(backend));
+  state.new_quest_with_selected();
+  assert_eq!(membership(&state, backend), Some(Membership::Direct));
+
+  // Out of every quest, nothing is marked.
+  let launch = base::claiming_quests(state.lock().graph(), ship)[0];
+  state.set_active_quest(None);
+  state.select(Some(ship));
+  state.unclaim_selected(launch);
+  assert_eq!(membership(&state, ship), Some(Membership::None));
+  assert_eq!(
+    membership(&state, node_named(&state, "Design schema")),
+    Some(Membership::Indirect)
+  );
+  assert_eq!(
+    membership(&state, node_named(&state, "Build frontend")),
+    Some(Membership::None)
+  );
+}

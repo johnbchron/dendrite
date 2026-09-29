@@ -7,7 +7,7 @@ use base::{
 };
 use jiff::civil::Date;
 
-use super::AppState;
+use super::{AppState, cache::Lens};
 use crate::{camera::CameraRequest, formula::describe, scene::Category};
 
 /// One edge incident to the selected node, as the inspector shows it. Carries
@@ -513,14 +513,29 @@ impl AppState {
     };
   }
 
-  /// Select `node` and bring it into view, leaving the quest lens first
-  /// if the node is outside it and so not drawn.
+  /// Select `node` and bring it into view, first leaving the lens if the
+  /// node is not drawn in it: for the completed lens if only a completed
+  /// tree holds it, else for the main view.
   pub fn reveal(&mut self, node: NodeId) {
-    let hidden = self
-      .active_quest
-      .is_some_and(|q| !base::scope(self.lock().graph(), q).contains(node));
-    if hidden {
-      self.set_active_quest(None);
+    let (retired, shown) = {
+      let store = self.lock();
+      let completed = self.derivations(&store).completed.clone();
+      let retired = completed.retired.contains(&node);
+      let shown = match self.lens() {
+        Some(Lens::Quest(q)) => {
+          !retired && base::scope(store.graph(), q).contains(node)
+        }
+        Some(Lens::Completed) => completed.trees.contains(&node),
+        None => !retired,
+      };
+      (retired, shown)
+    };
+    if !shown {
+      if retired {
+        self.show_completed();
+      } else {
+        self.set_active_quest(None);
+      }
     }
     self.go_to(node);
   }

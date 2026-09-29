@@ -8,11 +8,16 @@ use crate::{
   query::{self, Query},
 };
 
+/// The completed lens's name.
+pub const COMPLETED: &str = "Completed";
+
 /// What a quest switcher row does when chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuestChoice {
-  /// Leave the lens: show every node.
+  /// Leave the lens: show every node but the completed trees.
   All,
+  /// Show the completed trees.
+  Completed,
   /// Switch to this quest.
   Quest(QuestId),
   /// Create a quest, named by the query if there is one.
@@ -51,9 +56,9 @@ impl AppState {
     self.focus_requests.request(FieldKey::QuestSearch);
   }
 
-  /// The quest switcher's rows for the current query: "All nodes", the
-  /// quests that match (best match first, then by name), and "New quest",
-  /// which takes the query as its name.
+  /// The quest switcher's rows for the current query: "All nodes",
+  /// "Completed", the quests that match (best match first, then by name),
+  /// and "New quest", which takes the query as its name.
   pub fn quest_rows(&self) -> Vec<QuestRow> {
     let text = self.quest_query.text.trim();
     let mut rows = Vec::new();
@@ -61,7 +66,14 @@ impl AppState {
       rows.push(QuestRow {
         choice:  QuestChoice::All,
         label:   "All nodes".into(),
-        current: self.active_quest.is_none(),
+        current: self.lens().is_none(),
+      });
+    }
+    if query::score(text, COMPLETED).is_some() {
+      rows.push(QuestRow {
+        choice:  QuestChoice::Completed,
+        label:   COMPLETED.into(),
+        current: self.completed_lens,
       });
     }
     let store = self.lock();
@@ -109,6 +121,7 @@ impl AppState {
   pub fn choose_quest(&mut self, choice: QuestChoice) {
     match choice {
       QuestChoice::All => self.set_active_quest(None),
+      QuestChoice::Completed => self.show_completed(),
       QuestChoice::Quest(id) => self.set_active_quest(Some(id)),
       QuestChoice::New => {
         let name = self.quest_query.text.trim().to_string();

@@ -1,5 +1,6 @@
-//! The quest lens: a pill at the left of the top bar naming the lens in use,
-//! and the switcher popover it opens.
+//! The lens: a pill at the left of the top bar naming the lens in use (all
+//! nodes, the completed trees, or a quest), and the switcher popover it
+//! opens.
 //!
 //! The lens is a mode, so it is always on screen and readable at a glance.
 //! The switcher filters as you type in its search field, which it focuses
@@ -24,7 +25,7 @@ use super::controls::{
 use crate::{
   focus::FieldKey,
   icons::{Icon, icon},
-  state::{AppState, QuestChoice},
+  state::{AppState, COMPLETED, QuestChoice},
   themed::{Anchor, FocusKey as _, Level, field, hover_row, surface, tooltip},
   tokens::{radius, size, space, text},
 };
@@ -37,15 +38,17 @@ pub(super) fn pill(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let theme = data.theme();
   let open = data.picker_open();
   let summary = data.active_quest_summary();
-  let scoped = summary.is_some();
+  let completed = data.completed_lens();
+  let scoped = summary.is_some() || completed;
   let (name, claims) = match summary {
     Some((name, claims)) => (name, Some(claims)),
+    None if completed => (COMPLETED.to_string(), None),
     None => ("All nodes".to_string(), None),
   };
 
   let content = flex_row((
     icon(
-      Icon::Flag,
+      if completed { Icon::Check } else { Icon::Flag },
       size::ICON,
       if scoped { theme.accent } else { theme.muted },
     ),
@@ -100,6 +103,15 @@ pub(super) fn switcher(
       let choice = row.choice;
       let lead = match choice {
         QuestChoice::New => icon(Icon::Plus, size::ICON, theme.muted),
+        QuestChoice::Completed => icon(
+          Icon::Check,
+          size::ICON,
+          if row.current {
+            theme.accent
+          } else {
+            theme.muted
+          },
+        ),
         _ if row.current => icon(Icon::Flag, size::ICON, theme.accent),
         _ => icon(Icon::Flag, size::ICON, theme.muted),
       };

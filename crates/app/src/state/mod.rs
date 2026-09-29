@@ -69,7 +69,7 @@ pub use self::{
   palette::{PaletteRow, RowKind},
   selection::{EdgeRow, FormulaInfo, Named, Primary, Reason, ReferentInfo},
   source::{SourceDraft, SourceKind, Target},
-  switcher::QuestChoice,
+  switcher::{COMPLETED, QuestChoice},
   toast::Toast,
 };
 use crate::{
@@ -89,8 +89,12 @@ pub struct AppState {
   /// shared condition, when one was clicked or stepped onto. `None` means
   /// the node's first box.
   selected_copy:      Option<NodeId>,
-  /// Active quest lens; `None` means the global "all nodes" view (PLAN §5).
+  /// Active quest lens; `None` means the global "all nodes" view (PLAN §5),
+  /// or the completed lens.
   pub active_quest:   Option<QuestId>,
+  /// Whether the completed lens is on: the completed trees, which every
+  /// other view leaves out. Never on with a quest lens.
+  completed_lens:     bool,
   /// Editable name buffer for the selected node.
   pub name_draft:     String,
   /// Editable name buffer for the active quest, shown in the switcher.
@@ -186,6 +190,7 @@ impl AppState {
       selected: None,
       selected_copy: None,
       active_quest: None,
+      completed_lens: false,
       name_draft: String::new(),
       quest_draft: String::new(),
       camera: Camera::default(),

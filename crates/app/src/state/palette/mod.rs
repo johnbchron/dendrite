@@ -26,6 +26,8 @@ pub enum PaletteAct {
   GoTo(NodeId),
   /// Switch the lens (`None`: all nodes).
   Quest(Option<QuestId>),
+  /// Switch to the completed lens.
+  Completed,
   /// Create a task (attached to the selection, if any).
   NewTask,
   /// Create a condition (attached to the selection, if any).
@@ -183,6 +185,7 @@ impl AppState {
     match act {
       PaletteAct::GoTo(node) => self.reveal(node),
       PaletteAct::Quest(quest) => self.set_active_quest(quest),
+      PaletteAct::Completed => self.show_completed(),
       PaletteAct::NewTask => self.add_task(),
       PaletteAct::NewCondition => self.add_condition(),
       PaletteAct::Undo => self.undo(),

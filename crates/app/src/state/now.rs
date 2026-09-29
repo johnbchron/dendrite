@@ -98,8 +98,12 @@ pub struct SoonItem {
 
 impl AppState {
   /// Tasks blocked only by requirements that time alone will meet, soonest
-  /// first, within the active lens.
+  /// first, within the active lens. Nothing in the completed lens, where
+  /// all the work is done.
   pub fn soon(&self) -> Vec<SoonItem> {
+    if self.completed_lens {
+      return Vec::new();
+    }
     let store = self.lock();
     let graph = store.graph();
     let cached = self.derivations(&store);
@@ -137,8 +141,12 @@ impl AppState {
   }
 
   /// What can be done right now, for the Now tray, and how many distinct
-  /// nodes that is; see `NowGroup::collect`.
+  /// nodes that is; see `NowGroup::collect`. Nothing in the completed
+  /// lens.
   pub fn now(&self) -> (Vec<NowGroup>, usize) {
+    if self.completed_lens {
+      return (Vec::new(), 0);
+    }
     let store = self.lock();
     let cached = self.derivations(&store);
     NowGroup::collect(

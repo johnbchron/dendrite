@@ -480,3 +480,65 @@ mod props {
 
   }
 }
+
+// --- completed trees ----------------------------------------------------
+
+/// Add a formula condition asking for `minutes` of free time, and return
+/// its id.
+fn formula(g: &mut Graph, minutes: u32) -> NodeId {
+  let atom = base::Atom::Free { at_least: minutes };
+  let id = atom.node_id();
+  g.insert_node(base::Node::new(
+    id,
+    String::new(),
+    NodeKind::formula(atom),
+    0.0,
+  ));
+  id
+}
+
+#[test]
+fn a_tree_is_completed_when_all_its_work_is_done() {
+  // 1 -> 2 (done) -> c3 (satisfied), and 1 requires an unmet formula: 1 is
+  // not done, so nothing is completed. Finish 1 and the whole tree is,
+  // formula and all.
+  let mut g = build(&[(1, false), (2, true)], &[(3, true)], &[
+    (10, 1, 2),
+    (11, 2, 3),
+  ]);
+  let free = formula(&mut g, 60);
+  g.insert_edge(Edge::new(
+    base::EdgeId::from_u128(12),
+    EdgeKind::Dependency,
+    nid(1),
+    free,
+  ));
+  assert_eq!(base::completed(&g), base::Completed::default());
+
+  g.set_satisfied(nid(1), true);
+  let c = base::completed(&g);
+  let all = HashSet::from([nid(1), nid(2), nid(3), free]);
+  assert_eq!(c.trees, all);
+  assert_eq!(c.retired, all);
+}
+
+#[test]
+fn a_node_shared_with_unfinished_work_is_not_retired() {
+  // 1 (done) -> 3 (done) <- 2 (not done); 4 is a formula nothing requires.
+  let mut g = build(&[(1, true), (2, false), (3, true)], &[], &[
+    (10, 1, 3),
+    (11, 2, 3),
+  ]);
+  let orphan = formula(&mut g, 30);
+  let c = base::completed(&g);
+  assert_eq!(c.trees, HashSet::from([nid(1), nid(3)]));
+  assert_eq!(c.retired, HashSet::from([nid(1)]));
+  assert!(!c.trees.contains(&orphan), "a formula alone is no work");
+}
+
+#[test]
+fn a_cycle_nothing_requires_is_never_completed() {
+  // 1 <-> 2, both done, and no root above them.
+  let g = build(&[(1, true), (2, true)], &[], &[(10, 1, 2), (11, 2, 1)]);
+  assert_eq!(base::completed(&g), base::Completed::default());
+}

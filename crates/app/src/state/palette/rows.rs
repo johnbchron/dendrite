@@ -199,8 +199,9 @@ impl AppState {
     rows
   }
 
-  /// "Switch to `quest`" for every quest but the current lens, and back to
-  /// all nodes when under one; "Rename" and "Delete" for every quest.
+  /// "Switch to `quest`" for every quest but the current lens, to the
+  /// completed trees, and back to all nodes when under a lens; "Rename"
+  /// and "Delete" for every quest.
   fn quest_rows_for_palette(&self) -> Vec<PaletteRow> {
     let store = self.lock();
     let mut quests: Vec<_> = store
@@ -227,10 +228,16 @@ impl AppState {
         format!("Delete quest {name}"),
       ));
     }
-    if self.active_quest.is_some() {
+    if self.lens().is_some() {
       rows.push(PaletteRow::quest(
         PaletteAct::Quest(None),
         "Switch to all nodes".into(),
+      ));
+    }
+    if !self.completed_lens {
+      rows.push(PaletteRow::quest(
+        PaletteAct::Completed,
+        "Switch to completed trees".into(),
       ));
     }
     rows

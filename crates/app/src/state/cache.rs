@@ -9,11 +9,13 @@
 //!
 //! Derived state also depends on the facts, so it is kept per graph
 //! revision *and* facts revision; layout depends on the graph alone, so time
-//! passing, or a declared fact changing, reuses it.
+//! passing, or a declared fact changing, reuses it. So do the completed
+//! trees, which every view but their own leaves out, so the main view is
+//! laid out without them.
 
 use std::sync::{Arc, Mutex};
 
-use base::{Derived, Facts, NodeId, QuestId};
+use base::{Completed, Derived, Facts, NodeId, QuestId};
 use layout::{Layout, LayoutConfig};
 use session::Session;
 
@@ -23,25 +25,37 @@ use crate::scene::CanvasScene;
 /// Everything a [`CanvasScene`] is built from: the graph and facts
 /// revisions (node states), the selection (highlighted), and the lens
 /// (which nodes show, which dim).
-pub(super) type SceneKey = (u64, u64, Option<NodeId>, Option<QuestId>);
+pub(super) type SceneKey = (u64, u64, Option<NodeId>, Option<Lens>);
 
-/// What a lens's layout is computed from: the graph revision and the quest.
-type LensKey = (u64, QuestId);
+/// A view laid out on its own: a quest's, or the completed trees'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Lens {
+  /// The quest's scope.
+  Quest(QuestId),
+  /// The completed trees.
+  Completed,
+}
+
+/// What a lens's layout is computed from: the graph revision and the lens.
+type LensKey = (u64, Lens);
 
 /// Whole-graph computations: derived state from the graph and the facts,
 /// and layout from the graph alone.
 pub(super) struct Derivations {
   /// The [`Session::revision`] these were computed at.
-  revision:           u64,
+  revision:             u64,
   /// The [`AppState::facts_revision`] the derived state was computed at.
-  facts_revision:     u64,
+  facts_revision:       u64,
   /// The facts the derived state was computed from.
-  pub(super) facts:   Facts,
+  pub(super) facts:     Facts,
   /// Readiness, cycles, satisfaction.
-  pub(super) derived: Derived,
-  /// Ranks, ordering and the reversed edges; shared with the previous
-  /// derivations when only the facts changed.
-  pub(super) layout:  Arc<Layout>,
+  pub(super) derived:   Derived,
+  /// The completed trees; shared with the previous derivations when only
+  /// the facts changed.
+  pub(super) completed: Arc<Completed>,
+  /// Ranks, ordering and the reversed edges of every node but the retired
+  /// ones; shared like `completed`.
+  pub(super) layout:    Arc<Layout>,
 }
 
 /// The latest [`Derivations`] and canvas scene.
@@ -67,14 +81,22 @@ impl Caches {
   ) -> Arc<Derivations> {
     let mut cache = self.derivations.lock().expect("cache mutex poisoned");
     let revision = store.revision();
-    let layout = match cache.as_ref() {
+    let (completed, layout) = match cache.as_ref() {
       Some(d)
         if d.revision == revision && d.facts_revision == facts_revision =>
       {
         return d.clone();
       }
-      Some(d) if d.revision == revision => d.layout.clone(),
-      _ => Arc::new(Layout::compute(store.graph(), &LayoutConfig::default())),
+      Some(d) if d.revision == revision => {
+        (d.completed.clone(), d.layout.clone())
+      }
+      _ => {
+        let graph = store.graph();
+        let completed = base::completed(graph);
+        let live = graph.induced(|n| !completed.retired.contains(&n));
+        let layout = Layout::compute(&live, &LayoutConfig::default());
+        (Arc::new(completed), Arc::new(layout))
+      }
     };
     let facts = facts();
     let fresh = Arc::new(Derivations {
@@ -82,20 +104,23 @@ impl Caches {
       facts_revision,
       derived: Derived::compute(store.graph(), &facts),
       facts,
+      completed,
       layout,
     });
     *cache = Some(fresh.clone());
     fresh
   }
 
-  /// The layout of `quest`'s lens: the subgraph it shows, laid out on its
-  /// own, computed at most once per revision and quest.
+  /// The layout of `lens`: the subgraph it shows, laid out on its own,
+  /// computed at most once per revision and lens. `completed` must be of
+  /// the same revision.
   pub(super) fn lens_layout(
     &self,
     store: &Session,
-    quest: QuestId,
+    completed: &Completed,
+    lens: Lens,
   ) -> Arc<Layout> {
-    let key = (store.revision(), quest);
+    let key = (store.revision(), lens);
     let mut cache = self.lens_layout.lock().expect("cache mutex poisoned");
     if let Some((k, layout)) = cache.as_ref()
       && *k == key
@@ -103,8 +128,13 @@ impl Caches {
       return layout.clone();
     }
     let graph = store.graph();
-    let scope = base::scope(graph, quest);
-    let sub = graph.induced(|n| scope.contains(n));
+    let sub = match lens {
+      Lens::Quest(quest) => {
+        let scope = base::scope(graph, quest);
+        graph.induced(|n| scope.contains(n) && !completed.retired.contains(&n))
+      }
+      Lens::Completed => graph.induced(|n| completed.trees.contains(&n)),
+    };
     let layout = Arc::new(Layout::compute(&sub, &LayoutConfig::default()));
     *cache = Some((key, layout.clone()));
     layout

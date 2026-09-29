@@ -1,6 +1,7 @@
 //! Tests for [`AppState`], by the area of the app they exercise.
 
 mod chrome;
+mod completed;
 mod edit;
 mod facts;
 mod library;

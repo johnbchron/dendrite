@@ -11,6 +11,7 @@
 //! by the caller: `base` never reads a clock. [`jiff`] is re-exported for
 //! the time types facts are made of.
 
+pub mod completed;
 pub mod derive;
 pub mod event;
 pub mod formula;
@@ -21,6 +22,7 @@ pub mod prune;
 pub mod quest;
 pub mod referent;
 
+pub use completed::{Completed, completed};
 pub use derive::{Derived, NodeState, cycle_peers, cyclic_nodes};
 pub use event::{Event, apply_batch, apply_group};
 pub use formula::{

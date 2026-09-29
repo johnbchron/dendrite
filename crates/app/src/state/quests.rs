@@ -1,8 +1,9 @@
-//! The quest lens, and which quests claim the selection.
+//! The quest lens and the completed lens, and which quests claim the
+//! selection.
 
 use base::{Event, NodeId, QuestId};
 
-use super::{AppState, LiveEdit, chrome::Popover};
+use super::{AppState, LiveEdit, cache::Lens, chrome::Popover};
 use crate::focus::FieldKey;
 
 impl AppState {
@@ -62,8 +63,26 @@ impl AppState {
   pub fn set_active_quest(&mut self, quest: Option<QuestId>) {
     self.live_edit = None;
     self.active_quest = quest;
+    self.completed_lens = false;
     self.close(Popover::Quests);
     self.sync_quest_draft();
+  }
+
+  /// Switch to the completed lens: the completed trees, and nothing else.
+  pub fn show_completed(&mut self) {
+    self.set_active_quest(None);
+    self.completed_lens = true;
+  }
+
+  /// Whether the completed lens is on.
+  pub fn completed_lens(&self) -> bool { self.completed_lens }
+
+  /// The lens in use, or `None` for the main view.
+  pub(super) fn lens(&self) -> Option<Lens> {
+    match self.active_quest {
+      Some(quest) => Some(Lens::Quest(quest)),
+      None => self.completed_lens.then_some(Lens::Completed),
+    }
   }
 
   /// Refresh the quest rename buffer from the graph. Called whenever the

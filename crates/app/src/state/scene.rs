@@ -3,42 +3,46 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use base::{Graph, NodeId, NodeState, QuestId};
+use base::{Completed, Graph, NodeId, NodeState};
 use layout::{Layout, Slot};
 use session::Session;
 
-use super::AppState;
+use super::{AppState, cache::Lens};
 use crate::{
   formula::describe,
   scene::{CanvasScene, Category, Membership, RenderEdge, RenderNode},
 };
 
-/// Which nodes a lens shows, and which of those it dims.
-struct Lens {
+/// Which nodes a view shows, and which of those it dims.
+struct View {
   /// Every node drawn.
   visible: HashSet<NodeId>,
-  /// The nodes the quest claims; the rest of `visible` is only pulled in.
-  claimed: HashSet<NodeId>,
-  /// Whether a quest lens is on (else every node shows, none dimmed).
-  scoped:  bool,
+  /// The nodes shown at full strength; the rest of `visible` is dimmed.
+  /// `None` when nothing is.
+  full:    Option<HashSet<NodeId>>,
 }
 
-impl Lens {
-  /// The lens of `quest` over `graph`, or the global view for `None`.
-  fn new(graph: &Graph, quest: Option<QuestId>) -> Self {
-    match quest {
-      Some(q) => {
+impl View {
+  /// What `lens` shows of `graph`, or the main view for `None`: every node
+  /// but the retired ones. A quest's lens leaves them out too, and dims
+  /// what it only pulls in.
+  fn new(graph: &Graph, completed: &Completed, lens: Option<Lens>) -> Self {
+    let live = |n: &NodeId| !completed.retired.contains(n);
+    match lens {
+      Some(Lens::Quest(q)) => {
         let s = base::scope(graph, q);
         Self {
-          visible: s.all().collect(),
-          claimed: s.claimed.clone(),
-          scoped:  true,
+          visible: s.all().filter(live).collect(),
+          full:    Some(s.claimed),
         }
       }
+      Some(Lens::Completed) => Self {
+        visible: completed.trees.clone(),
+        full:    None,
+      },
       None => Self {
-        visible: graph.nodes().map(|n| n.id).collect(),
-        claimed: HashSet::new(),
-        scoped:  false,
+        visible: graph.nodes().map(|n| n.id).filter(live).collect(),
+        full:    None,
       },
     }
   }
@@ -48,12 +52,12 @@ impl Lens {
 
   /// Whether `node` is only pulled into the quest's scope, not claimed.
   fn dims(&self, node: NodeId) -> bool {
-    self.scoped && !self.claimed.contains(&node)
+    self.full.as_ref().is_some_and(|full| !full.contains(&node))
   }
 }
 
 impl AppState {
-  /// The paint scene for the canvas, honouring the active quest lens.
+  /// The paint scene for the canvas, honouring the lens in use.
   ///
   /// Rebuilt only when the graph, the selection or the lens changed; other
   /// calls return the same `Arc`, which the canvas takes as "nothing new".
@@ -63,7 +67,7 @@ impl AppState {
       store.revision(),
       self.facts_revision,
       self.selected,
-      self.active_quest,
+      self.lens(),
     );
     self.caches.scene(key, || self.build_scene(&store))
   }
@@ -77,14 +81,14 @@ impl AppState {
     // their places in the quest call for, not the ones they hold among
     // every node.
     let lens_layout;
-    let lay: &Layout = match self.active_quest {
-      Some(quest) => {
-        lens_layout = self.caches.lens_layout(store, quest);
+    let lay: &Layout = match self.lens() {
+      Some(lens) => {
+        lens_layout = self.caches.lens_layout(store, &cached.completed, lens);
         &lens_layout
       }
       None => &cached.layout,
     };
-    let lens = Lens::new(graph, self.active_quest);
+    let view = View::new(graph, &cached.completed, self.lens());
     let quests = base::all_quests_scope(graph);
     // A formula condition is shared too widely for a bar to say anything
     // about it.
@@ -123,7 +127,7 @@ impl AppState {
           glyph:    node.kind.atom().map(Category::of),
           state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),
-          dimmed:   lens.dims(node.id),
+          dimmed:   view.dims(node.id),
           quest:    membership(node),
         })
       })
@@ -131,7 +135,7 @@ impl AppState {
 
     let edges = graph
       .edges()
-      .filter(|edge| lens.shows(edge.from) && lens.shows(edge.to))
+      .filter(|edge| view.shows(edge.from) && view.shows(edge.to))
       .map(|edge| RenderEdge {
         id:       edge.id,
         from:     edge.from,

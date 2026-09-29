@@ -10,6 +10,8 @@ use kurbo::{Rect, Size};
 /// How far the view zooms in and out.
 pub const ZOOM_MIN: f64 = 0.10;
 pub const ZOOM_MAX: f64 = 16.0;
+/// The zoom level the view resets to, and starts at.
+pub const ZOOM_RESET: f64 = 1.2;
 /// How much one [`ZoomStep`] multiplies or divides the zoom by.
 const ZOOM_STEP: f64 = 1.25;
 
@@ -55,6 +57,9 @@ pub enum CameraRequest {
   Zoom(ZoomStep),
 }
 
+/// `zoom` as the whole percentage shown for it.
+pub fn zoom_percent(zoom: f64) -> u32 { (zoom * 100.0).round() as u32 }
+
 /// A zoom step from the zoom controls or keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZoomStep {
@@ -72,7 +77,7 @@ impl ZoomStep {
     match self {
       ZoomStep::In => zoom * ZOOM_STEP,
       ZoomStep::Out => zoom / ZOOM_STEP,
-      ZoomStep::Reset => 1.0,
+      ZoomStep::Reset => ZOOM_RESET,
     }
     .clamp(ZOOM_MIN, ZOOM_MAX)
   }

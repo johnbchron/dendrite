@@ -6,6 +6,7 @@ mod pointer;
 
 use std::{collections::HashMap, sync::Arc};
 
+use app::camera::{ZOOM_RESET, zoom_percent};
 use base::NodeId;
 use layout::LayoutConfig;
 use masonry::{
@@ -89,22 +90,22 @@ pub struct CanvasWidget {
 }
 
 impl CanvasWidget {
-  /// A fresh canvas with an identity transform and no scene.
+  /// A fresh canvas at the reset zoom, and no scene.
   pub fn new(theme: &'static Theme) -> Self {
     Self {
       scene: Arc::default(),
       dirty: true,
       frame: Frame {
-        zoom: 1.0,
+        zoom: ZOOM_RESET,
         pan:  Vec2::new(60.0, 60.0),
       },
-      zoom_target: 1.0,
+      zoom_target: ZOOM_RESET,
       zoom_anchor: Point::ORIGIN,
       fit_pending: false,
       glide: None,
       reveal: None,
       insets: Insets::default(),
-      reported_zoom: 100,
+      reported_zoom: zoom_percent(ZOOM_RESET),
       link: None,
       hover: None,
       press: None,

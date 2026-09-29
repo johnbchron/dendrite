@@ -5,7 +5,7 @@ use base::NodeId;
 
 use super::{PALETTE_MAX, PaletteAct, PaletteRow, RowKind};
 use crate::{
-  camera::ZoomStep,
+  camera::{ZOOM_RESET, ZoomStep, zoom_percent},
   formula::describe,
   keymap::chord,
   query,
@@ -152,7 +152,7 @@ impl AppState {
     ));
     rows.push(command(
       PaletteAct::Zoom(ZoomStep::Reset),
-      "Reset zoom to 100%".into(),
+      format!("Reset zoom to {}%", zoom_percent(ZOOM_RESET)),
       Some(chord("0")),
     ));
     rows.push(command(

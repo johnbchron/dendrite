@@ -4,7 +4,7 @@
 //! Split from [`app::camera`], which holds what the *app* says about the
 //! camera. Everything here needs a viewport, so it belongs to the widget.
 
-use app::camera::{ZOOM_MAX, ZOOM_MIN};
+use app::camera::{ZOOM_MAX, ZOOM_MIN, ZOOM_RESET};
 use masonry::kurbo::{Affine, Point, Rect, Size, Vec2};
 
 /// How quickly an animated zoom closes on its target, per second: the gap
@@ -60,7 +60,7 @@ impl Frame {
     let avail_h = (view.height() - 2.0 * VIEW_MARGIN).max(1.0);
     let zoom = (avail_w / bounds.width().max(1.0))
       .min(avail_h / bounds.height().max(1.0))
-      .min(1.0)
+      .min(ZOOM_RESET)
       .clamp(ZOOM_MIN, ZOOM_MAX);
     let pan = view.center().to_vec2() - zoom * bounds.center().to_vec2();
     Some(Self { zoom, pan })
@@ -158,7 +158,7 @@ mod tests {
     assert_eq!(view, Rect::new(0.0, 40.0, 680.0, 800.0));
     let bounds = Rect::new(-100.0, -50.0, 100.0, 50.0);
     let fitted = Frame::fit(bounds, view).unwrap();
-    assert_eq!(fitted.zoom, 1.0, "a small graph is not blown up");
+    assert_eq!(fitted.zoom, ZOOM_RESET, "a small graph is not blown up");
     assert_eq!(fitted.affine() * bounds.center(), view.center());
 
     // A big graph shrinks to fit inside the margins (down to the minimum
@@ -192,7 +192,7 @@ mod tests {
   #[test]
   fn reveal_only_moves_for_hidden_nodes() {
     let view = Rect::new(0.0, 40.0, 680.0, 800.0);
-    let at = frame(1.0, Vec2::ZERO);
+    let at = frame(ZOOM_RESET, Vec2::ZERO);
     let visible = Rect::new(200.0, 200.0, 350.0, 250.0);
     assert_eq!(at.reveal(visible, view), None);
 
@@ -207,12 +207,12 @@ mod tests {
   /// together, and lands on it exactly.
   #[test]
   fn fits_ease_zoom_and_pan_together() {
-    let target = frame(1.0, Vec2::new(300.0, 200.0));
+    let target = frame(ZOOM_RESET, Vec2::new(300.0, 200.0));
     let mut camera = frame(3.0, Vec2::new(-500.0, 40.0));
     let (first, arrived) = camera.eased_toward(target, 0.25);
     assert!(!arrived);
     assert!(
-      first.zoom < 3.0 && first.zoom > 1.0,
+      first.zoom < 3.0 && first.zoom > ZOOM_RESET,
       "zoom moves part of the way"
     );
     assert!(first.pan.x > -500.0 && first.pan.x < 300.0, "pan does too");

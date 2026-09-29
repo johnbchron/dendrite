@@ -73,7 +73,7 @@ pub use self::{
   toast::Toast,
 };
 use crate::{
-  camera::Camera,
+  camera::{Camera, ZOOM_RESET, zoom_percent},
   focus::FocusRequests,
   formula::{Clock, SystemClock},
   query::Query,
@@ -207,7 +207,7 @@ impl AppState {
       palette_nodes_only: false,
       recent: Recent::default(),
       focus_requests: FocusRequests::default(),
-      zoom_percent: 100,
+      zoom_percent: zoom_percent(ZOOM_RESET),
       live_edit: None,
       caches: Caches::default(),
       clock: Box::new(clock),

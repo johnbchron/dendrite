@@ -1,7 +1,7 @@
 //! Moving the camera: acting on the app's requests, and easing the view
 //! towards where they point, a frame at a time.
 
-use app::camera::{ZOOM_MAX, ZOOM_MIN};
+use app::camera::{ZOOM_MAX, ZOOM_MIN, zoom_percent};
 use masonry::{
   core::UpdateCtx,
   kurbo::{Point, Rect, Size},
@@ -63,7 +63,7 @@ impl CanvasWidget {
   /// The zoom level as a whole percentage, if it differs from the one last
   /// reported (and records it as reported).
   pub(super) fn zoom_change(&mut self) -> Option<u32> {
-    let percent = (self.frame.zoom * 100.0).round() as u32;
+    let percent = zoom_percent(self.frame.zoom);
     (percent != self.reported_zoom).then(|| {
       self.reported_zoom = percent;
       percent

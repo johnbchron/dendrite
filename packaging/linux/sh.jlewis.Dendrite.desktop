@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Dendrite
+GenericName=Task Manager
+Comment=Plan work as a graph of dependent tasks
+Exec=dendrite
+Terminal=false
+Categories=Office;ProjectManagement;
+Keywords=task;todo;dependency;graph;quest;
+StartupNotify=true
+StartupWMClass=sh.jlewis.Dendrite

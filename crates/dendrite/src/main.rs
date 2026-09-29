@@ -29,6 +29,11 @@ use xilem::{
 
 use crate::{driver::FocusDriver, state::AppState};
 
+/// The application ID: the Wayland app_id and X11 `WM_CLASS`, which desktops
+/// match against the installed `packaging/linux/sh.jlewis.Dendrite.desktop`.
+#[cfg(target_os = "linux")]
+const APP_ID: &str = "sh.jlewis.Dendrite";
+
 fn main() -> Result<(), EventLoopError> {
   // One database for the whole global graph (PLAN §3). Defaults to a file in
   // the working directory; override with $DENDRITE_DB.
@@ -63,6 +68,18 @@ fn main() -> Result<(), EventLoopError> {
   let (xilem_driver, windows) = app.into_driver_and_windows(move |event| {
     proxy.send_event(event).map_err(|err| err.0)
   });
+  // `WindowOptions` has no way to name the application on Linux, so it is
+  // set on the attributes it produced. The Wayland and X11 extensions share
+  // one setting; this sets both.
+  #[cfg(target_os = "linux")]
+  let windows: Vec<_> = windows
+    .into_iter()
+    .map(|mut window| {
+      use xilem::winit::platform::wayland::WindowAttributesExtWayland;
+      window.attributes = window.attributes.with_name(APP_ID, "dendrite");
+      window
+    })
+    .collect();
   masonry_winit::app::run_with(
     event_loop,
     windows,

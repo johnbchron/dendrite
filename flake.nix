@@ -104,6 +104,10 @@
         inherit cargoArtifacts;
         pname = "dendrite";
         cargoExtraArgs = "--locked -p dendrite";
+        postInstall = lib.optionalString pkgs.stdenv.isLinux ''
+          install -Dm644 ${./packaging/linux/sh.jlewis.Dendrite.desktop} \
+            $out/share/applications/sh.jlewis.Dendrite.desktop
+        '';
         postFixup = lib.optionalString pkgs.stdenv.isLinux ''
           patchelf --add-rpath ${lib.makeLibraryPath linux-runtime-libs} $out/bin/dendrite
         '';

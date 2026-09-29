@@ -8,8 +8,10 @@
 //!
 //! Open, it leads with the context bar, where the facts formula conditions
 //! read are declared: where I am (C opens the picker), how long I am free,
-//! and which contexts are on.
+//! and which contexts are on. New places and contexts can be named from
+//! there, and the library manages the rest.
 
+use base::ContextId;
 use masonry::{
   peniko::Color,
   properties::{Padding, types::AsUnit},
@@ -24,24 +26,29 @@ use xilem::{
 };
 
 use super::controls::{
-  body, fill, free_presets, label, muted, row_button, section, seg, spacer,
+  body, fill, free_presets, icon_btn, label, muted, row_button, section, seg,
+  spacer,
 };
 use crate::{
   focus::FieldKey,
   icons::{Icon, icon},
-  state::AppState,
+  state::{AppState, RefKind},
   theme::Theme,
-  themed::{FocusKey as _, Level, field, surface},
+  themed::{Anchor, FocusKey as _, Level, field, surface, tooltip},
   tokens::{radius, size, space, text},
 };
 
 /// Width of the tray, collapsed or open.
-const WIDTH: f64 = 300.0;
+const WIDTH: f64 = 360.0;
 /// Tallest the open list grows before it scrolls.
-const MAX_LIST: f64 = 320.0;
+const MAX_LIST: f64 = 380.0;
 /// Height of one row and of one group heading, for sizing the list.
-const ROW: f64 = 30.0;
-const HEADING: f64 = 26.0;
+const ROW: f64 = 38.0;
+const HEADING: f64 = 32.0;
+/// Room the context chips have in one line: the tray, less its padding,
+/// the context bar's, and the tag glyph that leads the chips.
+const CHIP_LINE: f64 =
+  WIDTH - 2.0 * space::S - 2.0 * space::S - size::ICON as f64 - space::S;
 
 /// The tray, collapsed or open.
 pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
@@ -74,7 +81,7 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     .must_fill_major_axis(true),
     |s: &mut AppState| s.toggle_now(),
   )
-  .padding(Padding::from_vh(space::XS, space::S))
+  .padding(Padding::from_vh(space::CONTROL_Y, space::CONTROL_X))
   .corner_radius(radius::CONTROL)
   .background_color(Color::TRANSPARENT)
   .active_background_color(theme.rule)
@@ -91,7 +98,7 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       if let Some(title) = group.title {
         items.push(
           sized_box(section(title, theme))
-            .padding(Padding::from_vh(space::XS, space::S))
+            .padding(Padding::from_vh(space::XS, space::CONTROL_X))
             .into_any_flex(),
         );
       }
@@ -110,14 +117,14 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     if items.is_empty() {
       items.push(
         sized_box(muted("Nothing ready right now.", theme))
-          .padding(Padding::from_vh(space::XS, space::S))
+          .padding(Padding::from_vh(space::XS, space::CONTROL_X))
           .into_any_flex(),
       );
     }
     if !soon.is_empty() {
       items.push(
         sized_box(section("Soon", theme))
-          .padding(Padding::from_vh(space::XS, space::S))
+          .padding(Padding::from_vh(space::XS, space::CONTROL_X))
           .into_any_flex(),
       );
     }
@@ -154,16 +161,18 @@ pub(super) fn tray(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   sized_box(surface(
     theme,
     Level::Card,
-    space::XS,
+    space::S,
     flex_col((header, bar, list))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::XS.px()),
+      .gap(space::S.px()),
   ))
   .width(WIDTH.px())
 }
 
 /// The facts formula conditions read, declared here: the place (with its
 /// picker), free time, and the contexts, each a chip that turns on and off.
+/// A new place or context can be named here too; the library (see
+/// `super::library`) is one press away for renaming and deleting them.
 fn context_bar(
   data: &mut AppState,
   theme: &'static Theme,
@@ -174,7 +183,9 @@ fn context_bar(
     flex_row((
       icon(Icon::MapPin, size::ICON, theme.muted),
       fill(body(
-        data.place_name().unwrap_or_else(|| "Set place".into()),
+        data
+          .place_name()
+          .unwrap_or_else(|| "Set where you are".into()),
         theme,
       )),
       muted("C", theme),
@@ -200,21 +211,42 @@ fn context_bar(
         row_button(
           theme,
           current == Some(id),
-          body(name, theme),
+          flex_row((
+            fill(body(name, theme)),
+            (current == Some(id))
+              .then(|| icon(Icon::Check, size::ICON, theme.accent)),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center),
           move |s: &mut AppState| s.pick_place(Some(id)),
         )
         .into_any_flex(),
       );
     }
-    flex_col(rows)
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::HAIR.px())
+    rows.push(
+      flex_row((
+        seg("+ New place", theme, false, true, |s: &mut AppState| {
+          s.declare_new(RefKind::Place)
+        }),
+        spacer(),
+        seg("Manage\u{2026}", theme, false, true, |s: &mut AppState| {
+          s.toggle_library()
+        }),
+      ))
+      .cross_axis_alignment(CrossAxisAlignment::Center)
+      .into_any_flex(),
+    );
+    sized_box(
+      flex_col(rows)
+        .cross_axis_alignment(CrossAxisAlignment::Fill)
+        .gap(space::HAIR.px()),
+    )
+    .padding(Padding::left(space::L))
   });
 
   let free = flex_col((
     flex_row((
       icon(Icon::Hourglass, size::ICON, theme.muted),
-      fill(muted(
+      fill(body(
         data
           .free_summary()
           .unwrap_or_else(|| "Free time not set".into()),
@@ -233,35 +265,84 @@ fn context_bar(
     free_presets(theme),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Fill)
-  .gap(space::XS.px());
+  .gap(space::S.px());
 
-  let chips: Vec<_> = data
-    .context_chips()
-    .into_iter()
-    .map(|(id, name, on)| {
-      seg(name, theme, on, true, move |s: &mut AppState| {
-        s.toggle_context(id)
-      })
-      .into_any_flex()
-    })
-    .collect();
-  let contexts = (!chips.is_empty()).then(|| {
-    flex_row((
-      icon(Icon::Tag, size::ICON, theme.muted),
-      flex_row(chips)
-        .cross_axis_alignment(CrossAxisAlignment::Center)
+  let chips = data.context_chips();
+  let empty = chips.is_empty();
+  let mut lines = chip_lines(chips, theme);
+  let add = tooltip(
+    "New context, turned on",
+    theme,
+    Anchor::End,
+    icon_btn(Icon::Plus, theme, false, true, |s: &mut AppState| {
+      s.declare_new(RefKind::Context)
+    }),
+  );
+  if empty {
+    lines.push(
+      sized_box(muted("No contexts yet", theme))
+        .padding(Padding::from_vh(space::CONTROL_Y, 0.0))
+        .into_any_flex(),
+    );
+  }
+  let contexts = flex_row((
+    icon(Icon::Tag, size::ICON, theme.muted),
+    fill(
+      flex_col(lines)
+        .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(space::XS.px()),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(space::S.px())
-  });
+    ),
+    add,
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Start)
+  .gap(space::S.px());
 
   sized_box(
     flex_col((place, picker, free, contexts))
       .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::XS.px()),
+      .gap(space::M.px()),
   )
-  .padding(Padding::from_vh(space::XS, space::XS))
+  .padding(Padding::all(space::S))
   .corner_radius(radius::CONTROL)
   .background_color(theme.sunken)
+}
+
+/// The context chips, broken into lines that fit the tray: xilem's flex
+/// does not wrap, so a long run of contexts would run off the edge. Chip
+/// widths are estimated from their names, which is close enough for a
+/// line break.
+fn chip_lines(
+  chips: Vec<(ContextId, String, bool)>,
+  theme: &'static Theme,
+) -> Vec<xilem::view::AnyFlexChild<AppState>> {
+  // Room kept free on the right for the add button.
+  let room = CHIP_LINE - size::ICON as f64 - 2.0 * space::CONTROL_X;
+  let mut lines: Vec<Vec<_>> = Vec::new();
+  let mut used = f64::INFINITY;
+  for (id, name, on) in chips {
+    let width = name.chars().count() as f64 * f64::from(text::CONTROL) * 0.6
+      + 2.0 * space::CONTROL_X
+      + space::XS;
+    if used + width > room {
+      lines.push(Vec::new());
+      used = 0.0;
+    }
+    used += width;
+    let chip = seg(name, theme, on, true, move |s: &mut AppState| {
+      s.toggle_context(id)
+    });
+    lines
+      .last_mut()
+      .expect("a line was pushed")
+      .push(chip.into_any_flex());
+  }
+  lines
+    .into_iter()
+    .map(|line| {
+      flex_row(line)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(space::XS.px())
+        .into_any_flex()
+    })
+    .collect()
 }

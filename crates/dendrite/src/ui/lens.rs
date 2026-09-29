@@ -7,7 +7,7 @@
 //! a row, and a query no quest matches becomes the
 //! name of a new quest. Renaming the active quest lives in the switcher
 //! rather than on the pill, so the pill cannot be edited by accident; each
-//! quest row has a delete button while hovered.
+//! quest row has rename and delete buttons while hovered.
 
 use masonry::properties::{Padding, types::AsUnit};
 use xilem::{
@@ -19,7 +19,7 @@ use xilem::{
 };
 
 use super::controls::{
-  body, fill, icon_btn, label, muted, row_button, section,
+  body, fill, icon_btn, label, muted, row_button, section, seg,
 };
 use crate::{
   focus::FieldKey,
@@ -30,7 +30,7 @@ use crate::{
 };
 
 /// Width of the switcher popover.
-const WIDTH: f64 = 300.0;
+const WIDTH: f64 = 360.0;
 
 /// The pill: the lens's name and claim count, opening the switcher.
 pub(super) fn pill(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
@@ -60,7 +60,7 @@ pub(super) fn pill(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .gap(space::S.px());
 
   button(content, |s: &mut AppState| s.toggle_picker())
-    .padding(Padding::from_vh(space::XS, space::M))
+    .padding(Padding::from_vh(space::CONTROL_Y, space::M))
     .corner_radius(radius::PILL)
     .background_color(theme.sunken)
     .active_background_color(theme.rule)
@@ -121,18 +121,30 @@ pub(super) fn switcher(
       match choice {
         QuestChoice::Quest(id) => hover_row(
           button,
-          tooltip(
-            "Delete quest",
-            theme,
-            Anchor::End,
-            icon_btn(
-              Icon::Trash,
+          flex_row((
+            tooltip(
+              "Rename quest",
               theme,
-              false,
-              true,
-              move |s: &mut AppState| s.delete_quest(id),
+              Anchor::End,
+              seg("Rename", theme, false, true, move |s: &mut AppState| {
+                s.rename_quest(id)
+              }),
             ),
-          ),
+            tooltip(
+              "Delete quest",
+              theme,
+              Anchor::End,
+              icon_btn(
+                Icon::Trash,
+                theme,
+                false,
+                true,
+                move |s: &mut AppState| s.delete_quest(id),
+              ),
+            ),
+          ))
+          .cross_axis_alignment(CrossAxisAlignment::Center)
+          .gap(space::XS.px()),
         )
         .into_any_flex(),
         _ => button.into_any_flex(),
@@ -143,7 +155,7 @@ pub(super) fn switcher(
   sized_box(surface(
     theme,
     Level::Popover,
-    space::S,
+    space::M,
     flex_col((
       field(query.text, theme, |s: &mut AppState, v| s.set_quest_text(v))
         .placeholder("Find or create a quest")

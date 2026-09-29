@@ -5,7 +5,11 @@ use base::NodeId;
 
 use super::{PALETTE_MAX, PaletteAct, PaletteRow, RowKind};
 use crate::{
-  camera::ZoomStep, formula::describe, keymap::chord, query, state::AppState,
+  camera::ZoomStep,
+  formula::describe,
+  keymap::chord,
+  query,
+  state::{AppState, RefKey, RefKind},
   theme::Theme,
 };
 
@@ -19,6 +23,9 @@ impl AppState {
       rows.extend(self.command_rows());
       rows.extend(self.quest_rows_for_palette());
       rows.extend(self.membership_rows());
+      if !text.is_empty() {
+        rows.extend(self.referent_rows());
+      }
     }
     if text.is_empty() {
       // Recent nodes, then the commands (quests are one keystroke away).
@@ -164,6 +171,11 @@ impl AppState {
       key("C"),
     ));
     rows.push(command(
+      PaletteAct::OpenLibrary,
+      "Open the library: places, contexts, resources, schedules".into(),
+      None,
+    ));
+    rows.push(command(
       PaletteAct::OpenQuests,
       "Switch quest".into(),
       key("Q"),
@@ -249,6 +261,48 @@ impl AppState {
       PaletteAct::NewQuestWith,
       format!("New quest with {name}"),
     ));
+    rows
+  }
+
+  /// For each place, context, resource and schedule: using it ("I'm at
+  /// Home", "Turn on Online") and renaming it. Offered only once something
+  /// is typed, so they never crowd out the commands.
+  fn referent_rows(&self) -> Vec<PaletteRow> {
+    let row = |act, label: String, kind: RefKind| PaletteRow {
+      act,
+      kind: RowKind::Referent(kind),
+      label,
+      detail: Some(kind.heading().trim_end_matches('s').to_string()),
+      state: None,
+    };
+    let mut rows = Vec::new();
+    let here = self.place();
+    for section in self.library() {
+      let kind = section.kind;
+      for item in section.items {
+        match item.key {
+          RefKey::Place(id) if here != Some(id) => rows.push(row(
+            PaletteAct::SetPlace(Some(id)),
+            format!("I'm at {}", item.name),
+            kind,
+          )),
+          RefKey::Context(id) => {
+            let on = self.active_contexts().contains(&id);
+            rows.push(row(
+              PaletteAct::ToggleContext(id),
+              format!("Turn {} {}", if on { "off" } else { "on" }, item.name),
+              kind,
+            ));
+          }
+          _ => {}
+        }
+        rows.push(row(
+          PaletteAct::RenameReferent(item.key),
+          format!("Rename {} {}", kind.noun(), item.name),
+          kind,
+        ));
+      }
+    }
     rows
   }
 }

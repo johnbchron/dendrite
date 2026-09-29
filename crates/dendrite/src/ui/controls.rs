@@ -66,13 +66,43 @@ where
     on_press,
   )
   .disabled(!enabled)
-  .padding(Padding::from_vh(space::XS + space::HAIR, space::M))
+  .padding(Padding::from_vh(space::CONTROL_Y, space::M + space::XS))
   .corner_radius(radius::CONTROL)
   .background_color(theme.accent)
   .active_background_color(theme.focus)
   .disabled_background_color(theme.sunken)
   .border_color(Color::TRANSPARENT)
   .hovered_border_color(theme.text)
+}
+
+/// A destructive action, outlined in the palette's alarm colour so it
+/// never reads as the thing to do, but stays in plain sight.
+pub(super) fn danger_btn<S, F>(
+  text: S,
+  theme: &'static Theme,
+  on_press: F,
+) -> impl WidgetView<AppState> + use<S, F>
+where
+  S: Into<String>,
+  F: Fn(&mut AppState) + Send + Sync + 'static,
+{
+  button(
+    flex_row((
+      icon_label(Icon::Trash, size::ICON).color(theme.cycle),
+      label(text.into())
+        .text_size(text::CONTROL)
+        .color(theme.cycle),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(space::XS.px()),
+    on_press,
+  )
+  .padding(Padding::from_vh(space::CONTROL_Y, space::CONTROL_X))
+  .corner_radius(radius::CONTROL)
+  .background_color(Color::TRANSPARENT)
+  .active_background_color(theme.sunken)
+  .border_color(theme.rule)
+  .hovered_border_color(theme.cycle)
 }
 
 /// One segment of a [`group`]: flat, so the group's frame carries the shape
@@ -96,7 +126,7 @@ where
   };
   button(btn_label(text, theme), on_press)
     .disabled(!enabled)
-    .padding(Padding::from_vh(space::XS, space::S))
+    .padding(Padding::from_vh(space::CONTROL_Y, space::CONTROL_X))
     .corner_radius(radius::CONTROL)
     .background_color(ground)
     .active_background_color(theme.rule)
@@ -159,7 +189,7 @@ where
     on_press,
   )
   .disabled(!enabled)
-  .padding(Padding::from_vh(space::XS, space::S))
+  .padding(Padding::from_vh(space::CONTROL_Y, space::CONTROL_X))
   .corner_radius(radius::CONTROL)
   .background_color(ground)
   .active_background_color(theme.rule)
@@ -212,7 +242,7 @@ where
   // Filling the width inside the button is what pins the content left: the
   // button centres its child, and a full-width child has nowhere to go.
   button(sized_box(content).expand_width(), on_press)
-    .padding(Padding::from_vh(space::XS, space::S))
+    .padding(Padding::from_vh(space::CONTROL_Y, space::CONTROL_X))
     .corner_radius(radius::CONTROL)
     .background_color(ground)
     .active_background_color(theme.rule)
@@ -342,7 +372,7 @@ pub(super) fn chip<S: Into<String>>(
   theme: &'static Theme,
 ) -> impl WidgetView<AppState> + use<S> {
   sized_box(label(text.into()).text_size(text::LABEL).color(theme.text))
-    .padding(Padding::from_vh(space::HAIR, space::S))
+    .padding(Padding::from_vh(space::XS, space::CONTROL_X))
     .background_color(color)
     .corner_radius(radius::PILL)
 }

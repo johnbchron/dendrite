@@ -13,6 +13,7 @@
 mod controls;
 mod inspector;
 mod lens;
+mod library;
 mod now;
 mod palette;
 mod toolbar;
@@ -113,6 +114,14 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
       left:   0.0,
     })
   }));
+  let library = layer(data.library_open().then(|| {
+    sized_box(appear(DROP, library::library(data))).padding(Padding {
+      top:    size::TOP_BAR + space::XS,
+      right:  space::M,
+      bottom: 0.0,
+      left:   0.0,
+    })
+  }));
   let quests = layer(data.picker_open().then(|| {
     sized_box(appear(DROP, lens::switcher(data))).padding(Padding {
       top:    size::TOP_BAR + space::XS,
@@ -135,6 +144,7 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     zstack_item(palette, UnitPoint::TOP),
     zstack_item(backdrop, UnitPoint::TOP_LEFT),
     zstack_item(settings, UnitPoint::TOP_RIGHT),
+    zstack_item(library, UnitPoint::TOP_RIGHT),
     zstack_item(quests, UnitPoint::TOP_LEFT),
   ))
   .alignment(UnitPoint::TOP_LEFT);

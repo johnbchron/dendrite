@@ -13,10 +13,10 @@ use crate::{
 const THEME_KEY: &str = "palette";
 
 /// Default width of the inspector card, in logical pixels.
-pub(super) const INSPECTOR_WIDTH: f64 = 320.0;
+pub(super) const INSPECTOR_WIDTH: f64 = 380.0;
 /// How narrow and how wide the inspector card may be dragged.
-pub(super) const INSPECTOR_MIN: f64 = 280.0;
-pub(super) const INSPECTOR_MAX: f64 = 560.0;
+pub(super) const INSPECTOR_MIN: f64 = 320.0;
+pub(super) const INSPECTOR_MAX: f64 = 640.0;
 
 /// A popover, or the command palette; at most one is open at a time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,6 +27,8 @@ pub(super) enum Popover {
   Quests,
   /// The command palette.
   Palette,
+  /// The library of places, contexts, resources and schedules.
+  Library,
 }
 
 /// The inspector's width, resized by dragging its divider.
@@ -110,24 +112,25 @@ impl AppState {
 
   /// Whether a popover that a click anywhere else should close is open.
   pub fn dismissable_open(&self) -> bool {
-    matches!(self.popover, Some(Popover::Settings | Popover::Quests))
+    matches!(
+      self.popover,
+      Some(Popover::Settings | Popover::Quests | Popover::Library)
+    )
   }
 
   /// Close every popover, and the palette.
-  pub fn close_popovers(&mut self) { self.popover = None; }
+  pub fn close_popovers(&mut self) {
+    self.popover = None;
+    self.library_edit = None;
+    self.library_draft.clear();
+  }
 
   /// Close `popover`, if it is the one open.
   pub(super) fn close(&mut self, popover: Popover) {
     if self.popover == Some(popover) {
-      self.popover = None;
+      self.close_popovers();
     }
   }
-
-  /// Whether the inspector's "more actions" list is showing.
-  pub fn more_open(&self) -> bool { self.more_open }
-
-  /// Show or hide the inspector's "more actions" list.
-  pub fn toggle_more(&mut self) { self.more_open = !self.more_open; }
 
   /// The latest camera request, handed to the canvas view.
   pub fn camera(&self) -> Camera { self.camera }

@@ -22,6 +22,8 @@
 //! - `quests` and `switcher`: the quest lens, quest membership, and the quest
 //!   switcher.
 //! - `now`: the Now tray.
+//! - `library`: every place, context, resource and schedule, edited in one
+//!   popover.
 //! - `palette`: the command palette.
 //! - `chrome`, `toast` and `commands`: panels and popovers, the undo toast, and
 //!   the key map's commands.
@@ -31,6 +33,7 @@ mod chrome;
 mod commands;
 mod edit;
 mod facts;
+mod library;
 mod link;
 mod navigate;
 mod now;
@@ -60,6 +63,7 @@ use self::{
 };
 pub use self::{
   facts::SAFETY_TICK,
+  library::{LibraryItem, LibrarySection, RefKey, RefKind},
   link::AtomOffer,
   now::SoonItem,
   palette::{PaletteRow, RowKind},
@@ -109,8 +113,6 @@ pub struct AppState {
   theme:              &'static Theme,
   /// Whether the Now tray is open (rather than collapsed to its pill).
   now_open:           bool,
-  /// Whether the inspector's "more actions" list is showing.
-  more_open:          bool,
   /// Whether the inspector's list of quests to add the selection to is
   /// showing.
   quests_open:        bool,
@@ -151,6 +153,10 @@ pub struct AppState {
   place_picker:       bool,
   /// The selected condition's "Satisfied by" form, while it is open.
   source:             Option<SourceDraft>,
+  /// The referent whose name the library is editing, if any.
+  library_edit:       Option<RefKey>,
+  /// The library's name field's text.
+  library_draft:      String,
 }
 
 /// A text field that commits as it is typed in.
@@ -190,7 +196,6 @@ impl AppState {
       quest_query: Query::default(),
       theme: Theme::DEFAULT,
       now_open: false,
-      more_open: false,
       quests_open: false,
       toasts: Toasts::default(),
       palette_query: Query::default(),
@@ -208,6 +213,8 @@ impl AppState {
       free_draft: String::new(),
       place_picker: false,
       source: None,
+      library_edit: None,
+      library_draft: String::new(),
     };
     state.theme = state.stored_theme();
     state

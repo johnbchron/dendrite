@@ -14,11 +14,11 @@ use xilem::{
 use crate::{
   focus::FieldKey,
   icons::Icon,
-  state::{AppState, FormulaInfo, ReferentInfo},
+  state::{AppState, FormulaInfo, RefKey, ReferentInfo},
   theme::Theme,
-  themed::{FocusKey as _, field},
+  themed::{Anchor, FocusKey as _, field, tooltip},
   tokens::{space, text},
-  ui::controls::{body, fill, free_presets, icon_btn, muted, section},
+  ui::controls::{body, fill, free_presets, icon_btn, muted, section, seg},
 };
 
 /// The referent's card, or nothing for an atom with nothing to edit (a
@@ -28,10 +28,11 @@ pub(super) fn referent_card(
   formula: &FormulaInfo,
 ) -> Option<Box<AnyWidgetView<AppState>>> {
   let theme = data.theme();
+  let key = formula.referent.key();
   let card = match &formula.referent {
     ReferentInfo::Date | ReferentInfo::Missing => return None,
     ReferentInfo::Place { here, .. } => flex_col((
-      section("Place", theme),
+      heading("Place", key, theme),
       name_field(data, theme),
       muted(
         if *here {
@@ -46,7 +47,7 @@ pub(super) fn referent_card(
     .gap(space::XS.px())
     .boxed(),
     ReferentInfo::Resource { balance, .. } => flex_col((
-      section("Resource", theme),
+      heading("Resource", key, theme),
       name_field(data, theme),
       flex_row((
         body("Balance", theme),
@@ -92,7 +93,7 @@ pub(super) fn referent_card(
         None
       };
       flex_col((
-        section("Schedule", theme),
+        heading("Schedule", key, theme),
         name_field(data, theme),
         flex_col(rows)
           .cross_axis_alignment(CrossAxisAlignment::Fill)
@@ -109,7 +110,7 @@ pub(super) fn referent_card(
       .boxed()
     }
     ReferentInfo::Context { on, .. } => flex_col((
-      section("Context", theme),
+      heading("Context", key, theme),
       name_field(data, theme),
       muted(if *on { "On." } else { "Off." }, theme),
     ))
@@ -140,4 +141,32 @@ fn name_field(
   )
   .size(text::CONTROL)
   .focus_key(FieldKey::ReferentName)
+}
+
+/// The card's heading, with a way to the referent in the library, where it
+/// can also be deleted once nothing uses it.
+fn heading(
+  title: &'static str,
+  key: Option<RefKey>,
+  theme: &'static Theme,
+) -> impl WidgetView<AppState> + use<> {
+  flex_row((
+    fill(section(title, theme)),
+    key.map(|key| {
+      tooltip(
+        "Rename or delete it in the library",
+        theme,
+        Anchor::End,
+        seg(
+          "Library\u{2026}",
+          theme,
+          false,
+          true,
+          move |s: &mut AppState| s.rename_referent(key),
+        ),
+      )
+    }),
+  ))
+  .cross_axis_alignment(CrossAxisAlignment::Center)
+  .gap(space::S.px())
 }

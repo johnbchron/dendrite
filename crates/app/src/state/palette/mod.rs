@@ -9,9 +9,9 @@
 
 mod rows;
 
-use base::{NodeId, NodeState, QuestId};
+use base::{ContextId, NodeId, NodeState, PlaceId, QuestId};
 
-use super::{AppState, chrome::Popover};
+use super::{AppState, RefKey, RefKind, chrome::Popover};
 use crate::{camera::ZoomStep, focus::FieldKey, query::Query};
 
 /// Most rows the palette shows; past that, typing narrows.
@@ -46,6 +46,14 @@ pub enum PaletteAct {
   OpenQuests,
   /// Remove unused formula conditions and referents.
   Prune,
+  /// Open the library of places, contexts, resources and schedules.
+  OpenLibrary,
+  /// Declare where I am (`None`: nowhere I have named).
+  SetPlace(Option<PlaceId>),
+  /// Turn a context on or off.
+  ToggleContext(ContextId),
+  /// Put the cursor in a referent's name, in the library.
+  RenameReferent(RefKey),
   /// Switch palette (colour theme), by id.
   Theme(&'static str),
   /// The selection's primary action (complete, reopen, satisfy...).
@@ -77,6 +85,8 @@ pub enum RowKind {
   Command,
   /// A quest.
   Quest,
+  /// A place, context, resource or schedule.
+  Referent(RefKind),
 }
 
 /// One row of the palette.
@@ -171,16 +181,7 @@ impl AppState {
   pub fn run_palette(&mut self, act: PaletteAct) {
     self.close(Popover::Palette);
     match act {
-      PaletteAct::GoTo(node) => {
-        // A node outside the lens is not drawn: leave the lens to show it.
-        let hidden = self
-          .active_quest
-          .is_some_and(|q| !base::scope(self.lock().graph(), q).contains(node));
-        if hidden {
-          self.set_active_quest(None);
-        }
-        self.go_to(node);
-      }
+      PaletteAct::GoTo(node) => self.reveal(node),
       PaletteAct::Quest(quest) => self.set_active_quest(quest),
       PaletteAct::NewTask => self.add_task(),
       PaletteAct::NewCondition => self.add_condition(),
@@ -192,6 +193,10 @@ impl AppState {
       PaletteAct::PickPlace => self.toggle_place_picker(),
       PaletteAct::OpenQuests => self.toggle_picker(),
       PaletteAct::Prune => self.prune(),
+      PaletteAct::OpenLibrary => self.toggle_library(),
+      PaletteAct::SetPlace(place) => self.set_place(place),
+      PaletteAct::ToggleContext(context) => self.toggle_context(context),
+      PaletteAct::RenameReferent(key) => self.rename_referent(key),
       PaletteAct::Theme(id) => self.set_theme(id),
       PaletteAct::Primary => self.toggle_selected(),
       PaletteAct::Require => {

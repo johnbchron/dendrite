@@ -145,6 +145,19 @@ pub(super) fn top_bar(
     ),
   );
 
+  let library = tooltip(
+    "Library: places, contexts, resources, schedules",
+    theme,
+    Anchor::End,
+    icon_btn(
+      Icon::MapPin,
+      theme,
+      data.library_open(),
+      true,
+      |s: &mut AppState| s.toggle_library(),
+    ),
+  );
+
   let settings = tooltip(
     "Settings",
     theme,
@@ -162,10 +175,11 @@ pub(super) fn top_bar(
     super::lens::pill(data),
     create,
     spacer(),
-    sized_box(super::palette::search_button(theme)).width(280.0.px()),
+    sized_box(super::palette::search_button(theme)).width(340.0.px()),
     spacer(),
     history,
     camera,
+    library,
     settings,
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -220,10 +234,10 @@ pub(super) fn settings_popover(
   sized_box(surface(
     active,
     Level::Popover,
-    space::S,
+    space::M,
     flex_col((
       sized_box(section("Palette", active))
-        .padding(Padding::from_vh(space::XS, space::S)),
+        .padding(Padding::from_vh(space::XS, space::CONTROL_X)),
       flex_col(rows)
         .cross_axis_alignment(CrossAxisAlignment::Fill)
         .gap(space::HAIR.px()),
@@ -231,5 +245,5 @@ pub(super) fn settings_popover(
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .gap(space::XS.px()),
   ))
-  .width(240.0.px())
+  .width(280.0.px())
 }

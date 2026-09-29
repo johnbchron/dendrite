@@ -37,4 +37,6 @@ pub enum FieldKey {
   FreeUntil,
   /// The selected condition's "Satisfied by" form.
   Source,
+  /// The name of the referent being edited in the library.
+  LibraryName,
 }

@@ -59,7 +59,7 @@ pub(super) fn palette(
     .collect();
   let empty = (shown == 0).then(|| {
     sized_box(muted("Nothing matches.", theme))
-      .padding(Padding::from_vh(space::XS, space::S))
+      .padding(Padding::from_vh(space::XS, space::CONTROL_X))
   });
   let footer = flex_row((
     muted(
@@ -75,7 +75,7 @@ pub(super) fn palette(
   sized_box(surface(
     theme,
     Level::Popover,
-    space::S,
+    space::M,
     flex_col((
       field(query.text, theme, |s: &mut AppState, v| {
         s.set_palette_text(v)
@@ -111,6 +111,9 @@ fn palette_row(
   let lead = match (row.kind, row.state) {
     (RowKind::Node, Some(state)) => state_dot(state, theme).boxed(),
     (RowKind::Quest, _) => icon(Icon::Flag, size::ICON, theme.muted).boxed(),
+    (RowKind::Referent(kind), _) => {
+      icon(super::library::glyph(kind), size::ICON, theme.muted).boxed()
+    }
     _ => icon(Icon::Command, size::ICON, theme.muted).boxed(),
   };
   row_button(
@@ -145,7 +148,7 @@ pub(super) fn search_button(
     .must_fill_major_axis(true),
     |s: &mut AppState| s.open_palette(false),
   )
-  .padding(Padding::from_vh(space::XS, space::M))
+  .padding(Padding::from_vh(space::CONTROL_Y, space::M))
   .corner_radius(radius::PILL)
   .background_color(theme.sunken)
   .active_background_color(theme.rule)

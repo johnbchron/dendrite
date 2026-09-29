@@ -112,6 +112,22 @@ pub enum ReferentInfo {
   Missing,
 }
 
+impl ReferentInfo {
+  /// Which referent it is, for opening it in the library.
+  pub fn key(&self) -> Option<super::RefKey> {
+    use super::RefKey;
+    match self {
+      ReferentInfo::Place { id, .. } => Some(RefKey::Place(*id)),
+      ReferentInfo::Resource { id, .. } => Some(RefKey::Resource(*id)),
+      ReferentInfo::Schedule { id, .. } => Some(RefKey::Schedule(*id)),
+      ReferentInfo::Context { id, .. } => Some(RefKey::Context(*id)),
+      ReferentInfo::Date
+      | ReferentInfo::Free { .. }
+      | ReferentInfo::Missing => None,
+    }
+  }
+}
+
 /// A node the reason names, with a sentence on why it matters when it is a
 /// formula condition ("Opens Thu 1 Oct, in 3 days").
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -480,7 +496,6 @@ impl AppState {
   pub fn select(&mut self, node: Option<NodeId>) {
     self.cancel_link();
     self.live_edit = None;
-    self.more_open = false;
     self.quests_open = false;
     if let Some(node) = node {
       self.recent.remember(node);
@@ -496,6 +511,18 @@ impl AppState {
         .map(|n| n.name.clone())
         .unwrap_or_default()
     };
+  }
+
+  /// Select `node` and bring it into view, leaving the quest lens first
+  /// if the node is outside it and so not drawn.
+  pub fn reveal(&mut self, node: NodeId) {
+    let hidden = self
+      .active_quest
+      .is_some_and(|q| !base::scope(self.lock().graph(), q).contains(node));
+    if hidden {
+      self.set_active_quest(None);
+    }
+    self.go_to(node);
   }
 
   /// Select `node` and bring it into view on the canvas: the "go to" used

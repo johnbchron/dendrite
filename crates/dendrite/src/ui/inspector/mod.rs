@@ -34,8 +34,8 @@ use self::{
   source::{source_block, title_offers},
 };
 use super::controls::{
-  chip, fill, icon_btn, label, muted, primary_btn, row_button, section, spacer,
-  state_str,
+  chip, danger_btn, fill, label, muted, primary_btn, row_button, section,
+  spacer, state_str,
 };
 use crate::{
   focus::FieldKey,
@@ -46,7 +46,7 @@ use crate::{
     Anchor, DividerAction, FocusKey as _, Level, divider, field, surface,
     tooltip,
   },
-  tokens::{radius, size, space, text},
+  tokens::{size, space, text},
 };
 
 /// The card, scrolling when the node's details outgrow it.
@@ -135,6 +135,9 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   .gap(space::S.px())
   .must_fill_major_axis(true);
 
+  // Delete sits beside the primary action rather than behind a menu: it
+  // is one of the few things a node can have done to it, and the toast
+  // offers Undo.
   let primary = info.primary;
   let actions = flex_row((
     primary_btn(
@@ -145,22 +148,15 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     ),
     spacer(),
     tooltip(
-      "More actions",
+      "Delete \u{b7} Del",
       theme,
       Anchor::End,
-      icon_btn(
-        Icon::Ellipsis,
-        theme,
-        data.more_open(),
-        true,
-        |s: &mut AppState| s.toggle_more(),
-      ),
+      danger_btn("Delete", theme, |s: &mut AppState| s.delete_selected()),
     ),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Center)
+  .gap(space::S.px())
   .must_fill_major_axis(true);
-
-  let more = data.more_open().then(|| more_actions(theme));
 
   let quests = quest_list(data, &info.quests);
 
@@ -210,7 +206,6 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     actions,
     source,
     card,
-    more,
     quests,
     section(format!("Requires · {}", info.requirements.len()), theme),
     edge_list(&info.requirements, theme),
@@ -219,31 +214,8 @@ fn inspector(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
     edge_list(&info.dependents, theme),
   ))
   .cross_axis_alignment(CrossAxisAlignment::Fill)
-  .gap(space::S.px())
+  .gap(space::M.px())
   .boxed()
-}
-
-/// The actions behind "more": deleting (quests have their own section).
-fn more_actions(theme: &'static Theme) -> impl WidgetView<AppState> + use<> {
-  let delete = row_button(
-    theme,
-    false,
-    flex_row((
-      icon(Icon::Trash, size::ICON, theme.cycle),
-      label("Delete").text_size(text::BODY).color(theme.cycle),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(space::S.px()),
-    |s: &mut AppState| s.delete_selected(),
-  );
-  sized_box(
-    flex_col((delete,))
-      .cross_axis_alignment(CrossAxisAlignment::Fill)
-      .gap(space::HAIR.px()),
-  )
-  .padding(Padding::all(space::XS))
-  .corner_radius(radius::CONTROL)
-  .background_color(theme.sunken)
 }
 
 /// A list row that acts on press: `glyph` in `color`, then `content` taking

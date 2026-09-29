@@ -12,7 +12,7 @@
 
 use base::{Atom, Event, NodeId};
 
-use super::{AppState, LiveEdit};
+use super::{AppState, LiveEdit, RefKey};
 use crate::formula::{describe, phrase};
 
 /// What has been typed into the referent card's fields.
@@ -93,51 +93,13 @@ impl AppState {
     if name.is_empty() {
       return;
     }
-    let atom = self.selected_atom();
-    let (key, event) = {
-      let store = self.lock();
-      let graph = store.graph();
-      match atom {
-        Some(Atom::At { place }) => {
-          let Some(p) = graph.place(place).filter(|p| p.name != name) else {
-            return;
-          };
-          (place.to_u128(), Event::PlaceChanged {
-            place,
-            name,
-            within: p.within,
-          })
-        }
-        Some(Atom::Has { resource, .. }) => {
-          if graph.resource(resource).is_none_or(|r| r.name == name) {
-            return;
-          }
-          (resource.to_u128(), Event::ResourceRenamed {
-            resource,
-            name,
-          })
-        }
-        Some(Atom::Within { schedule }) => {
-          let Some(s) = graph.schedule(schedule).filter(|s| s.name != name)
-          else {
-            return;
-          };
-          (schedule.to_u128(), Event::ScheduleChanged {
-            schedule,
-            name,
-            spans: s.spans.clone(),
-          })
-        }
-        Some(Atom::In { context }) => {
-          if graph.context(context).is_none_or(|c| c.name == name) {
-            return;
-          }
-          (context.to_u128(), Event::ContextRenamed { context, name })
-        }
-        _ => return,
-      }
+    let Some(key) = self.selected_atom().as_ref().and_then(RefKey::of) else {
+      return;
     };
-    self.commit_live(LiveEdit::ReferentName(key), vec![event]);
+    let Some(event) = key.rename(self.lock().graph(), name) else {
+      return;
+    };
+    self.commit_live(LiveEdit::ReferentName(key.raw()), vec![event]);
   }
 
   /// The balance field changed: keep the text as typed, and set the

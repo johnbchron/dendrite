@@ -18,6 +18,16 @@ pub mod space {
   pub const M: f64 = 12.0;
   /// Between sections inside a card; overlay margins from the window edge.
   pub const L: f64 = 16.0;
+  /// Between the groups of a panel: the context bar and the list below it.
+  pub const XL: f64 = 20.0;
+
+  /// The vertical inset inside a button, list row or chip. Off the grid on
+  /// purpose, like [`HAIR`]: with a [`CONTROL`](super::text::CONTROL)
+  /// label it makes a control about 34 px tall, a comfortable pointer
+  /// target.
+  pub const CONTROL_Y: f64 = 7.0;
+  /// The horizontal inset inside a button, list row or chip.
+  pub const CONTROL_X: f64 = 10.0;
 }
 
 /// Corner radii, in logical pixels.
@@ -33,25 +43,25 @@ pub mod radius {
 /// The type scale, in logical pixels. Inter throughout.
 pub mod text {
   /// The inspector's editable node name: the largest text in the chrome.
-  pub const TITLE: f32 = 18.0;
+  pub const TITLE: f32 = 20.0;
   /// Body text: list rows, reason lines, popover items.
-  pub const BODY: f32 = 14.0;
+  pub const BODY: f32 = 18.0;
   /// Button and field labels.
-  pub const CONTROL: f32 = 13.0;
+  pub const CONTROL: f32 = 15.0;
   /// Secondary text: counts, hints, metadata.
-  pub const SECONDARY: f32 = 12.0;
+  pub const SECONDARY: f32 = 15.0;
   /// Section labels (set in caps) and chips.
-  pub const LABEL: f32 = 11.0;
+  pub const LABEL: f32 = 15.0;
 }
 
 /// Fixed chrome dimensions, in logical pixels.
 pub mod size {
   /// Height of the top bar.
-  pub const TOP_BAR: f64 = 44.0;
+  pub const TOP_BAR: f64 = 52.0;
   /// Width of the drag handle along the inspector card's left edge.
   pub const DIVIDER: f64 = 6.0;
   /// Icon size inside a control.
-  pub const ICON: f32 = 16.0;
+  pub const ICON: f32 = 18.0;
 }
 
 /// Animation timing, in milliseconds.

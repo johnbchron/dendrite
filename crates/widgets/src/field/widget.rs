@@ -19,13 +19,13 @@ use super::{FieldAction, Look};
 /// Paints the field's frame around a transparent Masonry `TextInput`, and
 /// reports focus changes.
 pub struct FieldWidget {
-  child:          WidgetPod<widgets::TextInput>,
-  look:           Look,
+  child: WidgetPod<widgets::TextInput>,
+  look: Look,
   /// Whether Escape, after giving up focus, goes on to the key map too.
   escape_bubbles: bool,
   /// Set between a press inside the field and the focus change it causes,
   /// so the view can tell a click from keyboard focus.
-  pressed:        bool,
+  pressed: bool,
 }
 
 impl FieldWidget {
@@ -89,6 +89,17 @@ impl Widget for FieldWidget {
         ctx.set_handled();
       }
     }
+    // A submitting Enter bubbles up too (see vendor/README.md), after the
+    // text area has reported it: the edit is done, so leave the field. It
+    // stops here, since the key map reads Enter as "rename" or "accept".
+    if let TextEvent::Keyboard(key) = event
+      && key.state == KeyState::Down
+      && key.key == Key::Named(NamedKey::Enter)
+      && ctx.has_focus_target()
+    {
+      ctx.resign_focus();
+      ctx.set_handled();
+    }
   }
 
   fn on_pointer_event(
@@ -113,7 +124,7 @@ impl Widget for FieldWidget {
   ) {
     if let Update::ChildFocusChanged(focused) = event {
       ctx.submit_action::<FieldAction>(FieldAction::Focus {
-        focused:    *focused,
+        focused: *focused,
         by_pointer: std::mem::take(&mut self.pressed),
       });
       ctx.request_paint_only();
@@ -155,7 +166,9 @@ impl Widget for FieldWidget {
     stroke(scene, &ring, color, width);
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,

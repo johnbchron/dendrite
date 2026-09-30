@@ -5,7 +5,7 @@
 An unmodified copy of `masonry` 0.4.0 from crates.io with
 [`masonry.patch`](./masonry.patch) applied, wired in through
 `[patch.crates-io]` in the workspace `Cargo.toml`. The patch changes
-`TextArea`'s key handling in two ways:
+`TextArea`'s key handling in three ways:
 
 - **Command-key chords are not text.** Upstream inserts the plain letter for
   Ctrl+K (Cmd+K on macOS), so shortcuts pressed in a text field typed into it.
@@ -14,6 +14,10 @@ An unmodified copy of `masonry` 0.4.0 from crates.io with
 - **Up and Down pass through single-line text.** With no line to move to,
   they are left unhandled, so a search field can move the highlight of the
   list under it.
+- **A submitting Enter bubbles.** Upstream marks it handled after sending
+  `TextAction::Entered`, so no widget above can act on it. Left unhandled,
+  it reaches the field's frame (`crates/widgets/src/field/widget.rs`), which
+  gives up focus and stops it there, before the key map sees it.
 
 It also allows `unfulfilled_lint_expectations` in the crate's `Cargo.toml`:
 crates.io builds cap a dependency's lints, a path dependency's are not, and

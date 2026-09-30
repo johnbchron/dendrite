@@ -46,14 +46,14 @@ where
 /// The view created by [`field`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct Field<State, Action> {
-  contents:       String,
-  look:           Look,
-  size:           f32,
-  placeholder:    ArcStr,
-  on_changed:     Callback<State, Action, String>,
-  on_enter:       Option<Callback<State, Action, String>>,
-  mount:          Option<Box<dyn Mount>>,
-  on_focus:       Option<Callback<State, Action, bool>>,
+  contents: String,
+  look: Look,
+  size: f32,
+  placeholder: ArcStr,
+  on_changed: Callback<State, Action, String>,
+  on_enter: Option<Callback<State, Action, String>>,
+  mount: Option<Box<dyn Mount>>,
+  on_focus: Option<Callback<State, Action, bool>>,
   escape_bubbles: bool,
 }
 
@@ -231,6 +231,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         },
       };
     }
+
     let Some(FieldAction::Focus {
       focused,
       by_pointer,
@@ -238,6 +239,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     else {
       return MessageResult::Stale;
     };
+
     // Focus from the keyboard selects the whole text, so typing replaces it,
     // as a rename field should; a click keeps the caret where it landed.
     if focused && !by_pointer {

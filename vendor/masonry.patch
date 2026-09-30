@@ -44,7 +44,19 @@
                          self.editor
                              .driver(fctx, lctx)
                              .insert_or_replace_selection(" ");
-@@ -724,7 +729,7 @@
+@@ -716,6 +721,11 @@
+                             ctx.submit_action::<Self::Action>(TextAction::Entered(
+                                 self.text().to_string(),
+                             ));
++                            // Dendrite patch: leave a submitting Enter
++                            // unhandled, so the widget around the field can
++                            // act on it too (give up focus). Nothing changed
++                            // in the text, so there is nothing more to do.
++                            return;
+                         }
+                     }
+ 
+@@ -724,7 +734,7 @@
                          // Note that this doesn't allow input of the tab character; we need to be more clever here at some point
                          return;
                      }

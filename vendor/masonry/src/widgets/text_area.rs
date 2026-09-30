@@ -721,6 +721,11 @@ impl<const EDITABLE: bool> Widget for TextArea<EDITABLE> {
                             ctx.submit_action::<Self::Action>(TextAction::Entered(
                                 self.text().to_string(),
                             ));
+                            // Dendrite patch: leave a submitting Enter
+                            // unhandled, so the widget around the field can
+                            // act on it too (give up focus). Nothing changed
+                            // in the text, so there is nothing more to do.
+                            return;
                         }
                     }
 

@@ -67,7 +67,7 @@ pub enum ZoomStep {
   In,
   /// One step further out.
   Out,
-  /// Back to 100%.
+  /// Back to [`ZOOM_RESET`].
   Reset,
 }
 

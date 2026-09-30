@@ -115,7 +115,11 @@ pub(super) fn top_bar(
       ),
       // The level doubles as the reset button.
       tooltip(
-        format!("Reset to 100% \u{b7} {}", chord("0")),
+        format!(
+          "Reset to {}% \u{b7} {}",
+          app::camera::zoom_percent(app::camera::ZOOM_RESET),
+          chord("0")
+        ),
         theme,
         Anchor::Center,
         seg(

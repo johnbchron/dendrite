@@ -1,5 +1,5 @@
 { pkgs, lib, crane, ... }: let
-  minimal_toolchain_fn = p: p.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal);
+  minimal_toolchain_fn = p: p.rust-bin.stable.latest.minimal;
 
   craneLib = (crane.mkLib pkgs).overrideToolchain minimal_toolchain_fn;
 

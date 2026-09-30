@@ -30,9 +30,9 @@
         overlays = [ (import rust-overlay) devshell.overlays.default ];
       };
 
-      dev-toolchain = p: p.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
+      dev-toolchain = p: p.rust-bin.stable.latest.default.override {
         extensions = [ "rust-src" "rust-analyzer" ];
-      });
+      };
 
       # avoids the pkg-config hook that devshell doesn't have
       make-pkg-config-path = packages:

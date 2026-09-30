@@ -174,17 +174,12 @@ fn named<Id: Copy>(
   graph: &Graph,
   today: Date,
 ) -> Vec<Offer> {
-  let mut scored: Vec<(u32, String, Id)> = referents
-    .filter_map(|(n, id)| {
-      let n = n.as_ref();
-      query::score(name, n).map(|s| (s, n.to_string(), id))
-    })
-    .collect();
-  scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-  let exact = scored.iter().any(|(_, n, _)| n.eq_ignore_ascii_case(name));
-  let mut out: Vec<Offer> = scored
+  let referents = referents.map(|(n, id)| (n.as_ref().to_string(), id));
+  let ranked = query::rank(name, referents, |(n, _)| n, |a, b| a.0.cmp(&b.0));
+  let exact = ranked.iter().any(|(n, _)| n.eq_ignore_ascii_case(name));
+  let mut out: Vec<Offer> = ranked
     .into_iter()
-    .map(|(_, _, id)| {
+    .map(|(_, id)| {
       let atom = atom(id);
       Offer {
         label: atom_label(graph, &atom, today),
@@ -682,34 +677,23 @@ fn ordinal(s: &str) -> Option<i8> {
 
 fn month(s: &str) -> Option<i8> {
   const NAMES: [&str; 12] = [
-    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct",
-    "nov", "dec",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
   ];
-  if s.len() < 3 {
-    return None;
-  }
-  NAMES
-    .iter()
-    .position(|m| s.starts_with(m) && full_month(m).starts_with(s))
+  (s.len() >= 3)
+    .then(|| NAMES.iter().position(|m| m.starts_with(s)))
+    .flatten()
     .map(|i| i as i8 + 1)
-}
-
-/// The whole name of a month from its first three letters.
-fn full_month(abbr: &str) -> &'static str {
-  match abbr {
-    "jan" => "january",
-    "feb" => "february",
-    "mar" => "march",
-    "apr" => "april",
-    "may" => "may",
-    "jun" => "june",
-    "jul" => "july",
-    "aug" => "august",
-    "sep" => "september",
-    "oct" => "october",
-    "nov" => "november",
-    _ => "december",
-  }
 }
 
 fn weekday(s: &str) -> Option<Weekday> {

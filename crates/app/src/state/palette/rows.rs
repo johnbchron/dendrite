@@ -34,26 +34,16 @@ impl AppState {
       rows.truncate(PALETTE_MAX);
       return (rows, total);
     }
-    let mut scored: Vec<(u32, RowKind, PaletteRow)> = rows
-      .into_iter()
-      .filter_map(|row| {
-        query::score(text, &row.label).map(|sc| (sc, row.kind, row))
-      })
-      .collect();
     // Best score; on a tie, nodes before commands before quests, then by
     // label, so the order is stable while typing.
-    scored.sort_by(|a, b| {
-      a.0
-        .cmp(&b.0)
-        .then(a.1.cmp(&b.1))
-        .then(a.2.label.cmp(&b.2.label))
-    });
-    let total = scored.len();
-    let rows = scored
-      .into_iter()
-      .take(PALETTE_MAX)
-      .map(|(_, _, row)| row)
-      .collect();
+    let mut rows = query::rank(
+      text,
+      rows,
+      |row| &row.label,
+      |a, b| a.kind.cmp(&b.kind).then(a.label.cmp(&b.label)),
+    );
+    let total = rows.len();
+    rows.truncate(PALETTE_MAX);
     (rows, total)
   }
 

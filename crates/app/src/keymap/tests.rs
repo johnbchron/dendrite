@@ -16,11 +16,7 @@ fn named(k: NamedKey) -> KeyboardEvent {
   down(Key::Named(k), Code::Unidentified, Modifiers::empty())
 }
 
-const CMD: Modifiers = if cfg!(target_os = "macos") {
-  Modifiers::META
-} else {
-  Modifiers::CONTROL
-};
+use super::bind::PRIMARY as CMD;
 
 const SELECTED: Flags = Flags {
   selection: true,

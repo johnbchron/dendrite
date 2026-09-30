@@ -1,7 +1,9 @@
 //! What a key means: the pure half of the key map, kept apart from the
 //! widget so it can be tested without one.
 
-use ui_events::keyboard::{Key, KeyState, KeyboardEvent, NamedKey};
+use ui_events::keyboard::{
+  Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey,
+};
 
 use super::{Command, Direction};
 use crate::{camera::ZoomStep, focus::FieldKey};
@@ -27,6 +29,13 @@ pub struct Flags {
 }
 
 /// How the command modifier is written on this platform, for hints.
+/// The platform's command modifier: Cmd on macOS, Ctrl elsewhere.
+pub(super) const PRIMARY: Modifiers = if cfg!(target_os = "macos") {
+  Modifiers::META
+} else {
+  Modifiers::CONTROL
+};
+
 const COMMAND_KEY: &str = if cfg!(target_os = "macos") {
   "Cmd"
 } else {
@@ -46,12 +55,7 @@ impl Binding {
       return None;
     }
     let m = key.modifiers;
-    // The platform's command modifier: Cmd on macOS, Ctrl elsewhere.
-    let cmd = if cfg!(target_os = "macos") {
-      m.meta()
-    } else {
-      m.ctrl()
-    };
+    let cmd = m.contains(PRIMARY);
     let plain = !cmd && !m.alt() && !m.meta() && !m.ctrl();
 
     if flags.query {
@@ -161,13 +165,11 @@ impl Binding {
     {
       return Some(c.to_ascii_lowercase());
     }
-    let name = format!("{:?}", key.code);
-    let rest = name.strip_prefix("Key")?;
-    let mut chars = rest.chars();
-    match (chars.next(), chars.next()) {
-      (Some(c), None) if c.is_ascii_alphabetic() => {
-        Some(c.to_ascii_lowercase())
-      }
+    // Only the letters a command chord uses.
+    match key.code {
+      Code::KeyK => Some('k'),
+      Code::KeyY => Some('y'),
+      Code::KeyZ => Some('z'),
       _ => None,
     }
   }

@@ -14,23 +14,10 @@ fn selection_never_matches_the_ready_border() {
   }
 }
 
-/// WCAG relative luminance of an opaque colour.
-fn luminance(c: Color) -> f64 {
-  let [r, g, b, _] = c.components;
-  let lin = |v: f32| {
-    let v = f64::from(v);
-    if v <= 0.040_45 {
-      v / 12.92
-    } else {
-      ((v + 0.055) / 1.055).powf(2.4)
-    }
-  };
-  0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-}
-
 /// WCAG contrast ratio between two opaque colours.
 fn contrast(a: Color, b: Color) -> f64 {
-  let (la, lb) = (luminance(a), luminance(b));
+  let lum = |c: Color| f64::from(c.discard_alpha().relative_luminance());
+  let (la, lb) = (lum(a), lum(b));
   (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 

@@ -5,6 +5,8 @@
 //! field; the arrow keys pass through it (it is single-line) to move the
 //! highlight here, via the key map.
 
+use std::cmp::Ordering;
+
 /// A query's text and the highlighted result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Query {
@@ -65,6 +67,22 @@ pub fn score(needle: &str, hay: &str) -> Option<u32> {
     last = i;
   }
   Some(1000 + (last - first.unwrap_or(0)) as u32)
+}
+
+/// The `items` that match `needle`, best match first, with `tie` breaking
+/// ties. `hay` is the text of an item to match against.
+pub fn rank<T>(
+  needle: &str,
+  items: impl IntoIterator<Item = T>,
+  hay: impl Fn(&T) -> &str,
+  tie: impl Fn(&T, &T) -> Ordering,
+) -> Vec<T> {
+  let mut scored: Vec<(u32, T)> = items
+    .into_iter()
+    .filter_map(|t| Some((score(needle, hay(&t))?, t)))
+    .collect();
+  scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| tie(&a.1, &b.1)));
+  scored.into_iter().map(|(_, t)| t).collect()
 }
 
 #[cfg(test)]

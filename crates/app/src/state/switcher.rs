@@ -77,15 +77,9 @@ impl AppState {
       });
     }
     let store = self.lock();
-    let mut quests: Vec<(u32, String, QuestId)> = store
-      .graph()
-      .quests()
-      .filter_map(|q| {
-        query::score(text, &q.name).map(|sc| (sc, q.name.clone(), q.id))
-      })
-      .collect();
-    quests.sort();
-    rows.extend(quests.into_iter().map(|(_, name, id)| QuestRow {
+    let quests = store.graph().quests().map(|q| (q.name.clone(), q.id));
+    let quests = query::rank(text, quests, |(name, _)| name, Ord::cmp);
+    rows.extend(quests.into_iter().map(|(name, id)| QuestRow {
       choice:  QuestChoice::Quest(id),
       label:   name,
       current: self.active_quest == Some(id),

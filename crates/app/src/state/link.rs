@@ -139,21 +139,18 @@ impl AppState {
     let existing: HashSet<NodeId> =
       graph.requirements_of(id).map(|e| e.to).collect();
     let today = self.today();
-    let mut scored: Vec<(u32, String, NodeId)> = graph
+    let names = graph
       .nodes()
       .filter(|n| n.id != id && !existing.contains(&n.id))
-      .filter_map(|n| {
-        let name = describe::node_name(graph, n, today);
-        query::score(&self.link_filter, &name).map(|sc| (sc, name, n.id))
-      })
-      .collect();
+      .map(|n| (describe::node_name(graph, n, today), n.id));
     // Best match first; the name, then the id, keep the order stable.
-    scored.sort();
-    let total = scored.len();
-    let v = scored
+    let ranked =
+      query::rank(&self.link_filter, names, |(name, _)| name, Ord::cmp);
+    let total = ranked.len();
+    let v = ranked
       .into_iter()
       .take(LINK_PICKER_MAX)
-      .map(|(_, name, id)| (id, name))
+      .map(|(name, id)| (id, name))
       .collect();
     (v, total)
   }

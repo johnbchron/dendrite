@@ -126,19 +126,14 @@ pub fn relative(now: Timestamp, at: Timestamp) -> String {
 /// year unless it is `today`'s.
 pub fn moment(at: Moment, today: Date) -> String {
   let dt = at.civil();
-  let mut out = format!(
-    "{} {} {}",
-    weekday(dt.weekday()),
-    dt.day(),
-    MONTHS[dt.month() as usize - 1]
-  );
+  let mut format = String::from("%a %-d %b");
   if dt.year() != today.year() {
-    out.push_str(&format!(" {}", dt.year()));
+    format.push_str(" %Y");
   }
   if dt.time() != jiff::civil::Time::midnight() {
-    out.push_str(&format!(" {:02}:{:02}", dt.hour(), dt.minute()));
+    format.push_str(" %H:%M");
   }
-  out
+  dt.strftime(&format).to_string()
 }
 
 /// A span of minutes: "45 min", "2 h", "1 h 30 min".
@@ -258,15 +253,14 @@ pub fn span(span: &Span, today: Date) -> String {
     Span::Once { start, end } => {
       let same_day = start.civil().date() == end.civil().date();
       let end_text = if same_day {
-        let t = end.civil();
-        format!("{:02}:{:02}", t.hour(), t.minute())
+        end.civil().strftime("%H:%M").to_string()
       } else {
         moment(*end, today)
       };
       let start_text = {
         let t = start.civil();
         let day = moment(Moment::on(t.date()), today);
-        format!("{day} {:02}:{:02}", t.hour(), t.minute())
+        format!("{day} {}", t.strftime("%H:%M"))
       };
       format!("{start_text} \u{2013} {end_text}")
     }
@@ -307,11 +301,6 @@ fn weekday(day: Weekday) -> &'static str {
     Weekday::Sunday => "Sun",
   }
 }
-
-const MONTHS: [&str; 12] = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
-  "Dec",
-];
 
 /// A duration for a timer: `at - now`, never negative.
 pub fn until(now: Timestamp, at: Timestamp) -> std::time::Duration {

@@ -63,10 +63,33 @@ pub(super) struct Derivations {
 pub(super) struct Caches {
   derivations: Mutex<Option<Arc<Derivations>>>,
   /// The layout of the last quest lens drawn, and what it was made from.
-  lens_layout: Mutex<Option<(LensKey, Arc<Layout>)>>,
+  lens_layout: Memo<LensKey, Layout>,
   /// The last canvas scene and what it was built from. Handing the canvas
   /// the same `Arc` is how it knows it has nothing to re-measure.
-  scene:       Mutex<Option<(SceneKey, Arc<CanvasScene>)>>,
+  scene:       Memo<SceneKey, CanvasScene>,
+}
+
+/// The last value built, and the key it was built for.
+struct Memo<K, V>(Mutex<Option<(K, Arc<V>)>>);
+
+impl<K, V> Default for Memo<K, V> {
+  fn default() -> Self { Self(Mutex::default()) }
+}
+
+impl<K: PartialEq, V> Memo<K, V> {
+  /// The value for `key`: the last one if it was built for the same key,
+  /// else a fresh one from `build`.
+  fn get_or(&self, key: K, build: impl FnOnce() -> V) -> Arc<V> {
+    let mut cache = self.0.lock().expect("cache mutex poisoned");
+    if let Some((k, value)) = cache.as_ref()
+      && *k == key
+    {
+      return value.clone();
+    }
+    let value = Arc::new(build());
+    *cache = Some((key, value.clone()));
+    value
+  }
 }
 
 impl Caches {
@@ -120,24 +143,18 @@ impl Caches {
     completed: &Completed,
     lens: Lens,
   ) -> Arc<Layout> {
-    let key = (store.revision(), lens);
-    let mut cache = self.lens_layout.lock().expect("cache mutex poisoned");
-    if let Some((k, layout)) = cache.as_ref()
-      && *k == key
-    {
-      return layout.clone();
-    }
-    let graph = store.graph();
-    let sub = match lens {
-      Lens::Quest(quest) => {
-        let scope = base::scope(graph, quest);
-        graph.induced(|n| scope.contains(n) && !completed.retired.contains(&n))
-      }
-      Lens::Completed => graph.induced(|n| completed.trees.contains(&n)),
-    };
-    let layout = Arc::new(Layout::compute(&sub, &LayoutConfig::default()));
-    *cache = Some((key, layout.clone()));
-    layout
+    self.lens_layout.get_or((store.revision(), lens), || {
+      let graph = store.graph();
+      let sub = match lens {
+        Lens::Quest(quest) => {
+          let scope = base::scope(graph, quest);
+          graph
+            .induced(|n| scope.contains(n) && !completed.retired.contains(&n))
+        }
+        Lens::Completed => graph.induced(|n| completed.trees.contains(&n)),
+      };
+      Layout::compute(&sub, &LayoutConfig::default())
+    })
   }
 
   /// The scene for `key`: the last one if it was built for the same key,
@@ -147,15 +164,7 @@ impl Caches {
     key: SceneKey,
     build: impl FnOnce() -> CanvasScene,
   ) -> Arc<CanvasScene> {
-    let mut cache = self.scene.lock().expect("cache mutex poisoned");
-    if let Some((k, scene)) = cache.as_ref()
-      && *k == key
-    {
-      return scene.clone();
-    }
-    let scene = Arc::new(build());
-    *cache = Some((key, scene.clone()));
-    scene
+    self.scene.get_or(key, build)
   }
 }
 

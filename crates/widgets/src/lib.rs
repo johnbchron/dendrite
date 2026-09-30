@@ -12,6 +12,7 @@
 //! - [`surface`]: a ground with a border and a shadow, for floating chrome.
 //! - [`timer`]: a keyed one-shot timer as a view.
 //! - [`tooltip`]: a label that appears under a control after a pause.
+//! - [`wrap`]: one view for every widget that wraps a single child.
 
 pub mod appear;
 pub mod divider;
@@ -20,3 +21,4 @@ pub mod hover_row;
 pub mod surface;
 pub mod timer;
 pub mod tooltip;
+pub mod wrap;

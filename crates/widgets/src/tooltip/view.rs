@@ -1,17 +1,9 @@
 //! The Xilem view that hosts [`TooltipWidget`].
 
-use masonry::core::NewWidget;
-use xilem::{
-  Pod, ViewCtx, WidgetView,
-  core::{
-    MessageContext, MessageResult, Mut, View, ViewId, ViewMarker,
-    ViewPathTracker,
-  },
-};
+use masonry::core::{NewWidget, Widget, WidgetMut};
 
 use super::{Anchor, Look, TooltipWidget};
-
-const CHILD: ViewId = ViewId::new(0);
+use crate::wrap::{Wrap, Wrapper, wrap};
 
 /// `child` with a tooltip reading `text`.
 pub fn tooltip<V>(
@@ -20,111 +12,55 @@ pub fn tooltip<V>(
   anchor: Anchor,
   child: V,
 ) -> Tooltip<V> {
-  Tooltip {
-    text: text.into(),
-    look,
-    anchor,
+  wrap(
+    TooltipProps {
+      text: text.into(),
+      look,
+      anchor,
+    },
     child,
-  }
+  )
 }
 
 /// The view created by [`tooltip`].
-#[must_use = "View values do nothing unless provided to Xilem."]
-pub struct Tooltip<V> {
+pub type Tooltip<V> = Wrap<TooltipProps, V>;
+
+/// What a [`Tooltip`] is built from.
+pub struct TooltipProps {
   text:   String,
   look:   Look,
   anchor: Anchor,
-  child:  V,
 }
 
-impl<V> ViewMarker for Tooltip<V> {}
-impl<State, Action, V> View<State, Action, ViewCtx> for Tooltip<V>
-where
-  State: 'static,
-  Action: 'static,
-  V: WidgetView<State, Action>,
-{
-  type Element = Pod<TooltipWidget>;
-  type ViewState = V::ViewState;
+impl<State, Action> Wrapper<State, Action> for TooltipProps {
+  type Widget = TooltipWidget;
 
-  fn build(
-    &self,
-    ctx: &mut ViewCtx,
-    app_state: &mut State,
-  ) -> (Self::Element, Self::ViewState) {
-    let (child, child_state) =
-      ctx.with_id(CHILD, |ctx| self.child.build(ctx, app_state));
-    let widget = TooltipWidget::new(
-      NewWidget::erased(child.new_widget),
-      self.text.clone(),
-      self.anchor,
-      self.look.clone(),
-    );
-    (ctx.create_pod(widget), child_state)
+  fn build(&self, child: NewWidget<dyn Widget>) -> TooltipWidget {
+    TooltipWidget::new(child, self.text.clone(), self.anchor, self.look.clone())
   }
 
-  fn rebuild(
-    &self,
-    prev: &Self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) {
+  fn rebuild(&self, prev: &Self, widget: &mut WidgetMut<'_, TooltipWidget>) {
     let changed = self.text != prev.text
       || self.anchor != prev.anchor
       || self.look != prev.look;
     if changed {
       TooltipWidget::relabel(
-        &mut element,
+        widget,
         self.text.clone(),
         self.anchor,
         self.look.clone(),
       );
     }
-    ctx.with_id(CHILD, |ctx| {
-      self.child.rebuild(
-        &prev.child,
-        state,
-        ctx,
-        TooltipWidget::child_mut(&mut element).downcast(),
-        app_state,
-      );
-    });
   }
 
-  fn teardown(
-    &self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-  ) {
-    // The layer lives outside this widget's tree, so it would outlive it.
-    TooltipWidget::hide(&mut element);
-    ctx.with_id(CHILD, |ctx| {
-      self.child.teardown(
-        state,
-        ctx,
-        TooltipWidget::child_mut(&mut element).downcast(),
-      );
-    });
+  fn child_mut<'t>(
+    widget: &'t mut WidgetMut<'_, TooltipWidget>,
+  ) -> WidgetMut<'t, dyn Widget> {
+    TooltipWidget::child_mut(widget)
   }
 
-  fn message(
-    &self,
-    state: &mut Self::ViewState,
-    message: &mut MessageContext,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) -> MessageResult<Action> {
-    match message.take_first() {
-      Some(CHILD) => self.child.message(
-        state,
-        message,
-        TooltipWidget::child_mut(&mut element).downcast(),
-        app_state,
-      ),
-      _ => MessageResult::Stale,
-    }
+  // The layer lives outside this widget's tree, so it would outlive it.
+  fn teardown(widget: &mut WidgetMut<'_, TooltipWidget>) {
+    TooltipWidget::hide(widget);
   }
 }

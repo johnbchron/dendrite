@@ -19,13 +19,8 @@ use masonry::{
   util::{fill_color, stroke},
   vello::Scene,
 };
-use xilem::{
-  Pod, ViewCtx, WidgetView,
-  core::{
-    MessageContext, MessageResult, Mut, View, ViewId, ViewMarker,
-    ViewPathTracker,
-  },
-};
+
+use crate::wrap::{Wrap, Wrapper, wrap};
 
 /// Everything a surface paints.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,14 +45,6 @@ pub struct SurfaceWidget {
   child:   WidgetPod<dyn Widget>,
   style:   Style,
   padding: f64,
-}
-
-impl SurfaceWidget {
-  fn child_mut<'t>(
-    this: &'t mut WidgetMut<'_, Self>,
-  ) -> WidgetMut<'t, dyn Widget> {
-    this.ctx.get_mut(&mut this.widget.child)
-  }
 }
 
 impl Widget for SurfaceWidget {
@@ -140,115 +127,46 @@ impl Widget for SurfaceWidget {
 
 // --- the view -----------------------------------------------------------
 
-const CHILD: ViewId = ViewId::new(0);
-
 /// `child` on a surface painted with `style`, padded by `padding` logical
 /// pixels on every side.
-pub fn surface<State, Action, V>(
-  style: Style,
-  padding: f64,
-  child: V,
-) -> Surface<V>
-where
-  V: WidgetView<State, Action>,
-{
-  Surface {
-    style,
-    padding,
-    child,
-  }
+pub fn surface<V>(style: Style, padding: f64, child: V) -> Surface<V> {
+  wrap(SurfaceProps { style, padding }, child)
 }
 
 /// The view created by [`surface`].
-#[must_use = "View values do nothing unless provided to Xilem."]
-pub struct Surface<V> {
+pub type Surface<V> = Wrap<SurfaceProps, V>;
+
+/// What a [`Surface`] is built from.
+pub struct SurfaceProps {
   style:   Style,
   padding: f64,
-  child:   V,
 }
 
-impl<V> ViewMarker for Surface<V> {}
-impl<State, Action, V> View<State, Action, ViewCtx> for Surface<V>
-where
-  State: 'static,
-  Action: 'static,
-  V: WidgetView<State, Action>,
-{
-  type Element = Pod<SurfaceWidget>;
-  type ViewState = V::ViewState;
+impl<State, Action> Wrapper<State, Action> for SurfaceProps {
+  type Widget = SurfaceWidget;
 
-  fn build(
-    &self,
-    ctx: &mut ViewCtx,
-    app_state: &mut State,
-  ) -> (Self::Element, Self::ViewState) {
-    let (child, child_state) =
-      ctx.with_id(CHILD, |ctx| self.child.build(ctx, app_state));
-    let widget = SurfaceWidget {
-      child:   NewWidget::erased(child.new_widget).to_pod(),
+  fn build(&self, child: NewWidget<dyn Widget>) -> SurfaceWidget {
+    SurfaceWidget {
+      child:   child.to_pod(),
       style:   self.style,
       padding: self.padding,
-    };
-    (ctx.create_pod(widget), child_state)
+    }
   }
 
-  fn rebuild(
-    &self,
-    prev: &Self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) {
+  fn rebuild(&self, prev: &Self, widget: &mut WidgetMut<'_, SurfaceWidget>) {
     if self.style != prev.style {
-      element.widget.style = self.style;
-      element.ctx.request_paint_only();
+      widget.widget.style = self.style;
+      widget.ctx.request_paint_only();
     }
     if self.padding != prev.padding {
-      element.widget.padding = self.padding;
-      element.ctx.request_layout();
+      widget.widget.padding = self.padding;
+      widget.ctx.request_layout();
     }
-    ctx.with_id(CHILD, |ctx| {
-      self.child.rebuild(
-        &prev.child,
-        state,
-        ctx,
-        SurfaceWidget::child_mut(&mut element).downcast(),
-        app_state,
-      );
-    });
   }
 
-  fn teardown(
-    &self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-  ) {
-    ctx.with_id(CHILD, |ctx| {
-      self.child.teardown(
-        state,
-        ctx,
-        SurfaceWidget::child_mut(&mut element).downcast(),
-      );
-    });
-  }
-
-  fn message(
-    &self,
-    state: &mut Self::ViewState,
-    message: &mut MessageContext,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) -> MessageResult<Action> {
-    match message.take_first() {
-      Some(CHILD) => self.child.message(
-        state,
-        message,
-        SurfaceWidget::child_mut(&mut element).downcast(),
-        app_state,
-      ),
-      _ => MessageResult::Stale,
-    }
+  fn child_mut<'t>(
+    widget: &'t mut WidgetMut<'_, SurfaceWidget>,
+  ) -> WidgetMut<'t, dyn Widget> {
+    widget.ctx.get_mut(&mut widget.widget.child)
   }
 }

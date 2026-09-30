@@ -15,13 +15,8 @@ use masonry::{
   kurbo::{Affine, Point, Size, Vec2},
   vello::Scene,
 };
-use xilem::{
-  Pod, ViewCtx, WidgetView,
-  core::{
-    MessageContext, MessageResult, Mut, View, ViewId, ViewMarker,
-    ViewPathTracker,
-  },
-};
+
+use crate::wrap::{Wrap, Wrapper, wrap};
 
 /// Where the motion starts from, and how long it takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,14 +47,6 @@ pub struct AppearWidget {
   child:   WidgetPod<dyn Widget>,
   motion:  Motion,
   elapsed: f64,
-}
-
-impl AppearWidget {
-  fn child_mut<'t>(
-    this: &'t mut WidgetMut<'_, Self>,
-  ) -> WidgetMut<'t, dyn Widget> {
-    this.ctx.get_mut(&mut this.widget.child)
-  }
 }
 
 impl Widget for AppearWidget {
@@ -132,96 +119,31 @@ impl Widget for AppearWidget {
 
 // --- the view -----------------------------------------------------------
 
-const CHILD: ViewId = ViewId::new(0);
-
 /// `child`, easing in from `motion.from` when it first appears.
-pub fn appear<V>(motion: Motion, child: V) -> Appear<V> {
-  Appear { motion, child }
-}
+pub fn appear<V>(motion: Motion, child: V) -> Appear<V> { wrap(motion, child) }
 
 /// The view created by [`appear`].
-#[must_use = "View values do nothing unless provided to Xilem."]
-pub struct Appear<V> {
-  motion: Motion,
-  child:  V,
-}
+pub type Appear<V> = Wrap<Motion, V>;
 
-impl<V> ViewMarker for Appear<V> {}
-impl<State, Action, V> View<State, Action, ViewCtx> for Appear<V>
-where
-  State: 'static,
-  Action: 'static,
-  V: WidgetView<State, Action>,
-{
-  type Element = Pod<AppearWidget>;
-  type ViewState = V::ViewState;
+impl<State, Action> Wrapper<State, Action> for Motion {
+  type Widget = AppearWidget;
 
-  fn build(
-    &self,
-    ctx: &mut ViewCtx,
-    app_state: &mut State,
-  ) -> (Self::Element, Self::ViewState) {
-    let (child, child_state) =
-      ctx.with_id(CHILD, |ctx| self.child.build(ctx, app_state));
-    let widget = AppearWidget {
-      child:   NewWidget::erased(child.new_widget).to_pod(),
-      motion:  self.motion,
+  fn build(&self, child: NewWidget<dyn Widget>) -> AppearWidget {
+    AppearWidget {
+      child:   child.to_pod(),
+      motion:  *self,
       elapsed: 0.0,
-    };
-    (ctx.create_pod(widget), child_state)
-  }
-
-  fn rebuild(
-    &self,
-    prev: &Self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) {
-    element.widget.motion = self.motion;
-    ctx.with_id(CHILD, |ctx| {
-      self.child.rebuild(
-        &prev.child,
-        state,
-        ctx,
-        AppearWidget::child_mut(&mut element).downcast(),
-        app_state,
-      );
-    });
-  }
-
-  fn teardown(
-    &self,
-    state: &mut Self::ViewState,
-    ctx: &mut ViewCtx,
-    mut element: Mut<'_, Self::Element>,
-  ) {
-    ctx.with_id(CHILD, |ctx| {
-      self.child.teardown(
-        state,
-        ctx,
-        AppearWidget::child_mut(&mut element).downcast(),
-      );
-    });
-  }
-
-  fn message(
-    &self,
-    state: &mut Self::ViewState,
-    message: &mut MessageContext,
-    mut element: Mut<'_, Self::Element>,
-    app_state: &mut State,
-  ) -> MessageResult<Action> {
-    match message.take_first() {
-      Some(CHILD) => self.child.message(
-        state,
-        message,
-        AppearWidget::child_mut(&mut element).downcast(),
-        app_state,
-      ),
-      _ => MessageResult::Stale,
     }
+  }
+
+  fn rebuild(&self, _prev: &Self, widget: &mut WidgetMut<'_, AppearWidget>) {
+    widget.widget.motion = *self;
+  }
+
+  fn child_mut<'t>(
+    widget: &'t mut WidgetMut<'_, AppearWidget>,
+  ) -> WidgetMut<'t, dyn Widget> {
+    widget.ctx.get_mut(&mut widget.widget.child)
   }
 }
 

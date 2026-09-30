@@ -16,7 +16,7 @@ mod widget;
 use masonry::{parley::style::FontStack, peniko::Color, properties::Padding};
 
 pub use self::{
-  view::{Tooltip, tooltip},
+  view::{Tooltip, TooltipProps, tooltip},
   widget::TooltipWidget,
 };
 

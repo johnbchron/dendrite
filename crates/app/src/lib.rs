@@ -6,11 +6,12 @@
 //! handed to whatever paints the canvas. It owns an editing
 //! [`Session`](session::Session) and turns gestures into [`base::Event`]s.
 //!
-//! There is no UI toolkit here, and no platform. The only dependencies
-//! beyond the pure crates are `kurbo`, `peniko` and `ui-events` — the
-//! linebender vocabulary crates for geometry, colour and input, which carry
-//! no windowing, GPU or OS code of their own. A port to another platform
-//! reuses this crate whole and writes only views.
+//! There is no UI toolkit here, and no platform. Alongside the pure crates
+//! are `kurbo`, `peniko` and `ui-events` — the linebender vocabulary crates
+//! for geometry, colour and input — and `nucleo-matcher`, for the fuzzy
+//! matching behind the palette and switcher searches. None of them carries
+//! windowing, GPU or OS code, so a port to another platform reuses this
+//! crate whole and writes only views.
 //!
 //! - [`state`]: the application state and the commands that change it.
 //! - [`scene`]: what the app hands a canvas to draw, and what it reports back.

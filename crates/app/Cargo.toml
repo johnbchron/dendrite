@@ -17,3 +17,6 @@ peniko = "0.5"
 ui-events = "0.2"
 jiff = "0.2"
 
+# fuzzy matching for the palette and switcher searches
+nucleo-matcher = "0.3"
+

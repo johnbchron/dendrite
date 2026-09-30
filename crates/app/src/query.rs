@@ -4,8 +4,18 @@
 //! The quest switcher and the command palette each type into a search
 //! field; the arrow keys pass through it (it is single-line) to move the
 //! highlight here, via the key map.
+//!
+//! Matching is delegated to [`nucleo_matcher`], the fzf-style matcher behind
+//! helix: it ranks by word boundaries and gaps rather than plain substrings,
+//! and handles non-ASCII correctly. Its [`Matcher`] owns ~135KB of scratch
+//! memory, so one is kept per thread and reused across calls.
 
-use std::cmp::Ordering;
+use std::{cell::RefCell, cmp::Ordering};
+
+use nucleo_matcher::{
+  Config, Matcher, Utf32Str,
+  pattern::{CaseMatching, Normalization, Pattern},
+};
 
 /// A query's text and the highlighted result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -42,31 +52,66 @@ impl Query {
   }
 }
 
-/// How well `hay` matches `needle`, lower being better, or `None` if it does
-/// not match. Case-insensitive. A substring beats a scattered match, and an
-/// earlier substring beats a later one; a word-start substring beats one
-/// inside a word. An empty needle matches everything equally.
+thread_local! {
+  /// One matcher (and its scratch buffers) per thread, since a [`Matcher`]
+  /// carries a large heap slab and is meant to be reused.
+  static ENGINE: RefCell<Engine> = RefCell::new(Engine::new());
+}
+
+/// The reusable matcher, the pattern it is currently matching, and the buffer
+/// that turns a `&str` into the crate's UTF-32 view without reallocating.
+struct Engine {
+  pattern: Pattern,
+  matcher: Matcher,
+  buf:     Vec<char>,
+}
+
+impl Engine {
+  fn new() -> Self {
+    Self {
+      pattern: Pattern::new(
+        "",
+        CaseMatching::Ignore,
+        Normalization::Smart,
+        nucleo_matcher::pattern::AtomKind::Fuzzy,
+      ),
+      matcher: Matcher::new(Config::DEFAULT),
+      buf:     Vec::new(),
+    }
+  }
+
+  /// Reparse this engine's pattern from `needle`; an empty (or blank) needle
+  /// yields no atoms, which matches everything equally.
+  fn reparse(&mut self, needle: &str) {
+    self
+      .pattern
+      .reparse(needle, CaseMatching::Ignore, Normalization::Smart);
+  }
+
+  /// How well `hay` matches the current pattern, or `None` if it does not.
+  fn score(&mut self, hay: &str) -> Option<u32> {
+    let Engine {
+      pattern,
+      matcher,
+      buf,
+    } = self;
+    pattern.score(Utf32Str::new(hay, buf), matcher)
+  }
+}
+
+/// Run `f` with the thread's engine, borrowing it for the call.
+fn engine<R>(f: impl FnOnce(&mut Engine) -> R) -> R {
+  ENGINE.with(|cell| f(&mut cell.borrow_mut()))
+}
+
+/// How well `hay` matches `needle`, higher being better, or `None` if it
+/// does not match. Case-insensitive and fuzzy. An empty needle matches
+/// everything equally.
 pub fn score(needle: &str, hay: &str) -> Option<u32> {
-  let needle = needle.trim().to_lowercase();
-  if needle.is_empty() {
-    return Some(0);
-  }
-  let hay = hay.to_lowercase();
-  if let Some(pos) = hay.find(&needle) {
-    let word_start =
-      pos == 0 || hay[..pos].ends_with(|c: char| !c.is_alphanumeric());
-    return Some(if word_start { 0 } else { 100 } + pos as u32);
-  }
-  // Every needle character in order, anywhere: scored by how spread out.
-  let mut chars = hay.char_indices();
-  let mut first = None;
-  let mut last = 0;
-  for n in needle.chars() {
-    let (i, _) = chars.find(|&(_, h)| h == n)?;
-    first.get_or_insert(i);
-    last = i;
-  }
-  Some(1000 + (last - first.unwrap_or(0)) as u32)
+  engine(|engine| {
+    engine.reparse(needle);
+    engine.score(hay)
+  })
 }
 
 /// The `items` that match `needle`, best match first, with `tie` breaking
@@ -77,12 +122,16 @@ pub fn rank<T>(
   hay: impl Fn(&T) -> &str,
   tie: impl Fn(&T, &T) -> Ordering,
 ) -> Vec<T> {
-  let mut scored: Vec<(u32, T)> = items
-    .into_iter()
-    .filter_map(|t| Some((score(needle, hay(&t))?, t)))
-    .collect();
-  scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| tie(&a.1, &b.1)));
-  scored.into_iter().map(|(_, t)| t).collect()
+  engine(|engine| {
+    engine.reparse(needle);
+    let mut scored: Vec<(u32, T)> = items
+      .into_iter()
+      .filter_map(|t| Some((engine.score(hay(&t))?, t)))
+      .collect();
+    scored
+      .sort_by(|a, b| b.0.cmp(&a.0).then_with(|| tie(&a.1, &b.1)));
+    scored.into_iter().map(|(_, t)| t).collect()
+  })
 }
 
 #[cfg(test)]
@@ -118,18 +167,27 @@ mod tests {
   }
 
   #[test]
-  fn substrings_beat_scattered_matches_and_word_starts_win() {
+  fn an_empty_needle_matches_everything_equally() {
+    assert_eq!(score("", "anything"), Some(0));
+    assert_eq!(score("   ", "anything"), Some(0));
+  }
+
+  #[test]
+  fn a_scattered_match_is_worse_than_contiguous() {
     let s = |needle, hay| score(needle, hay);
-    assert_eq!(s("", "anything"), Some(0));
-    assert_eq!(s("x", "Build backend"), None);
-    // Word starts, earliest first.
-    assert!(s("back", "Build backend") < s("end", "Build backend"));
-    assert!(s("bu", "Build backend") < s("ba", "Build backend"));
-    // Inside a word is worse than any word start.
-    assert!(s("ack", "Build backend") > s("backend", "Build backend"));
-    // A scattered match still matches, below any substring.
-    let scattered = s("bbd", "Build backend").unwrap();
-    assert!(scattered >= 1000);
+    assert_eq!(s("x", "Build backend"), None, "a miss is no match");
     assert!(s("BACK", "build backend").is_some(), "case-insensitive");
+    // "backend" is contiguous and at a word boundary; "bbd" is scattered.
+    assert!(s("backend", "Build backend") > s("bbd", "Build backend"));
+  }
+
+  #[test]
+  fn rank_orders_best_first_and_keeps_ties_in_input_order() {
+    let items = ["alpha", "beta", "gamma"];
+    // An empty needle scores all equally, so the input order survives.
+    assert_eq!(rank("", items, |s| s, Ord::cmp), items);
+    // Only matching items come back; "eta" is a scattered match for beta
+    // alone, and it leads.
+    assert_eq!(rank("eta", items, |s| s, Ord::cmp), ["beta"]);
   }
 }

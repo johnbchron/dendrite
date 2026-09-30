@@ -14,7 +14,7 @@
 
   outputs = { nixpkgs, rust-overlay, devshell, flake-utils, crane, ... }: let
     # define dendrite in an overlay
-    overlay = prev: final: let
+    overlay = final: prev: let
       prev' = prev.extend (import rust-overlay);
     in {
       dendrite = prev'.callPackage ./package.nix { inherit crane; };
@@ -84,7 +84,7 @@
         default = dendrite;
       };
       checks = { inherit dendrite; };
-      devShell = if pkgs.stdenv.hostPlatform.isLinux then linux-devshell else darwin-devshell;
+      devShells.default = if pkgs.stdenv.hostPlatform.isLinux then linux-devshell else darwin-devshell;
     });
   in {
     overlays.default = overlay;

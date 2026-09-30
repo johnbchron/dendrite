@@ -32,15 +32,17 @@
   };
 
   # patch vendored masonry back in
-  cargoArtifacts = craneLib.buildDepsOnly (common-args // {
-    dummySrc = craneLib.mkDummySrc {
-      inherit src;
-      extraDummyScript = ''
-        rm -rf $out/vendor/masonry
-        cp -r --no-preserve=mode,ownership ${src}/vendor/masonry $out/vendor/masonry
-      '';
-    };
-  });
+  cargoArtifacts = craneLib.buildDepsOnly (
+    ((builtins.removeAttrs common-args [ "src" ]) // {
+      dummySrc = craneLib.mkDummySrc {
+        inherit src;
+        extraDummyScript = ''
+          rm -rf $out/vendor/masonry
+          cp -r --no-preserve=mode,ownership ${src}/vendor/masonry $out/vendor/masonry
+        '';
+      };
+    })
+  );
 
   dendrite = craneLib.buildPackage (common-args // {
     inherit cargoArtifacts;

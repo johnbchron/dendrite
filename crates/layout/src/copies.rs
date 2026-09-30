@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use base::{Edge, EdgeId, Graph, Node, NodeId, NodeKind};
 
-use crate::{cycle, rank, tree::Forest};
+use crate::{cycle, rank, tree};
 
 /// Which drawn nodes are copies of which graph nodes, and which edges run to
 /// a copy rather than to the node itself.
@@ -76,7 +76,7 @@ pub(crate) fn split(graph: &Graph) -> (Graph, Copies) {
     .copied()
     .filter(|(_, _, lower)| !leaves.contains(lower))
     .collect();
-  let tree = Forest::label(graph, &without);
+  let tree = tree::label(graph, &without);
 
   let mut drawn = graph.clone();
   let mut copies = Copies::default();

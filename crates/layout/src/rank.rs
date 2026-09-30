@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use base::{EdgeId, Graph, NodeId};
+use petgraph::{algo::toposort, graphmap::DiGraphMap};
 
 /// A layering result: a rank per node and the acyclic edge list (with
 /// feedback arcs already flipped) used by the ordering stage.
@@ -41,67 +42,27 @@ pub fn layer(
     }
   }
 
-  // Kahn's algorithm carrying a longest-path rank. Successor adjacency and
-  // in-degrees are keyed per node; the ready queue is drained in sorted-id
-  // order so the traversal is deterministic.
-  let mut succ: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-  let mut indeg: HashMap<NodeId, usize> = HashMap::new();
-  let mut nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
-  nodes.sort_unstable();
-  for &n in &nodes {
-    indeg.entry(n).or_insert(0);
-    succ.entry(n).or_default();
+  // Longest-path ranks, relaxed in topological order: any order gives the
+  // same ranks, so the result is deterministic.
+  let mut dag = DiGraphMap::<NodeId, ()>::new();
+  for n in graph.nodes() {
+    dag.add_node(n.id);
   }
   for &(_, u, v) in &dag_edges {
-    succ.entry(u).or_default().push(v);
-    *indeg.entry(v).or_insert(0) += 1;
+    dag.add_edge(u, v, ());
   }
-
-  let mut ranks: HashMap<NodeId, usize> =
-    nodes.iter().map(|&n| (n, 0usize)).collect();
-  let mut ready: Vec<NodeId> =
-    nodes.iter().copied().filter(|n| indeg[n] == 0).collect();
-  ready.sort_unstable();
-
-  let mut processed = 0usize;
-  while let Some(u) = pop_min(&mut ready) {
-    processed += 1;
-    let ru = ranks[&u];
-    // Deterministic successor order.
-    let mut children = succ[&u].clone();
-    children.sort_unstable();
-    for v in children {
-      let nr = ru + 1;
-      if nr > ranks[&v] {
-        ranks.insert(v, nr);
-      }
-      let d = indeg.get_mut(&v).unwrap();
-      *d -= 1;
-      if *d == 0 {
-        insert_sorted(&mut ready, v);
-      }
+  let mut ranks: HashMap<NodeId, usize> = dag.nodes().map(|n| (n, 0)).collect();
+  // Defensive: if a residual cycle survived the cut (it should not), every
+  // node keeps rank 0 rather than being dropped.
+  let topo = toposort(&dag, None);
+  debug_assert!(topo.is_ok(), "cut left a residual cycle");
+  for u in topo.unwrap_or_default() {
+    let next = ranks[&u] + 1;
+    for v in dag.neighbors(u) {
+      let rv = ranks.get_mut(&v).unwrap();
+      *rv = (*rv).max(next);
     }
   }
 
-  // Defensive: if a residual cycle survived the cut (it should not), any
-  // unprocessed node keeps rank 0 rather than being dropped.
-  debug_assert_eq!(processed, nodes.len(), "cut left a residual cycle");
-  let _ = processed;
-
   Layering { ranks, dag_edges }
-}
-
-/// Pop the smallest id from a set kept in ascending order.
-fn pop_min(v: &mut Vec<NodeId>) -> Option<NodeId> {
-  if v.is_empty() {
-    None
-  } else {
-    Some(v.remove(0))
-  }
-}
-
-/// Insert keeping ascending order (the queue stays small in practice).
-fn insert_sorted(v: &mut Vec<NodeId>, x: NodeId) {
-  let pos = v.partition_point(|e| *e < x);
-  v.insert(pos, x);
 }

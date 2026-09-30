@@ -42,7 +42,6 @@ use std::collections::HashSet;
 
 use base::{EdgeId, Graph};
 
-use self::tree::Forest;
 pub use self::{
   arrangement::{Arrangement, Placement, Slot},
   config::LayoutConfig,
@@ -84,7 +83,7 @@ impl Layout {
     let layering = rank::layer(graph, &reversed);
     let ordering = order::order(graph, &layering, cfg.barycenter_sweeps);
     // Every slot takes its tree's label; a bend belongs to its edge's tree.
-    let node_tree = Forest::label(graph, &layering.dag_edges);
+    let node_tree = tree::label(graph, &layering.dag_edges);
     let tree = ordering
       .by_rank
       .iter()

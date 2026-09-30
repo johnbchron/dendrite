@@ -10,6 +10,11 @@
 use std::collections::{HashMap, HashSet};
 
 use jiff::Timestamp;
+use petgraph::{
+  algo::tarjan_scc,
+  graphmap::DiGraphMap,
+  visit::{Dfs, Reversed},
+};
 
 use crate::{
   formula::{Facts, Truth},
@@ -146,21 +151,17 @@ impl Derived {
 
 /// Detect every node that participates in a cycle of the requirement graph.
 ///
-/// Uses Tarjan's strongly-connected-components algorithm (iterative, so it
-/// is safe at 1k+ nodes). A node is cyclic if it lives in an SCC of size > 1
-/// or carries a self-loop. Edges leaving formula conditions are ignored, so
-/// those are never cyclic.
+/// Uses Tarjan's strongly-connected-components algorithm (petgraph's is
+/// iterative, so it is safe at 1k+ nodes). A node is cyclic if it lives in
+/// an SCC of size > 1 or carries a self-loop. Edges leaving formula
+/// conditions are ignored, so those are never cyclic.
 pub fn cyclic_nodes(graph: &Graph) -> HashSet<NodeId> {
+  let g = requirement_graph(graph);
   let mut cyclic = HashSet::new();
-  for scc in tarjan_sccs(graph) {
-    if scc.len() > 1 {
+  for scc in tarjan_scc(&g) {
+    // A single-node SCC is only cyclic if the node points at itself.
+    if scc.len() > 1 || g.contains_edge(scc[0], scc[0]) {
       cyclic.extend(scc);
-    } else {
-      // A single-node SCC is only cyclic if the node points at itself.
-      let n = scc[0];
-      if graph.requirement_targets(n).contains(&n) {
-        cyclic.insert(n);
-      }
     }
   }
   cyclic
@@ -173,132 +174,32 @@ pub fn cyclic_nodes(graph: &Graph) -> HashSet<NodeId> {
 /// Linear in the size of the graph, so meant for one node at a time (the
 /// inspector's "in a cycle with …"), not for sweeping every node.
 pub fn cycle_peers(graph: &Graph, node: NodeId) -> Vec<NodeId> {
-  let reach = |forward: bool| {
-    let mut seen = HashSet::from([node]);
-    let mut stack = vec![node];
-    while let Some(n) = stack.pop() {
-      let next: Vec<NodeId> = if forward {
-        graph.requirement_targets(n).into_iter().collect()
-      } else {
-        graph
-          .dependents_of(n)
-          .map(|e| e.from)
-          .filter(|m| !graph.is_formula(*m))
-          .collect()
-      };
-      for m in next {
-        if seen.insert(m) {
-          stack.push(m);
-        }
-      }
+  let g = requirement_graph(graph);
+  let mut down = HashSet::new();
+  let mut dfs = Dfs::new(&g, node);
+  while let Some(n) = dfs.next(&g) {
+    down.insert(n);
+  }
+  let mut peers = Vec::new();
+  let mut dfs = Dfs::new(Reversed(&g), node);
+  while let Some(n) = dfs.next(Reversed(&g)) {
+    if n != node && down.contains(&n) {
+      peers.push(n);
     }
-    seen
-  };
-  let (down, up) = (reach(true), reach(false));
-  let mut peers: Vec<NodeId> = down
-    .intersection(&up)
-    .copied()
-    .filter(|n| *n != node)
-    .collect();
+  }
   peers.sort_unstable();
   peers
 }
 
-/// Iterative Tarjan SCC over the requirement graph (edges `from -> to`).
-///
-/// Returns the strongly-connected components. The explicit work stack keeps
-/// recursion off the call stack so deep graphs do not overflow.
-fn tarjan_sccs(graph: &Graph) -> Vec<Vec<NodeId>> {
-  #[derive(Clone, Copy)]
-  struct Meta {
-    index:    u32,
-    lowlink:  u32,
-    on_stack: bool,
-  }
-
-  // Frame of the manual DFS: the node being explored and how far through its
-  // successors we have progressed.
-  struct Frame {
-    node: NodeId,
-    succ: Vec<NodeId>,
-    next: usize,
-  }
-
-  let mut meta: HashMap<NodeId, Meta> = HashMap::new();
-  let mut stack: Vec<NodeId> = Vec::new();
-  let mut sccs: Vec<Vec<NodeId>> = Vec::new();
-  let mut counter: u32 = 0;
-
-  let roots: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
-  for root in roots {
-    if meta.contains_key(&root) {
-      continue;
-    }
-    let mut work: Vec<Frame> = vec![Frame {
-      node: root,
-      succ: graph.requirement_targets(root).into_iter().collect(),
-      next: 0,
-    }];
-    meta.insert(root, Meta {
-      index:    counter,
-      lowlink:  counter,
-      on_stack: true,
-    });
-    counter += 1;
-    stack.push(root);
-
-    while let Some(frame) = work.last_mut() {
-      let v = frame.node;
-      if frame.next < frame.succ.len() {
-        let w = frame.succ[frame.next];
-        frame.next += 1;
-        match meta.get(&w) {
-          None => {
-            // Descend into an unvisited successor.
-            meta.insert(w, Meta {
-              index:    counter,
-              lowlink:  counter,
-              on_stack: true,
-            });
-            counter += 1;
-            stack.push(w);
-            work.push(Frame {
-              node: w,
-              succ: graph.requirement_targets(w).into_iter().collect(),
-              next: 0,
-            });
-          }
-          Some(mw) if mw.on_stack => {
-            let low = mw.index;
-            let mv = meta.get_mut(&v).unwrap();
-            mv.lowlink = mv.lowlink.min(low);
-          }
-          Some(_) => {}
-        }
-      } else {
-        // All successors explored: close out this node.
-        let mv = *meta.get(&v).unwrap();
-        if mv.lowlink == mv.index {
-          let mut scc = Vec::new();
-          while let Some(w) = stack.pop() {
-            meta.get_mut(&w).unwrap().on_stack = false;
-            scc.push(w);
-            if w == v {
-              break;
-            }
-          }
-          sccs.push(scc);
-        }
-        work.pop();
-        // Propagate lowlink up to the parent frame.
-        if let Some(parent) = work.last() {
-          let low = mv.lowlink;
-          let mp = meta.get_mut(&parent.node).unwrap();
-          mp.lowlink = mp.lowlink.min(low);
-        }
-      }
+/// The requirement graph (edges `from -> to`), less the edges leaving
+/// formula conditions, which are sinks.
+fn requirement_graph(graph: &Graph) -> DiGraphMap<NodeId, ()> {
+  let mut g = DiGraphMap::new();
+  for node in graph.nodes() {
+    g.add_node(node.id);
+    for to in graph.requirement_targets(node.id) {
+      g.add_edge(node.id, to, ());
     }
   }
-
-  sccs
+  g
 }

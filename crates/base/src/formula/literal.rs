@@ -11,7 +11,8 @@ use jiff::{
   civil::{Date, DateTime, Time, Weekday},
   tz::TimeZone,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 /// A span of time in whole minutes. Free time is never meaningful below a
 /// minute.
@@ -24,7 +25,17 @@ pub type Amount = i64;
 ///
 /// Moments float: they are read in whatever zone the facts carry, so "9am"
 /// means 9am wherever I am.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  PartialOrd,
+  Ord,
+  Hash,
+  SerializeDisplay,
+  DeserializeFromStr,
+)]
 pub struct Moment(DateTime);
 
 impl Moment {
@@ -93,7 +104,17 @@ impl FromStr for Moment {
 }
 
 /// A time of day at minute precision: `09:00`.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  PartialOrd,
+  Ord,
+  Hash,
+  SerializeDisplay,
+  DeserializeFromStr,
+)]
 pub struct TimeOfDay(Time);
 
 impl TimeOfDay {
@@ -179,42 +200,12 @@ impl fmt::Debug for WeekdaySet {
 fn bit(day: Weekday) -> u8 { 1 << day.to_monday_zero_offset() }
 
 /// A literal that is not in its canonical form.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum LiteralError {
   /// Not `YYYY-MM-DDTHH:MM` or a bare date.
+  #[error("expected a moment like 2026-10-01T09:00")]
   Moment,
   /// Not `HH:MM`.
+  #[error("expected a time of day like 09:00")]
   TimeOfDay,
 }
-
-impl fmt::Display for LiteralError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(match self {
-      Self::Moment => "expected a moment like 2026-10-01T09:00",
-      Self::TimeOfDay => "expected a time of day like 09:00",
-    })
-  }
-}
-
-impl std::error::Error for LiteralError {}
-
-/// Serialize a literal as its canonical string.
-macro_rules! string_serde {
-  ($ty:ty) => {
-    impl Serialize for $ty {
-      fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(self)
-      }
-    }
-
-    impl<'de> Deserialize<'de> for $ty {
-      fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = <std::borrow::Cow<'de, str>>::deserialize(d)?;
-        s.parse().map_err(de::Error::custom)
-      }
-    }
-  };
-}
-
-string_serde!(Moment);
-string_serde!(TimeOfDay);

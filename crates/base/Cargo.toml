@@ -8,6 +8,8 @@ blake3 = "1"
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 petgraph = "0.8.3"
 serde = { version = "1", features = ["derive"] }
+serde_with = { version = "3", default-features = false, features = ["macros"] }
+thiserror = "2"
 ulid = { version = "3", features = ["serde"] }
 
 [dev-dependencies]

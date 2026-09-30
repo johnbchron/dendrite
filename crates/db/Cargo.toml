@@ -8,6 +8,7 @@ base = { path = "../base" }
 session = { path = "../session" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde_json = "1"
+thiserror = "2"
 
 [dev-dependencies]
 session = { path = "../session" }

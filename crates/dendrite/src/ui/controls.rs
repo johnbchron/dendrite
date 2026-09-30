@@ -12,8 +12,8 @@ use xilem::{
   FontWeight, WidgetView,
   style::Style as _,
   view::{
-    CrossAxisAlignment, FlexExt as _, FlexItem, FlexSequence, Label, button,
-    flex_col, flex_row, sized_box,
+    CrossAxisAlignment, FlexExt as _, FlexItem, FlexSequence, FlexSpacer,
+    Label, button, flex_col, flex_row, sized_box,
   },
 };
 
@@ -253,10 +253,7 @@ where
 /// Flexible empty space in a row: pushes what follows it to the far end.
 /// (A flex factor on a label only allots it room; the label stays as wide
 /// as its text, so it cannot push anything.)
-pub(super) fn spacer()
--> FlexItem<impl WidgetView<AppState> + use<>, AppState, ()> {
-  sized_box(flex_col(())).expand_width().flex(1.0)
-}
+pub(super) fn spacer() -> FlexSpacer { FlexSpacer::Flex(1.0) }
 
 /// `view` taking all the room left in a row: a label in it wraps at the
 /// row's edge instead of overflowing it, and anything after it is pushed to

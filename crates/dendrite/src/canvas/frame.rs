@@ -43,8 +43,7 @@ impl Frame {
   /// The world-space area a `size`-sized viewport shows, plus
   /// [`CULL_MARGIN`].
   pub(crate) fn visible_world(self, size: Size) -> Rect {
-    let screen = Rect::from_origin_size(Point::ORIGIN, size)
-      .inflate(CULL_MARGIN, CULL_MARGIN);
+    let screen = size.to_rect().inflate(CULL_MARGIN, CULL_MARGIN);
     self.affine().inverse().transform_rect_bbox(screen)
   }
 
@@ -88,8 +87,7 @@ impl Frame {
     let world = self.to_world(anchor);
     let zoom = (self.zoom * factor).clamp(ZOOM_MIN, ZOOM_MAX);
     // Solve pan so that the transform takes `world` to `anchor` again.
-    let pan =
-      Vec2::new(anchor.x, anchor.y) - zoom * Vec2::new(world.x, world.y);
+    let pan = anchor.to_vec2() - zoom * world.to_vec2();
     Self { zoom, pan }
   }
 

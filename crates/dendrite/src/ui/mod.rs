@@ -38,9 +38,9 @@ use xilem::{
   },
 };
 
+use self::controls::label;
 use crate::{
   canvas::{CanvasAction, LinkMode, canvas},
-  font,
   icons::{Icon, icon},
   keymap::keymap,
   state::{AppState, Toast},
@@ -54,11 +54,6 @@ const DROP: Motion = Motion {
   from:        Vec2::new(0.0, -6.0),
   duration_ms: motion::POPOVER_MS,
 };
-
-/// A label in the app face (see [`crate::font`]).
-fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Label {
-  xilem::view::label(text).font(font::STACK)
-}
 
 /// How far down the window the command palette hangs.
 const PALETTE_TOP: f64 = 120.0;

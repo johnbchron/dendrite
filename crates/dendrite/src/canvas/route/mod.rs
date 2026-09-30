@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use base::{EdgeId, NodeId};
 use layout::Channel;
-use masonry::kurbo::{BezPath, Point, Rect, Vec2};
+use masonry::kurbo::{BezPath, Point, Rect, Triangle, Vec2};
 
 use super::RenderEdge;
 
@@ -206,16 +206,10 @@ impl Route {
   /// The arrowhead at `tip`, pointing back along the travel axis into the
   /// dependent: the curve leaves the node square, so the head lines up with
   /// it exactly.
-  pub(super) fn head(&self, tip: Point) -> BezPath {
-    let axis = self.axis;
-    let base = tip + axis * HEAD_LEN;
-    let perp = Vec2::new(-axis.y, axis.x) * HEAD_HALF_W;
-    let mut head = BezPath::new();
-    head.move_to(tip);
-    head.line_to(base + perp);
-    head.line_to(base - perp);
-    head.close_path();
-    head
+  pub(super) fn head(&self, tip: Point) -> Triangle {
+    let base = tip + self.axis * HEAD_LEN;
+    let perp = self.axis.turn_90() * HEAD_HALF_W;
+    Triangle::new(tip, base + perp, base - perp)
   }
 }
 

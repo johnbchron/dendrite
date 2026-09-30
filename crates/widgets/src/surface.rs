@@ -14,8 +14,9 @@ use masonry::{
     PaintCtx, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget,
     WidgetMut, WidgetPod,
   },
-  kurbo::{Affine, Line, Point, Rect, RoundedRect, Size, Stroke, Vec2},
-  peniko::{Brush, Color, Fill},
+  kurbo::{Affine, Line, Point, RoundedRect, Size, Vec2},
+  peniko::Color,
+  util::{fill_color, stroke},
   vello::Scene,
 };
 use xilem::{
@@ -111,32 +112,14 @@ impl Widget for SurfaceWidget {
       );
     }
     let shape = RoundedRect::from_rect(rect, s.radius);
-    scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(s.ground),
-      None,
-      &shape,
-    );
+    fill_color(scene, &shape, s.ground);
     if s.flat {
       // A bar only needs its lower edge drawn.
       let y = rect.y1 - 0.5;
-      scene.stroke(
-        &Stroke::new(1.0),
-        Affine::IDENTITY,
-        &Brush::Solid(s.border),
-        None,
-        &Line::new((rect.x0, y), (rect.x1, y)),
-      );
+      stroke(scene, &Line::new((rect.x0, y), (rect.x1, y)), s.border, 1.0);
     } else {
-      let ring = RoundedRect::from_rect(inset(rect, 0.5), s.radius);
-      scene.stroke(
-        &Stroke::new(1.0),
-        Affine::IDENTITY,
-        &Brush::Solid(s.border),
-        None,
-        &ring,
-      );
+      let ring = RoundedRect::from_rect(rect.inset(-0.5), s.radius);
+      stroke(scene, &ring, s.border, 1.0);
     }
   }
 
@@ -154,9 +137,6 @@ impl Widget for SurfaceWidget {
     ChildrenIds::from_slice(&[self.child.id()])
   }
 }
-
-/// `rect` shrunk by `by` on every side.
-fn inset(rect: Rect, by: f64) -> Rect { rect.inset(-by) }
 
 // --- the view -----------------------------------------------------------
 

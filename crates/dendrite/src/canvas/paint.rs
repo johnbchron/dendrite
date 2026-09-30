@@ -12,6 +12,7 @@ use masonry::{
   },
   parley::Layout as TextLayout,
   peniko::{Brush, Color, Fill},
+  util::fill_color,
   vello::Scene,
 };
 
@@ -52,13 +53,7 @@ impl<'a> Painter<'a> {
 
   /// Fill a `size`-sized viewport with the canvas ground.
   pub(super) fn background(&mut self, size: Size) {
-    self.scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(self.theme.bg),
-      None,
-      &Rect::from_origin_size((0.0, 0.0), (size.width, size.height)),
-    );
+    fill_color(self.scene, &size.to_rect(), self.theme.bg);
   }
 
   /// Paint one edge as a curve plus an arrowhead at the dependent end, and
@@ -70,38 +65,14 @@ impl<'a> Painter<'a> {
       self.theme.edge
     };
     let (curve, tip) = route.curve();
-    self.scene.stroke(
-      &Stroke::new(1.5),
-      self.tf,
-      &Brush::Solid(color),
-      None,
-      &curve,
-    );
-    self.scene.fill(
-      Fill::NonZero,
-      self.tf,
-      &Brush::Solid(color),
-      None,
-      &route.head(tip),
-    );
+    self.stroke(&curve, &Stroke::new(1.5), color);
+    self.fill(&route.head(tip), color);
     if edge.to_copy {
       // Hollow, sitting on the line just clear of the box, so it reads as
       // a mark on the edge rather than a part of the node.
       let ring = Circle::new(route.end - route.axis * COPY_RING, COPY_RING);
-      self.scene.fill(
-        Fill::NonZero,
-        self.tf,
-        &Brush::Solid(self.theme.bg),
-        None,
-        &ring,
-      );
-      self.scene.stroke(
-        &Stroke::new(1.5),
-        self.tf,
-        &Brush::Solid(color),
-        None,
-        &ring,
-      );
+      self.fill(&ring, self.theme.bg);
+      self.stroke(&ring, &Stroke::new(1.5), color);
     }
   }
 
@@ -124,20 +95,12 @@ impl<'a> Painter<'a> {
       return;
     };
     let (curve, tip) = route.curve();
-    self.scene.stroke(
-      &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
-      self.tf,
-      &Brush::Solid(color),
-      None,
+    self.stroke(
       &curve,
+      &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
+      color,
     );
-    self.scene.fill(
-      Fill::NonZero,
-      self.tf,
-      &Brush::Solid(color),
-      None,
-      &route.head(tip),
-    );
+    self.fill(&route.head(tip), color);
   }
 
   /// Paint a single node in `rect`: shape, fill, border and `label`, the
@@ -177,12 +140,10 @@ impl<'a> Painter<'a> {
 
     if link.is_some_and(|l| l.closes_cycle.contains(&node.node)) {
       let ring = RoundedRect::from_rect(rect.inflate(4.0, 4.0), 11.0);
-      self.scene.stroke(
-        &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
-        self.tf,
-        &Brush::Solid(self.theme.cycle),
-        None,
+      self.stroke(
         &ring,
+        &Stroke::new(2.0).with_dashes(0.0, [6.0, 4.0]),
+        self.theme.cycle,
       );
     }
 
@@ -239,12 +200,10 @@ impl<'a> Painter<'a> {
     let color = if dimmed { Theme::dim(color) } else { color };
     let (dx, dy) = QUEST_INSET;
     let x = rect.x0 + dx;
-    self.scene.stroke(
-      &Stroke::new(width).with_caps(Cap::Round),
-      self.tf,
-      &Brush::Solid(color),
-      None,
+    self.stroke(
       &Line::new((x, rect.y0 + dy), (x, rect.y1 - dy)),
+      &Stroke::new(width).with_caps(Cap::Round),
+      color,
     );
   }
 
@@ -262,20 +221,8 @@ impl<'a> Painter<'a> {
       (w + 2.0 * BADGE_PAD, h + 2.0),
     );
     let shape = RoundedRect::from_rect(pill, pill.height() / 2.0);
-    self.scene.fill(
-      Fill::NonZero,
-      self.tf,
-      &Brush::Solid(self.theme.bg),
-      None,
-      &shape,
-    );
-    self.scene.stroke(
-      &Stroke::new(1.0),
-      self.tf,
-      &Brush::Solid(border),
-      None,
-      &shape,
-    );
+    self.fill(&shape, self.theme.bg);
+    self.stroke(&shape, &Stroke::new(1.0), border);
     let origin =
       Point::new(pill.center().x - w / 2.0, pill.center().y - h / 2.0);
     render_text(
@@ -287,6 +234,16 @@ impl<'a> Painter<'a> {
     );
   }
 
+  /// Fill `shape` in `color`, in world coordinates.
+  fn fill(&mut self, shape: &impl Shape, color: Color) {
+    self.scene.fill(Fill::NonZero, self.tf, color, None, shape);
+  }
+
+  /// Stroke `shape` with `style` in `color`, in world coordinates.
+  fn stroke(&mut self, shape: &impl Shape, style: &Stroke, color: Color) {
+    self.scene.stroke(style, self.tf, color, None, shape);
+  }
+
   /// Fill `shape`, then stroke its border, thicker and accented when
   /// selected.
   fn fill_and_outline(
@@ -296,21 +253,13 @@ impl<'a> Painter<'a> {
     border: Color,
     selected: bool,
   ) {
-    self
-      .scene
-      .fill(Fill::NonZero, self.tf, &Brush::Solid(fill), None, shape);
+    self.fill(shape, fill);
     let (color, width) = if selected {
       (self.theme.accent, 3.0)
     } else {
       (border, 1.5)
     };
-    self.scene.stroke(
-      &Stroke::new(width),
-      self.tf,
-      &Brush::Solid(color),
-      None,
-      shape,
-    );
+    self.stroke(shape, &Stroke::new(width), color);
   }
 
   /// A condition's outline: `rect` with its corners cut off at 45°.

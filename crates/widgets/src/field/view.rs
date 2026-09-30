@@ -14,7 +14,7 @@ use xilem::{
   core::{MessageContext, MessageResult, Mut, View, ViewMarker},
 };
 
-use super::{FieldAction, Frame, Look, Mount, widget::FieldWidget};
+use super::{FieldAction, Look, Mount, widget::FieldWidget};
 
 type Callback<State, Action, T> =
   Box<dyn Fn(&mut State, T) -> Action + Send + Sync + 'static>;
@@ -147,7 +147,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     let pod = ctx.with_action_widget(|ctx| {
       ctx.create_pod(FieldWidget::new(
         input,
-        Frame::of(&self.look),
+        self.look.clone(),
         self.escape_bubbles,
       ))
     });
@@ -165,7 +165,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     FieldWidget::set_escape_bubbles(&mut element, self.escape_bubbles);
     let restyled = self.look != prev.look;
     if restyled {
-      FieldWidget::set_colors(&mut element, Frame::of(&self.look));
+      FieldWidget::set_colors(&mut element, self.look.clone());
     }
     let mut input = FieldWidget::child_mut(&mut element);
     if restyled {

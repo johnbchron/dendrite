@@ -53,26 +53,6 @@ pub struct Look {
   pub font:   FontStack<'static>,
 }
 
-/// The colours the wrapper paints its own frame with.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Frame {
-  ground: Color,
-  border: Color,
-  focus:  Color,
-  radius: f64,
-}
-
-impl Frame {
-  fn of(look: &Look) -> Self {
-    Self {
-      ground: look.ground,
-      border: look.border,
-      focus:  look.focus,
-      radius: look.radius,
-    }
-  }
-}
-
 /// Told when the field's text area is mounted and when it goes, so the app
 /// can keep its own map from names to widgets (see `dendrite::focus`).
 ///

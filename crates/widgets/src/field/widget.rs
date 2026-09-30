@@ -8,19 +8,19 @@ use masonry::{
     TextEvent, Update, UpdateCtx, Widget, WidgetMut, WidgetPod,
     keyboard::{Key, KeyState, NamedKey},
   },
-  kurbo::{Affine, RoundedRect, Size, Stroke},
-  peniko::{Brush, Fill},
+  kurbo::{RoundedRect, Size},
+  util::{fill_color, stroke},
   vello::Scene,
   widgets::{self},
 };
 
-use super::{FieldAction, Frame};
+use super::{FieldAction, Look};
 
 /// Paints the field's frame around a transparent Masonry `TextInput`, and
 /// reports focus changes.
 pub struct FieldWidget {
   child:          WidgetPod<widgets::TextInput>,
-  frame:          Frame,
+  look:           Look,
   /// Whether Escape, after giving up focus, goes on to the key map too.
   escape_bubbles: bool,
   /// Set between a press inside the field and the focus change it causes,
@@ -31,12 +31,12 @@ pub struct FieldWidget {
 impl FieldWidget {
   pub(super) fn new(
     child: NewWidget<widgets::TextInput>,
-    frame: Frame,
+    look: Look,
     escape_bubbles: bool,
   ) -> Self {
     Self {
       child: child.to_pod(),
-      frame,
+      look,
       escape_bubbles,
       pressed: false,
     }
@@ -54,8 +54,8 @@ impl FieldWidget {
   }
 
   /// Repaint the frame in new colours.
-  pub(super) fn set_colors(this: &mut WidgetMut<'_, Self>, frame: Frame) {
-    this.widget.frame = frame;
+  pub(super) fn set_colors(this: &mut WidgetMut<'_, Self>, look: Look) {
+    this.widget.look = look;
     this.ctx.request_paint_only();
   }
 
@@ -142,29 +142,17 @@ impl Widget for FieldWidget {
     scene: &mut Scene,
   ) {
     let rect = ctx.size().to_rect();
-    let shape = RoundedRect::from_rect(rect.inset(-0.5), self.frame.radius);
-    scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(self.frame.ground),
-      None,
-      &shape,
-    );
+    let shape = RoundedRect::from_rect(rect.inset(-0.5), self.look.radius);
+    fill_color(scene, &shape, self.look.ground);
     let (color, width) = if ctx.has_focus_target() {
-      (self.frame.focus, 2.0)
+      (self.look.focus, 2.0)
     } else {
-      (self.frame.border, 1.0)
+      (self.look.border, 1.0)
     };
     // Stroke inside the bounds, so the ring is never clipped by a parent.
     let ring =
-      RoundedRect::from_rect(rect.inset(-width / 2.0), self.frame.radius);
-    scene.stroke(
-      &Stroke::new(width),
-      Affine::IDENTITY,
-      &Brush::Solid(color),
-      None,
-      &ring,
-    );
+      RoundedRect::from_rect(rect.inset(-width / 2.0), self.look.radius);
+    stroke(scene, &ring, color, width);
   }
 
   fn accessibility_role(&self) -> Role { Role::GenericContainer }

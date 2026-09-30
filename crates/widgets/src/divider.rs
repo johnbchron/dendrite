@@ -19,8 +19,9 @@ use masonry::{
     PaintCtx, PointerButton, PointerEvent, PropertiesMut, PropertiesRef,
     QueryCtx, RegisterCtx, Update, UpdateCtx, Widget,
   },
-  kurbo::{Affine, Point, Rect},
-  peniko::{Brush, Color, Fill},
+  kurbo::{Point, Rect},
+  peniko::Color,
+  util::fill_color,
   vello::Scene,
 };
 use xilem::{
@@ -156,13 +157,7 @@ impl Widget for DividerWidget {
     }
     let color = self.color;
     let x = (size.width - LINE) / 2.0;
-    scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(color),
-      None,
-      &Rect::new(x, 0.0, x + LINE, size.height),
-    );
+    fill_color(scene, &Rect::new(x, 0.0, x + LINE, size.height), color);
   }
 
   fn get_cursor(&self, _ctx: &QueryCtx<'_>, _pos: Point) -> CursorIcon {

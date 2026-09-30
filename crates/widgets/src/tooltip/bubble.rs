@@ -7,10 +7,11 @@ use masonry::{
     PropertiesMut, PropertiesRef, RegisterCtx, StyleProperty, UpdateCtx,
     Widget, render_text,
   },
-  kurbo::{Affine, RoundedRect, Size, Stroke},
+  kurbo::{Affine, RoundedRect, Size},
   parley::{FontContext, Layout as TextLayout, LayoutContext},
-  peniko::{Brush, Fill},
+  peniko::Brush,
   properties::Padding,
+  util::{fill_color, stroke},
   vello::Scene,
 };
 
@@ -93,20 +94,8 @@ impl Widget for TooltipBox {
   ) {
     let rect = ctx.size().to_rect();
     let shape = RoundedRect::from_rect(rect.inset(-0.5), self.look.radius);
-    scene.fill(
-      Fill::NonZero,
-      Affine::IDENTITY,
-      &Brush::Solid(self.look.ground),
-      None,
-      &shape,
-    );
-    scene.stroke(
-      &Stroke::new(1.0),
-      Affine::IDENTITY,
-      &Brush::Solid(self.look.border),
-      None,
-      &shape,
-    );
+    fill_color(scene, &shape, self.look.ground);
+    stroke(scene, &shape, self.look.border, 1.0);
     render_text(
       scene,
       Affine::translate((self.pad.left + 1.0, self.pad.top + 1.0)),

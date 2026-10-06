@@ -99,9 +99,11 @@ where
     // entirely instead of re-measuring every label.
     if !Arc::ptr_eq(&prev.scene, &self.scene) {
       element.widget.set_scene(self.scene.clone());
-      // Labels may have changed, and with them node sizes and placement.
+      // Labels may have changed, and with them node sizes and placement,
+      // which then eases in a frame at a time.
       element.ctx.request_layout();
       element.ctx.request_render();
+      element.ctx.request_anim_frame();
     }
     if !std::ptr::eq(prev.theme, self.theme) {
       element.widget.set_theme(self.theme);

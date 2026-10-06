@@ -3,11 +3,15 @@
 
 mod motion;
 mod pointer;
+mod tween;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::Arc,
+};
 
 use app::camera::{ZOOM_RESET, zoom_percent};
-use base::NodeId;
+use base::{EdgeId, NodeId};
 use layout::LayoutConfig;
 use masonry::{
   accesskit::{Node as AccessNode, Role},
@@ -20,12 +24,19 @@ use masonry::{
   vello::Scene,
 };
 
-use self::pointer::Press;
+use self::{
+  pointer::Press,
+  tween::{Drawn, Placed, Tween},
+};
 use super::{
-  CanvasAction, CanvasScene, Insets, LinkMode, frame::Frame, labels::Labels,
-  paint::Painter, route::Route,
+  CanvasAction, CanvasScene, Insets, LinkMode, RenderEdge, RenderNode,
+  frame::Frame, labels::Labels, paint::Painter, route::Route,
 };
 use crate::theme::Theme;
+
+/// How large a box is drawn as it starts to fade in, or finishes fading
+/// out, relative to its full size.
+const FADE_SCALE: f64 = 0.92;
 
 /// A box under the pointer: which copy, and the node it draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,11 +92,23 @@ pub struct CanvasWidget {
   theme: &'static Theme,
   /// Shaped node labels.
   labels: Labels,
-  /// Every box in world coordinates, placed in the layout pass from
-  /// the scene's arrangement and the measured labels.
-  rects: HashMap<NodeId, Rect>,
-  /// Where each of the scene's edges attaches, index-aligned with
-  /// `scene.edges`; routed alongside `rects`.
+  /// Every box and edge in world coordinates, placed in the layout pass
+  /// from the scene's arrangement and the measured labels: where they are,
+  /// or are heading while a relayout eases in.
+  placed: Placed,
+  /// The relayout easing in, while one is.
+  tween: Option<Tween>,
+  /// Every box and edge as drawn and hit-tested this frame: `placed`, or on
+  /// its way there, with what left the scene fading out.
+  shown: Drawn,
+  /// Nodes that left the scene, kept to draw while they fade out.
+  gone: HashMap<NodeId, RenderNode>,
+  /// Edges that left the scene, likewise.
+  gone_edges: HashMap<EdgeId, RenderEdge>,
+  /// The edges drawn: the scene's, then any fading out.
+  edges: Vec<RenderEdge>,
+  /// Where each drawn edge attaches, index-aligned with `edges`; routed
+  /// alongside `shown`.
   routes: Vec<Option<Route>>,
 }
 
@@ -113,7 +136,12 @@ impl CanvasWidget {
       last_size: None,
       theme,
       labels: Labels::default(),
-      rects: HashMap::new(),
+      placed: Placed::default(),
+      tween: None,
+      shown: Drawn::default(),
+      gone: HashMap::new(),
+      gone_edges: HashMap::new(),
+      edges: Vec::new(),
       routes: Vec::new(),
     }
   }
@@ -121,8 +149,18 @@ impl CanvasWidget {
   /// Replace the scene. The caller must request a layout, which re-measures
   /// and re-places the nodes.
   pub(super) fn set_scene(&mut self, scene: Arc<CanvasScene>) {
-    // Drop cached text for nodes that vanished.
-    self.labels.retain(&scene.nodes);
+    // Keep what leaves the scene (and its label) until it has faded out;
+    // what comes back is the scene's again.
+    let nodes: HashSet<NodeId> = scene.nodes.iter().map(|n| n.id).collect();
+    let edges: HashSet<EdgeId> = scene.edges.iter().map(|e| e.id).collect();
+    for node in &self.scene.nodes {
+      self.gone.insert(node.id, node.clone());
+    }
+    for edge in &self.scene.edges {
+      self.gone_edges.insert(edge.id, edge.clone());
+    }
+    self.gone.retain(|id, _| !nodes.contains(id));
+    self.gone_edges.retain(|id, _| !edges.contains(id));
     self.scene = scene;
     self.dirty = true;
   }
@@ -150,15 +188,18 @@ impl CanvasWidget {
       .nodes
       .iter()
       .rev()
-      .find(|n| self.rects.get(&n.id).is_some_and(|r| r.contains(world)))
+      .find(|n| {
+        let rect = self.shown.placed.rects.get(&n.id);
+        rect.is_some_and(|r| r.contains(world))
+      })
       .map(|n| Hit {
         copy: n.id,
         node: n.node,
       })
   }
 
-  /// Shape any label not already shaped, then size and place every node
-  /// and route every edge.
+  /// Shape any label not already shaped, then size and place every node,
+  /// easing from what is drawn now to the new placement.
   fn measure(&mut self, ctx: &mut LayoutCtx<'_>) {
     let (font_cx, layout_cx) = ctx.text_contexts();
     self.labels.shape(font_cx, layout_cx, &self.scene.nodes);
@@ -170,7 +211,7 @@ impl CanvasWidget {
       .arrangement
       .place(&cfg, |id| sizes.get(&id).copied().unwrap_or(cfg.node_size));
     let centres = &placed.nodes;
-    self.rects = self
+    let rects = self
       .scene
       .nodes
       .iter()
@@ -180,8 +221,48 @@ impl CanvasWidget {
         Some((n.id, Rect::from_center_size((c.x, c.y), (size.w, size.h))))
       })
       .collect();
-    self.routes =
-      Route::for_edges(&self.scene.edges, &self.rects, &placed.channels);
+    let to = Placed {
+      rects,
+      edges: self.scene.edges.iter().map(|e| e.id).collect(),
+      channels: placed.channels,
+    };
+    self.tween = Tween::between(self.drawn(), &to);
+    self.placed = to;
+    self.show();
+  }
+
+  /// What to draw this frame: the placement, or the way there while a
+  /// relayout eases in.
+  fn drawn(&self) -> Drawn {
+    match &self.tween {
+      Some(tween) => tween.at(&self.placed),
+      None => Drawn::settled(self.placed.clone()),
+    }
+  }
+
+  /// Draw and hit-test [`Self::drawn`], routing every edge between it.
+  /// Once nothing is easing in, what left the scene is let go.
+  fn show(&mut self) {
+    self.shown = self.drawn();
+    if self.tween.is_none() {
+      self.gone.clear();
+      self.gone_edges.clear();
+      self.labels.retain(&self.scene.nodes);
+    }
+    let drawn = &self.shown.placed;
+    self.edges = self
+      .scene
+      .edges
+      .iter()
+      .chain(
+        self
+          .gone_edges
+          .values()
+          .filter(|e| drawn.edges.contains(&e.id)),
+      )
+      .cloned()
+      .collect();
+    self.routes = Route::for_edges(&self.edges, &drawn.rects, &drawn.channels);
   }
 
   /// The canvas fills whatever its parent offers, falling back to a sane
@@ -249,7 +330,7 @@ impl Widget for CanvasWidget {
     self.last_size = Some(size);
     // Fit once the viewport size and the node boxes are both known: at
     // startup, after a resize, and on request.
-    if self.needs_fit && !self.rects.is_empty() {
+    if self.needs_fit && !self.placed.rects.is_empty() {
       self.fit_to(size);
       self.needs_fit = false;
       if let Some(percent) = self.zoom_change() {
@@ -272,11 +353,17 @@ impl Widget for CanvasWidget {
 
     // Edges under nodes. Only what can be seen is encoded: at scale most of
     // a big graph is off screen, and each label is a text run to render.
-    for (edge, route) in self.scene.edges.iter().zip(&self.routes) {
+    // An edge fades with its ends, as well as on its own.
+    let shown = &self.shown;
+    for (edge, route) in self.edges.iter().zip(&self.routes) {
       if let Some(route) = route
         && route.bounds().overlaps(view)
       {
-        painter.edge(edge, route);
+        let opacity = shown
+          .of_edge(edge.id)
+          .min(shown.of_box(edge.from))
+          .min(shown.of_box(edge.to));
+        painter.faded(opacity, 1.0, route.bounds(), |p| p.edge(edge, route));
       }
     }
 
@@ -284,8 +371,10 @@ impl Widget for CanvasWidget {
     if let Some(link) = &self.link
       && let Some(target) = self.hover
       && !link.taken.contains(&target.node)
-      && let (Some(&from), Some(&to)) =
-        (self.rects.get(&link.source), self.rects.get(&target.copy))
+      && let (Some(&from), Some(&to)) = (
+        shown.placed.rects.get(&link.source),
+        shown.placed.rects.get(&target.copy),
+      )
     {
       let color = if link.closes_cycle.contains(&target.node) {
         self.theme.cycle
@@ -295,19 +384,24 @@ impl Widget for CanvasWidget {
       painter.preview(from, to, color);
     }
 
-    // Nodes on top.
-    for node in &self.scene.nodes {
-      if let Some(&rect) = self.rects.get(&node.id)
+    // Nodes on top, any fading out underneath the rest. A fading box also
+    // grows in, or shrinks away, a little.
+    for node in self.gone.values().chain(&self.scene.nodes) {
+      if let Some(&rect) = shown.placed.rects.get(&node.id)
         && rect.overlaps(view)
       {
-        painter.node(
-          node,
-          rect,
-          self.link.as_ref(),
-          self.labels.get(node.id),
-          self.labels.badge(node.copies),
-          node.glyph.and_then(|g| self.labels.glyph(g)),
-        );
+        let opacity = shown.of_box(node.id);
+        let scale = FADE_SCALE + (1.0 - FADE_SCALE) * opacity;
+        painter.faded(opacity, scale, rect, |p| {
+          p.node(
+            node,
+            rect,
+            self.link.as_ref(),
+            self.labels.get(node.id),
+            self.labels.badge(node.copies),
+            node.glyph.and_then(|g| self.labels.glyph(g)),
+          );
+        });
       }
     }
   }

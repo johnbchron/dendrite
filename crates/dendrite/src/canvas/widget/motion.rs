@@ -41,7 +41,12 @@ impl CanvasWidget {
 
   /// Every placed box, unioned; `None` before anything is placed.
   fn bounds(&self) -> Option<Rect> {
-    self.rects.values().copied().reduce(|a, b| a.union(b))
+    self
+      .placed
+      .rects
+      .values()
+      .copied()
+      .reduce(|a, b| a.union(b))
   }
 
   /// Fit the whole scene into the part of `viewport` the chrome leaves
@@ -91,7 +96,7 @@ impl CanvasWidget {
     let (Some(node), Some(size)) = (self.reveal, self.last_size) else {
       return false;
     };
-    let Some(&rect) = self.rects.get(&node) else {
+    let Some(&rect) = self.placed.rects.get(&node) else {
       return false;
     };
     self.reveal = None;
@@ -101,8 +106,23 @@ impl CanvasWidget {
     true
   }
 
+  /// Step a relayout in flight `interval` nanoseconds on. Says whether
+  /// more frames are needed: for it, or for a scene not yet placed, whose
+  /// relayout starts in the coming layout pass (which cannot ask for
+  /// frames itself).
+  fn settle(&mut self, interval: u64) -> bool {
+    if let Some(tween) = &mut self.tween {
+      if tween.advance(interval) {
+        self.tween = None;
+      }
+      self.show();
+    }
+    self.tween.is_some() || self.dirty
+  }
+
   /// One animation frame, `interval` nanoseconds after the last: start any
-  /// pending fit or reveal, then ease the view a step towards its target.
+  /// pending fit or reveal, ease the view a step towards its target, and
+  /// ease the boxes a step towards a new placement.
   pub(super) fn animate(&mut self, ctx: &mut UpdateCtx<'_>, interval: u64) {
     // Ease in log space, so zooming in and out feel the same speed. A long
     // stall (the first frame, or a hitch) is capped so it cannot overshoot.
@@ -132,7 +152,8 @@ impl CanvasWidget {
       ctx.submit_action::<CanvasAction>(CanvasAction::Zoomed(percent));
     }
     ctx.request_render();
-    if moving || self.reveal.is_some() || self.fit_pending {
+    let settling = self.settle(interval);
+    if moving || settling || self.reveal.is_some() || self.fit_pending {
       ctx.request_anim_frame();
     }
   }

@@ -11,7 +11,7 @@ use masonry::{
     Stroke,
   },
   parley::Layout as TextLayout,
-  peniko::{Brush, Color, Fill},
+  peniko::{Brush, Color, Fill, Mix},
   util::fill_color,
   vello::Scene,
 };
@@ -33,6 +33,10 @@ const BADGE_PAD: f64 = 5.0;
 /// of its top and bottom (clear of a condition's cut corners).
 const QUEST_INSET: (f64, f64) = (4.5, 9.0);
 
+/// How far past the bounds handed to [`Painter::faded`] its drawing may
+/// reach, in world units: a selection outline, a cycle warning ring.
+const FADE_MARGIN: f64 = 16.0;
+
 /// One paint pass: the scene being drawn into, the world→screen transform
 /// and the palette.
 pub(super) struct Painter<'a> {
@@ -49,6 +53,33 @@ impl<'a> Painter<'a> {
     theme: &'static Theme,
   ) -> Self {
     Self { scene, tf, theme }
+  }
+
+  /// Paint what `draw` paints at `opacity` (0 to 1), scaled by `scale`
+  /// about the centre of `bounds`, which must hold all of it (give or take
+  /// [`FADE_MARGIN`]). Anything fully shown at full size is painted as is.
+  pub(super) fn faded(
+    &mut self,
+    opacity: f64,
+    scale: f64,
+    bounds: Rect,
+    draw: impl FnOnce(&mut Self),
+  ) {
+    if opacity >= 1.0 && scale == 1.0 {
+      return draw(self);
+    }
+    if opacity <= 0.0 {
+      return;
+    }
+    let tf = self.tf;
+    self.tf = tf * Affine::scale_about(scale, bounds.center());
+    let clip = bounds.inflate(FADE_MARGIN, FADE_MARGIN);
+    self
+      .scene
+      .push_layer(Mix::Normal, opacity as f32, self.tf, &clip);
+    draw(self);
+    self.scene.pop_layer();
+    self.tf = tf;
   }
 
   /// Fill a `size`-sized viewport with the canvas ground.

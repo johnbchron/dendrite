@@ -26,11 +26,11 @@ pub enum Event {
   /// Add a node to the global namespace.
   NodeAdded {
     /// New node id.
-    node:       NodeId,
+    node: NodeId,
     /// Task-or-condition payload (carries the initial done bit).
-    kind:       NodeKind,
+    kind: NodeKind,
     /// Display name.
-    name:       String,
+    name: String,
     /// Initial within-level ordering hint.
     order_hint: f64,
   },
@@ -49,21 +49,21 @@ pub enum Event {
   /// Change a node's within-level ordering hint.
   OrderHintChanged {
     /// Target node.
-    node:       NodeId,
+    node: NodeId,
     /// New hint.
     order_hint: f64,
   },
   /// Set a task's completion bit.
   TaskCompleted {
     /// Target task node.
-    node:      NodeId,
+    node: NodeId,
     /// Whether it is now completed.
     completed: bool,
   },
   /// Set a condition's satisfaction bit.
   ConditionSet {
     /// Target condition node.
-    node:      NodeId,
+    node: NodeId,
     /// Whether it is now satisfied.
     satisfied: bool,
   },
@@ -76,7 +76,7 @@ pub enum Event {
     /// The dependent.
     from: NodeId,
     /// The requirement.
-    to:   NodeId,
+    to: NodeId,
   },
   /// Remove an edge.
   EdgeRemoved {
@@ -88,7 +88,7 @@ pub enum Event {
     /// New quest id.
     quest: QuestId,
     /// Display name.
-    name:  String,
+    name: String,
   },
   /// Remove a quest (its claimed nodes are untouched).
   QuestRemoved {
@@ -100,37 +100,37 @@ pub enum Event {
     /// Target quest.
     quest: QuestId,
     /// New name.
-    name:  String,
+    name: String,
   },
   /// Claim a node for a quest.
   QuestClaimed {
     /// Quest gaining the claim.
     quest: QuestId,
     /// Node being claimed.
-    node:  NodeId,
+    node: NodeId,
   },
   /// Release a quest's claim on a node.
   QuestUnclaimed {
     /// Quest losing the claim.
     quest: QuestId,
     /// Node being released.
-    node:  NodeId,
+    node: NodeId,
   },
   /// Define a place, or redefine one wholesale.
   PlaceDefined {
     /// New place id.
-    place:  PlaceId,
+    place: PlaceId,
     /// Display name.
-    name:   String,
+    name: String,
     /// The place it lies in.
     within: Option<PlaceId>,
   },
   /// Edit a place's name and parent.
   PlaceChanged {
     /// Target place.
-    place:  PlaceId,
+    place: PlaceId,
     /// New name.
-    name:   String,
+    name: String,
     /// New parent.
     within: Option<PlaceId>,
   },
@@ -144,25 +144,25 @@ pub enum Event {
     /// New resource id.
     resource: ResourceId,
     /// Display name.
-    name:     String,
+    name: String,
     /// What its amounts count.
-    unit:     Unit,
+    unit: Unit,
     /// How much I have.
-    balance:  Amount,
+    balance: Amount,
   },
   /// Declare how much of a resource I have.
   ResourceBalanceSet {
     /// Target resource.
     resource: ResourceId,
     /// New balance.
-    balance:  Amount,
+    balance: Amount,
   },
   /// Change a resource's display name.
   ResourceRenamed {
     /// Target resource.
     resource: ResourceId,
     /// New name.
-    name:     String,
+    name: String,
   },
   /// Remove a resource. Atoms that point at it stop holding.
   ResourceRemoved {
@@ -174,18 +174,18 @@ pub enum Event {
     /// New schedule id.
     schedule: ScheduleId,
     /// Display name.
-    name:     String,
+    name: String,
     /// Its windows.
-    spans:    Vec<Span>,
+    spans: Vec<Span>,
   },
   /// Edit a schedule's name and windows.
   ScheduleChanged {
     /// Target schedule.
     schedule: ScheduleId,
     /// New name.
-    name:     String,
+    name: String,
     /// New windows.
-    spans:    Vec<Span>,
+    spans: Vec<Span>,
   },
   /// Remove a schedule. Atoms that point at it stop holding.
   ScheduleRemoved {
@@ -197,14 +197,14 @@ pub enum Event {
     /// New context id.
     context: ContextId,
     /// Display name.
-    name:    String,
+    name: String,
   },
   /// Change a context's display name.
   ContextRenamed {
     /// Target context.
     context: ContextId,
     /// New name.
-    name:    String,
+    name: String,
   },
   /// Remove a context. Atoms that point at it stop holding.
   ContextRemoved {
@@ -378,8 +378,8 @@ impl Event {
         within,
       } => {
         graph.insert_place(Place {
-          id:     *place,
-          name:   name.clone(),
+          id: *place,
+          name: name.clone(),
           within: *within,
         });
       }
@@ -390,8 +390,8 @@ impl Event {
       } => {
         if graph.place(*place).is_some() {
           graph.insert_place(Place {
-            id:     *place,
-            name:   name.clone(),
+            id: *place,
+            name: name.clone(),
             within: *within,
           });
         }
@@ -406,9 +406,9 @@ impl Event {
         balance,
       } => {
         graph.insert_resource(Resource {
-          id:      *resource,
-          name:    name.clone(),
-          unit:    unit.clone(),
+          id: *resource,
+          name: name.clone(),
+          unit: unit.clone(),
           balance: *balance,
         });
       }
@@ -431,8 +431,8 @@ impl Event {
         spans,
       } => {
         graph.insert_schedule(Schedule {
-          id:    *schedule,
-          name:  name.clone(),
+          id: *schedule,
+          name: name.clone(),
           spans: spans.clone(),
         });
       }
@@ -443,8 +443,8 @@ impl Event {
       } => {
         if graph.schedule(*schedule).is_some() {
           graph.insert_schedule(Schedule {
-            id:    *schedule,
-            name:  name.clone(),
+            id: *schedule,
+            name: name.clone(),
             spans: spans.clone(),
           });
         }
@@ -454,7 +454,7 @@ impl Event {
       }
       Event::ContextDefined { context, name } => {
         graph.insert_context(Context {
-          id:   *context,
+          id: *context,
           name: name.clone(),
         });
       }
@@ -488,9 +488,9 @@ impl Event {
           return vec![];
         };
         let mut inv = vec![Event::NodeAdded {
-          node:       n.id,
-          kind:       n.kind.clone(),
-          name:       n.name.clone(),
+          node: n.id,
+          kind: n.kind.clone(),
+          name: n.name.clone(),
           order_hint: n.order_hint,
         }];
         // Restore incident edges (both directions), de-duplicated by id.
@@ -504,7 +504,7 @@ impl Event {
               edge: edge.id,
               kind: edge.kind,
               from: edge.from,
-              to:   edge.to,
+              to: edge.to,
             });
           }
         }
@@ -513,7 +513,7 @@ impl Event {
           if quest.claims.contains(node) {
             inv.push(Event::QuestClaimed {
               quest: quest.id,
-              node:  *node,
+              node: *node,
             });
           }
         }
@@ -530,7 +530,7 @@ impl Event {
       Event::OrderHintChanged { node, .. } => graph
         .node(*node)
         .map(|n| Event::OrderHintChanged {
-          node:       *node,
+          node: *node,
           order_hint: n.order_hint,
         })
         .into_iter()
@@ -538,7 +538,7 @@ impl Event {
       Event::TaskCompleted { node, .. } => graph
         .node(*node)
         .map(|n| Event::TaskCompleted {
-          node:      *node,
+          node: *node,
           completed: n.kind.is_satisfied(),
         })
         .into_iter()
@@ -547,7 +547,7 @@ impl Event {
         .node(*node)
         .filter(|n| n.kind.atom().is_none())
         .map(|n| Event::ConditionSet {
-          node:      *node,
+          node: *node,
           satisfied: n.kind.is_satisfied(),
         })
         .into_iter()
@@ -561,7 +561,7 @@ impl Event {
           edge: e.id,
           kind: e.kind,
           from: e.from,
-          to:   e.to,
+          to: e.to,
         })
         .into_iter()
         .collect(),
@@ -574,12 +574,12 @@ impl Event {
         };
         let mut inv = vec![Event::QuestCreated {
           quest: q.id,
-          name:  q.name.clone(),
+          name: q.name.clone(),
         }];
         for node in &q.claims {
           inv.push(Event::QuestClaimed {
             quest: *quest,
-            node:  *node,
+            node: *node,
           });
         }
         inv
@@ -588,20 +588,20 @@ impl Event {
         .quest(*quest)
         .map(|q| Event::QuestRenamed {
           quest: *quest,
-          name:  q.name.clone(),
+          name: q.name.clone(),
         })
         .into_iter()
         .collect(),
       Event::QuestClaimed { quest, node } => {
         vec![Event::QuestUnclaimed {
           quest: *quest,
-          node:  *node,
+          node: *node,
         }]
       }
       Event::QuestUnclaimed { quest, node } => {
         vec![Event::QuestClaimed {
           quest: *quest,
-          node:  *node,
+          node: *node,
         }]
       }
       // A definition may replace an existing one; undo restores it.
@@ -623,7 +623,7 @@ impl Event {
         .resource(*resource)
         .map(|r| Event::ResourceBalanceSet {
           resource: *resource,
-          balance:  r.balance,
+          balance: r.balance,
         })
         .into_iter()
         .collect(),
@@ -631,7 +631,7 @@ impl Event {
         .resource(*resource)
         .map(|r| Event::ResourceRenamed {
           resource: *resource,
-          name:     r.name.clone(),
+          name: r.name.clone(),
         })
         .into_iter()
         .collect(),
@@ -649,8 +649,8 @@ impl Event {
         .schedule(*schedule)
         .map(|s| Event::ScheduleChanged {
           schedule: *schedule,
-          name:     s.name.clone(),
-          spans:    s.spans.clone(),
+          name: s.name.clone(),
+          spans: s.spans.clone(),
         })
         .into_iter()
         .collect(),
@@ -667,7 +667,7 @@ impl Event {
         .context(*context)
         .map(|c| Event::ContextRenamed {
           context: *context,
-          name:    c.name.clone(),
+          name: c.name.clone(),
         })
         .into_iter()
         .collect(),
@@ -681,8 +681,8 @@ impl Event {
 /// The event that redefines `place` as `graph` holds it.
 fn restore_place(graph: &Graph, place: PlaceId) -> Option<Event> {
   graph.place(place).map(|p| Event::PlaceDefined {
-    place:  p.id,
-    name:   p.name.clone(),
+    place: p.id,
+    name: p.name.clone(),
     within: p.within,
   })
 }
@@ -691,9 +691,9 @@ fn restore_place(graph: &Graph, place: PlaceId) -> Option<Event> {
 fn restore_resource(graph: &Graph, resource: ResourceId) -> Option<Event> {
   graph.resource(resource).map(|r| Event::ResourceDefined {
     resource: r.id,
-    name:     r.name.clone(),
-    unit:     r.unit.clone(),
-    balance:  r.balance,
+    name: r.name.clone(),
+    unit: r.unit.clone(),
+    balance: r.balance,
   })
 }
 
@@ -701,8 +701,8 @@ fn restore_resource(graph: &Graph, resource: ResourceId) -> Option<Event> {
 fn restore_schedule(graph: &Graph, schedule: ScheduleId) -> Option<Event> {
   graph.schedule(schedule).map(|s| Event::ScheduleDefined {
     schedule: s.id,
-    name:     s.name.clone(),
-    spans:    s.spans.clone(),
+    name: s.name.clone(),
+    spans: s.spans.clone(),
   })
 }
 
@@ -710,7 +710,7 @@ fn restore_schedule(graph: &Graph, schedule: ScheduleId) -> Option<Event> {
 fn restore_context(graph: &Graph, context: ContextId) -> Option<Event> {
   graph.context(context).map(|c| Event::ContextDefined {
     context: c.id,
-    name:    c.name.clone(),
+    name: c.name.clone(),
   })
 }
 

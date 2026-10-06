@@ -18,7 +18,7 @@ pub enum DbError {
   )]
   NewerSchema {
     /// Schema version recorded in the database.
-    found:     i64,
+    found: i64,
     /// Newest schema version this build can open.
     supported: i64,
   },
@@ -30,7 +30,7 @@ pub enum DbError {
   )]
   BadEvent {
     /// The event's `seq` in the `events` table.
-    seq:   i64,
+    seq: i64,
     /// Why its payload did not parse.
     #[source]
     error: serde_json::Error,

@@ -37,7 +37,7 @@ const QUEST_INSET: (f64, f64) = (4.5, 9.0);
 /// and the palette.
 pub(super) struct Painter<'a> {
   scene: &'a mut Scene,
-  tf:    Affine,
+  tf: Affine,
   theme: &'static Theme,
 }
 
@@ -82,11 +82,11 @@ impl<'a> Painter<'a> {
   pub(super) fn preview(&mut self, from: Rect, to: Rect, color: Color) {
     let (a, b) = (NodeId::from_u128(0), NodeId::from_u128(1));
     let edge = RenderEdge {
-      id:       EdgeId::from_u128(0),
-      from:     a,
-      to:       b,
+      id: EdgeId::from_u128(0),
+      from: a,
+      to: b,
       reversed: false,
-      to_copy:  false,
+      to_copy: false,
     };
     let rects = HashMap::from([(a, from), (b, to)]);
     let Some(route) =

@@ -87,16 +87,16 @@ struct Direction {
 /// side, by number.
 struct Grid {
   slots: Vec<Slot>,
-  rows:  Vec<Vec<usize>>,
+  rows: Vec<Vec<usize>>,
   /// Each slot's row.
   layer: Vec<usize>,
   /// Each slot's index within its row.
-  pos:   Vec<usize>,
+  pos: Vec<usize>,
   width: Vec<f64>,
   /// Neighbours in the row above, left to right.
-  up:    Vec<Vec<usize>>,
+  up: Vec<Vec<usize>>,
   /// Neighbours in the row below, left to right.
-  down:  Vec<Vec<usize>>,
+  down: Vec<Vec<usize>>,
 }
 
 impl Grid {

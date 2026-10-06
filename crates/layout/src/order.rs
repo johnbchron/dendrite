@@ -26,7 +26,7 @@ pub struct Ordering {
   /// Every unit-length segment, upper slot first: each edge between
   /// adjacent ranks, and each piece of a long edge chained through its
   /// bends.
-  pub links:   Vec<(Slot, Slot)>,
+  pub links: Vec<(Slot, Slot)>,
 }
 
 /// Order every rank, seeding from `order_hint` then applying `sweeps`

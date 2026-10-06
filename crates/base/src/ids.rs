@@ -103,5 +103,7 @@ impl NodeId {
   /// ids of formula conditions ([`Atom::node_id`](crate::Atom::node_id))
   /// leave the 48-bit ULID timestamp at zero, so they sort before, and
   /// never collide with, every id minted by [`NodeId::new`].
-  pub fn is_value_addressed(self) -> bool { self.to_u128() >> 80 == 0 }
+  pub fn is_value_addressed(self) -> bool {
+    self.to_u128() >> 80 == 0
+  }
 }

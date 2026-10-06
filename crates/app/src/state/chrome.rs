@@ -38,21 +38,23 @@ pub(super) struct PanelWidth {
   width: f64,
   /// Width when the current divider drag started, so drags measure against
   /// a fixed anchor instead of accumulating.
-  base:  f64,
+  base: f64,
 }
 
 impl Default for PanelWidth {
   fn default() -> Self {
     Self {
       width: INSPECTOR_WIDTH,
-      base:  INSPECTOR_WIDTH,
+      base: INSPECTOR_WIDTH,
     }
   }
 }
 
 impl PanelWidth {
   /// Anchor a drag at the current width.
-  fn begin_resize(&mut self) { self.base = self.width; }
+  fn begin_resize(&mut self) {
+    self.base = self.width;
+  }
 
   /// Resize from a drag whose pointer has travelled `dx` since the press;
   /// dragging left (negative) widens the panel.
@@ -64,7 +66,9 @@ impl PanelWidth {
 impl AppState {
   /// The active palette. Every colour in the canvas and the panel comes from
   /// here.
-  pub fn theme(&self) -> &'static Theme { self.theme }
+  pub fn theme(&self) -> &'static Theme {
+    self.theme
+  }
 
   /// The palette the store records, or the default when it records none
   /// (or one this build no longer ships).
@@ -108,7 +112,9 @@ impl AppState {
   }
 
   /// Whether any popover (or the palette) is open, so Escape closes it.
-  pub fn popover_open(&self) -> bool { self.popover.is_some() }
+  pub fn popover_open(&self) -> bool {
+    self.popover.is_some()
+  }
 
   /// Whether a popover that a click anywhere else should close is open.
   pub fn dismissable_open(&self) -> bool {
@@ -133,7 +139,9 @@ impl AppState {
   }
 
   /// The latest camera request, handed to the canvas view.
-  pub fn camera(&self) -> Camera { self.camera }
+  pub fn camera(&self) -> Camera {
+    self.camera
+  }
 
   /// Ask the canvas camera to do something on the next rebuild.
   pub(super) fn aim(&mut self, request: CameraRequest) {
@@ -141,7 +149,9 @@ impl AppState {
   }
 
   /// Ask the canvas to refit/centre the whole graph on the next frame.
-  pub fn recenter(&mut self) { self.aim(CameraRequest::Fit); }
+  pub fn recenter(&mut self) {
+    self.aim(CameraRequest::Fit);
+  }
 
   /// Step the canvas zoom.
   pub fn zoom(&mut self, step: ZoomStep) {
@@ -149,7 +159,9 @@ impl AppState {
   }
 
   /// The canvas zoom as a whole percentage.
-  pub fn zoom_percent(&self) -> u32 { self.zoom_percent }
+  pub fn zoom_percent(&self) -> u32 {
+    self.zoom_percent
+  }
 
   /// Record the zoom level the canvas reports.
   pub fn set_zoom_percent(&mut self, percent: u32) {
@@ -166,23 +178,31 @@ impl AppState {
       0.0
     };
     Insets {
-      top:    size::TOP_BAR,
-      right:  card,
+      top: size::TOP_BAR,
+      right: card,
       bottom: 0.0,
-      left:   0.0,
+      left: 0.0,
     }
   }
 
   /// The inspector's current width in logical pixels.
-  pub fn inspector_width(&self) -> f64 { self.panel.width }
+  pub fn inspector_width(&self) -> f64 {
+    self.panel.width
+  }
 
   /// Anchor a divider drag at the current panel width.
-  pub fn begin_inspector_resize(&mut self) { self.panel.begin_resize(); }
+  pub fn begin_inspector_resize(&mut self) {
+    self.panel.begin_resize();
+  }
 
   /// Resize the panel from a divider drag. `dx` is the pointer's total travel
   /// since the press, so dragging left (negative) widens the panel.
-  pub fn resize_inspector(&mut self, dx: f64) { self.panel.resize(dx); }
+  pub fn resize_inspector(&mut self, dx: f64) {
+    self.panel.resize(dx);
+  }
 
   /// The handle the driver serves focus requests through.
-  pub fn focus_requests(&self) -> FocusRequests { self.focus_requests.clone() }
+  pub fn focus_requests(&self) -> FocusRequests {
+    self.focus_requests.clone()
+  }
 }

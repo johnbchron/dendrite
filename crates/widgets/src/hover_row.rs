@@ -26,16 +26,16 @@ use xilem::{
 /// A row: `main` filling the width, `trailing` at the right-hand end and
 /// stashed unless the row is hovered.
 pub struct HoverRowWidget {
-  main:          WidgetPod<dyn Widget>,
-  trailing:      WidgetPod<dyn Widget>,
+  main: WidgetPod<dyn Widget>,
+  trailing: WidgetPod<dyn Widget>,
   /// Whether `trailing` is stashed. Masonry will not lay out a stashed
   /// child, so the row tracks it and skips it.
-  stashed:       bool,
+  stashed: bool,
   /// `trailing`'s size when last laid out, so its room stays reserved while
   /// it is stashed. `None` until it has been measured once.
   trailing_size: Option<Size>,
   /// Space kept between `main` and `trailing`.
-  gap:           f64,
+  gap: f64,
 }
 
 impl HoverRowWidget {
@@ -126,7 +126,9 @@ impl Widget for HoverRowWidget {
   ) {
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,
@@ -159,8 +161,8 @@ pub fn hover_row<M, T>(gap: f64, main: M, trailing: T) -> HoverRow<M, T> {
 /// The view created by [`hover_row`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct HoverRow<M, T> {
-  gap:      f64,
-  main:     M,
+  gap: f64,
+  main: M,
   trailing: T,
 }
 
@@ -185,11 +187,11 @@ where
     let (trailing, trailing_state) =
       ctx.with_id(TRAILING, |ctx| self.trailing.build(ctx, app_state));
     let widget = HoverRowWidget {
-      main:          NewWidget::erased(main.new_widget).to_pod(),
-      trailing:      NewWidget::erased(trailing.new_widget).to_pod(),
-      stashed:       false,
+      main: NewWidget::erased(main.new_widget).to_pod(),
+      trailing: NewWidget::erased(trailing.new_widget).to_pod(),
+      stashed: false,
       trailing_size: None,
-      gap:           self.gap,
+      gap: self.gap,
     };
     (ctx.create_pod(widget), (main_state, trailing_state))
   }

@@ -57,20 +57,23 @@ fn a_manual_condition_becomes_a_date_in_place_and_undoes_in_one_step() {
   assert_eq!(state.source_draft(), None, "the form closes");
   assert_eq!(state.source_kind(), Some(SourceKind::Date));
   assert!(state.lock().graph().node(signoff).is_none());
-  assert_eq!(requirement_names(&mut state, frontend), [
-    "After Thu 1 Oct 09:00"
-  ]);
+  assert_eq!(
+    requirement_names(&mut state, frontend),
+    ["After Thu 1 Oct 09:00"]
+  );
   assert_eq!(state.lock().undo_label(), Some("make automatic"));
 
   state.undo();
   assert!(state.lock().graph().node(date).is_none());
-  assert_eq!(requirement_names(&mut state, frontend), [
-    "Design signed off"
-  ]);
+  assert_eq!(
+    requirement_names(&mut state, frontend),
+    ["Design signed off"]
+  );
   state.redo();
-  assert_eq!(requirement_names(&mut state, frontend), [
-    "After Thu 1 Oct 09:00"
-  ]);
+  assert_eq!(
+    requirement_names(&mut state, frontend),
+    ["After Thu 1 Oct 09:00"]
+  );
 }
 
 /// A quest cannot claim a formula condition, so a claim on a manual one is
@@ -175,9 +178,10 @@ fn a_formula_condition_changes_kind_or_goes_back_to_manual() {
       .node(after_oct_1_9am().node_id())
       .is_none()
   );
-  assert_eq!(requirement_names(&mut state, frontend), [
-    "Before Thu 15 Oct"
-  ]);
+  assert_eq!(
+    requirement_names(&mut state, frontend),
+    ["Before Thu 15 Oct"]
+  );
 
   // Back to manual, named as it read.
   let date = state.selected_info().unwrap().requirements[0].other;
@@ -253,7 +257,7 @@ fn a_loose_match_is_offered_but_not_taken() {
   // A context called Online exists.
   state.commit(vec![Event::ContextDefined {
     context: base::ContextId::new(),
-    name:    "Online".into(),
+    name: "Online".into(),
   }]);
   state.select(Some(signoff));
 

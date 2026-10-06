@@ -43,19 +43,19 @@ type LensKey = (u64, Lens);
 /// and layout from the graph alone.
 pub(super) struct Derivations {
   /// The [`Session::revision`] these were computed at.
-  revision:             u64,
+  revision: u64,
   /// The [`AppState::facts_revision`] the derived state was computed at.
-  facts_revision:       u64,
+  facts_revision: u64,
   /// The facts the derived state was computed from.
-  pub(super) facts:     Facts,
+  pub(super) facts: Facts,
   /// Readiness, cycles, satisfaction.
-  pub(super) derived:   Derived,
+  pub(super) derived: Derived,
   /// The completed trees; shared with the previous derivations when only
   /// the facts changed.
   pub(super) completed: Arc<Completed>,
   /// Ranks, ordering and the reversed edges of every node but the retired
   /// ones; shared like `completed`.
-  pub(super) layout:    Arc<Layout>,
+  pub(super) layout: Arc<Layout>,
 }
 
 /// The latest [`Derivations`] and canvas scene.
@@ -66,14 +66,16 @@ pub(super) struct Caches {
   lens_layout: Memo<LensKey, Layout>,
   /// The last canvas scene and what it was built from. Handing the canvas
   /// the same `Arc` is how it knows it has nothing to re-measure.
-  scene:       Memo<SceneKey, CanvasScene>,
+  scene: Memo<SceneKey, CanvasScene>,
 }
 
 /// The last value built, and the key it was built for.
 struct Memo<K, V>(Mutex<Option<(K, Arc<V>)>>);
 
 impl<K, V> Default for Memo<K, V> {
-  fn default() -> Self { Self(Mutex::default()) }
+  fn default() -> Self {
+    Self(Mutex::default())
+  }
 }
 
 impl<K: PartialEq, V> Memo<K, V> {

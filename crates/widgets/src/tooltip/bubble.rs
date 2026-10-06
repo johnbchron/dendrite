@@ -21,9 +21,9 @@ use super::Look;
 /// text, because a layer root is offered the whole window as tight
 /// constraints and every stock container would fill it.
 pub(super) struct TooltipBox {
-  text:   String,
-  look:   Look,
-  pad:    Padding,
+  text: String,
+  look: Look,
+  pad: Padding,
   layout: TextLayout<BrushIndex>,
 }
 
@@ -105,7 +105,9 @@ impl Widget for TooltipBox {
     );
   }
 
-  fn accessibility_role(&self) -> Role { Role::Tooltip }
+  fn accessibility_role(&self) -> Role {
+    Role::Tooltip
+  }
 
   fn accessibility(
     &mut self,
@@ -116,5 +118,7 @@ impl Widget for TooltipBox {
     node.set_value(self.text.clone());
   }
 
-  fn children_ids(&self) -> ChildrenIds { ChildrenIds::new() }
+  fn children_ids(&self) -> ChildrenIds {
+    ChildrenIds::new()
+  }
 }

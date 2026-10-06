@@ -23,15 +23,19 @@ pub struct Group {
   /// Applied in order to take the step.
   pub events: Vec<Event>,
   /// What the step does, for "Undo rename".
-  pub label:  &'static str,
+  pub label: &'static str,
 }
 
 impl Session {
   /// Whether there is a group available to [`undo`](Session::undo).
-  pub fn can_undo(&self) -> bool { !self.undo.is_empty() }
+  pub fn can_undo(&self) -> bool {
+    !self.undo.is_empty()
+  }
 
   /// Whether there is a group available to [`redo`](Session::redo).
-  pub fn can_redo(&self) -> bool { !self.redo.is_empty() }
+  pub fn can_redo(&self) -> bool {
+    !self.redo.is_empty()
+  }
 
   /// What [`undo`](Session::undo) would reverse, as a short verb phrase
   /// ("rename"), or `None` when there is nothing to undo.
@@ -113,7 +117,7 @@ impl Session {
     inverse.extend(prev.events);
     self.undo.push(Group {
       events: inverse,
-      label:  prev.label,
+      label: prev.label,
     });
     self.redo.clear();
     self.tail = events.last().map(|e| (self.last_seq, e.clone()));
@@ -149,7 +153,7 @@ impl Session {
     self.last_seq = self.backend.append(&group.events)?;
     self.redo.push(Group {
       events: redo,
-      label:  group.label,
+      label: group.label,
     });
     Ok(())
   }
@@ -165,7 +169,7 @@ impl Session {
     self.last_seq = self.backend.append(&group.events)?;
     self.undo.push(Group {
       events: inverse,
-      label:  group.label,
+      label: group.label,
     });
     Ok(())
   }

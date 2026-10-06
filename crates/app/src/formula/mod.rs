@@ -25,9 +25,13 @@ pub trait Clock: Send + Sync {
 pub struct SystemClock;
 
 impl Clock for SystemClock {
-  fn now(&self) -> Timestamp { Timestamp::now() }
+  fn now(&self) -> Timestamp {
+    Timestamp::now()
+  }
 
-  fn zone(&self) -> TimeZone { TimeZone::system() }
+  fn zone(&self) -> TimeZone {
+    TimeZone::system()
+  }
 }
 
 /// The instant `dt` names in `zone`: the moment just after a DST gap for a

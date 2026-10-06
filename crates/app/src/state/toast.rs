@@ -8,7 +8,7 @@ use super::AppState;
 pub struct Toast {
   /// Distinguishes one toast from the next, so a timer for an old one does
   /// not take down a new one.
-  pub id:   u64,
+  pub id: u64,
   /// What happened.
   pub text: String,
   /// The store revision right after the action; Undo is only offered while
@@ -21,7 +21,7 @@ pub struct Toast {
 pub(super) struct Toasts {
   current: Option<Toast>,
   /// Counter for [`Toast::id`].
-  serial:  u64,
+  serial: u64,
 }
 
 impl Toasts {
@@ -42,7 +42,9 @@ impl Toasts {
   }
 
   /// Take the toast down.
-  fn clear(&mut self) { self.current = None; }
+  fn clear(&mut self) {
+    self.current = None;
+  }
 
   /// Take the toast down if it is the one numbered `id`.
   fn dismiss(&mut self, id: u64) {
@@ -70,5 +72,7 @@ impl AppState {
 
   /// Take the toast down: its timer ran out, or it was closed. `id` guards
   /// against a stale timer taking down a newer toast.
-  pub fn dismiss_toast(&mut self, id: u64) { self.toasts.dismiss(id); }
+  pub fn dismiss_toast(&mut self, id: u64) {
+    self.toasts.dismiss(id);
+  }
 }

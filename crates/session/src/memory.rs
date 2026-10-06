@@ -18,7 +18,7 @@ use crate::{Backend, Error};
 pub struct Memory {
   /// The log. A position is an index into this, one-based, so 0 can mean
   /// "empty log" as it does for a real store.
-  events:   Vec<Event>,
+  events: Vec<Event>,
   /// Behind a lock because [`Backend::set_setting`] takes `&self`, as a
   /// real store's does: it writes through a connection it shares.
   settings: Mutex<HashMap<String, String>>,
@@ -39,7 +39,9 @@ impl Backend for Memory {
     Ok((self.events.clone(), self.events.len() as i64))
   }
 
-  fn event_count(&self) -> Result<u64, Error> { Ok(self.events.len() as u64) }
+  fn event_count(&self) -> Result<u64, Error> {
+    Ok(self.events.len() as u64)
+  }
 
   fn append(&mut self, events: &[Event]) -> Result<i64, Error> {
     self.events.extend_from_slice(events);

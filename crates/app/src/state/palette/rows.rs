@@ -60,11 +60,11 @@ impl AppState {
         .filter_map(|q| graph.quest(q).map(|q| q.name.clone()))
         .collect();
       Some(PaletteRow {
-        act:    PaletteAct::GoTo(id),
-        kind:   RowKind::Node,
-        label:  describe::node_name(graph, node, today),
+        act: PaletteAct::GoTo(id),
+        kind: RowKind::Node,
+        label: describe::node_name(graph, node, today),
         detail: (!quests.is_empty()).then(|| quests.join(", ")),
-        state:  cached.derived.state(id),
+        state: cached.derived.state(id),
       })
     };
     if recent_only {

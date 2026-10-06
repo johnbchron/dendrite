@@ -17,17 +17,17 @@ use crate::{
 /// quests that claim into it, and the referents formula atoms point at.
 #[derive(Clone, Debug, Default)]
 pub struct Graph {
-  nodes:     HashMap<NodeId, Node>,
-  edges:     HashMap<EdgeId, Edge>,
-  quests:    HashMap<QuestId, Quest>,
-  places:    HashMap<PlaceId, Place>,
+  nodes: HashMap<NodeId, Node>,
+  edges: HashMap<EdgeId, Edge>,
+  quests: HashMap<QuestId, Quest>,
+  places: HashMap<PlaceId, Place>,
   resources: HashMap<ResourceId, Resource>,
   schedules: HashMap<ScheduleId, Schedule>,
-  contexts:  HashMap<ContextId, Context>,
+  contexts: HashMap<ContextId, Context>,
   /// `from` node -> edges leaving it (its requirements).
-  out:       HashMap<NodeId, Vec<EdgeId>>,
+  out: HashMap<NodeId, Vec<EdgeId>>,
   /// `to` node -> edges arriving at it (its dependents).
-  inc:       HashMap<NodeId, Vec<EdgeId>>,
+  inc: HashMap<NodeId, Vec<EdgeId>>,
 }
 
 /// Two graphs are equal when they hold the same nodes, edges, quests and
@@ -48,30 +48,46 @@ impl PartialEq for Graph {
 
 impl Graph {
   /// An empty graph.
-  pub fn new() -> Self { Self::default() }
+  pub fn new() -> Self {
+    Self::default()
+  }
 
   // --- read access -------------------------------------------------------
 
   /// Look a node up by id.
-  pub fn node(&self, id: NodeId) -> Option<&Node> { self.nodes.get(&id) }
+  pub fn node(&self, id: NodeId) -> Option<&Node> {
+    self.nodes.get(&id)
+  }
 
   /// Look an edge up by id.
-  pub fn edge(&self, id: EdgeId) -> Option<&Edge> { self.edges.get(&id) }
+  pub fn edge(&self, id: EdgeId) -> Option<&Edge> {
+    self.edges.get(&id)
+  }
 
   /// Look a quest up by id.
-  pub fn quest(&self, id: QuestId) -> Option<&Quest> { self.quests.get(&id) }
+  pub fn quest(&self, id: QuestId) -> Option<&Quest> {
+    self.quests.get(&id)
+  }
 
   /// Iterate all nodes in arbitrary order.
-  pub fn nodes(&self) -> impl Iterator<Item = &Node> { self.nodes.values() }
+  pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+    self.nodes.values()
+  }
 
   /// Iterate all edges in arbitrary order.
-  pub fn edges(&self) -> impl Iterator<Item = &Edge> { self.edges.values() }
+  pub fn edges(&self) -> impl Iterator<Item = &Edge> {
+    self.edges.values()
+  }
 
   /// Iterate all quests in arbitrary order.
-  pub fn quests(&self) -> impl Iterator<Item = &Quest> { self.quests.values() }
+  pub fn quests(&self) -> impl Iterator<Item = &Quest> {
+    self.quests.values()
+  }
 
   /// Number of nodes.
-  pub fn node_count(&self) -> usize { self.nodes.len() }
+  pub fn node_count(&self) -> usize {
+    self.nodes.len()
+  }
 
   /// The edges leaving `node` — the things it requires (`from == node`).
   pub fn requirements_of(&self, node: NodeId) -> impl Iterator<Item = &Edge> {
@@ -125,7 +141,9 @@ impl Graph {
   }
 
   /// Look a place up by id.
-  pub fn place(&self, id: PlaceId) -> Option<&Place> { self.places.get(&id) }
+  pub fn place(&self, id: PlaceId) -> Option<&Place> {
+    self.places.get(&id)
+  }
 
   /// Look a resource up by id.
   pub fn resource(&self, id: ResourceId) -> Option<&Resource> {
@@ -143,7 +161,9 @@ impl Graph {
   }
 
   /// Iterate all places in arbitrary order.
-  pub fn places(&self) -> impl Iterator<Item = &Place> { self.places.values() }
+  pub fn places(&self) -> impl Iterator<Item = &Place> {
+    self.places.values()
+  }
 
   /// Iterate all resources in arbitrary order.
   pub fn resources(&self) -> impl Iterator<Item = &Resource> {

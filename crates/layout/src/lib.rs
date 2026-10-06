@@ -63,11 +63,11 @@ pub use self::{
 pub struct Layout {
   /// Which row every drawn node (and every long edge's bend) sits in, and
   /// in what order: everything placing needs besides the sizes.
-  pub arrangement:    Arrangement,
+  pub arrangement: Arrangement,
   /// Edges reversed to break cycles.
   pub reversed_edges: HashSet<EdgeId>,
   /// Which drawn nodes are extra copies of a shared condition.
-  pub copies:         Copies,
+  pub copies: Copies,
 }
 
 impl Layout {

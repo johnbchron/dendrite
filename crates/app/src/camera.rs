@@ -20,13 +20,13 @@ const ZOOM_STEP: f64 = 1.25;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Insets {
   /// Covered from the top edge.
-  pub top:    f64,
+  pub top: f64,
   /// Covered from the right edge.
-  pub right:  f64,
+  pub right: f64,
   /// Covered from the bottom edge.
   pub bottom: f64,
   /// Covered from the left edge.
-  pub left:   f64,
+  pub left: f64,
 }
 
 impl Insets {
@@ -58,7 +58,9 @@ pub enum CameraRequest {
 }
 
 /// `zoom` as the whole percentage shown for it.
-pub fn zoom_percent(zoom: f64) -> u32 { (zoom * 100.0).round() as u32 }
+pub fn zoom_percent(zoom: f64) -> u32 {
+  (zoom * 100.0).round() as u32
+}
 
 /// A zoom step from the zoom controls or keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,7 +90,7 @@ impl ZoomStep {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
   /// Bumped per request.
-  pub epoch:   u64,
+  pub epoch: u64,
   /// What to do.
   pub request: CameraRequest,
 }
@@ -97,7 +99,7 @@ impl Default for Camera {
   /// The request a fresh app starts with: fit the graph.
   fn default() -> Self {
     Self {
-      epoch:   0,
+      epoch: 0,
       request: CameraRequest::Fit,
     }
   }

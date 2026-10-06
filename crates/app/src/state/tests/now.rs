@@ -15,10 +15,10 @@ fn the_now_tray_groups_by_quest_in_the_global_view() {
 
   let (groups, total) = state.now();
   let titles: Vec<_> = groups.iter().map(|g| g.title.clone()).collect();
-  assert_eq!(titles, [
-    Some("Backend".to_string()),
-    Some("v1 Launch".to_string()),
-  ]);
+  assert_eq!(
+    titles,
+    [Some("Backend".to_string()), Some("v1 Launch".to_string()),]
+  );
   assert!(
     groups
       .iter()
@@ -40,9 +40,9 @@ fn the_now_tray_groups_by_quest_in_the_global_view() {
   let (groups, total) = state.now();
   assert_eq!(groups.len(), 1);
   assert_eq!(groups[0].title, None);
-  assert_eq!(groups[0].items, vec![(
-    backend,
-    "Build backend".to_string()
-  )]);
+  assert_eq!(
+    groups[0].items,
+    vec![(backend, "Build backend".to_string())]
+  );
   assert_eq!(total, 1);
 }

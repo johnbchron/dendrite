@@ -156,7 +156,7 @@ impl RefKey {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LibraryItem {
   /// Which referent.
-  pub key:  RefKey,
+  pub key: RefKey,
   /// Its name.
   pub name: String,
   /// What it holds, when there is something to say: a balance, how many
@@ -170,14 +170,16 @@ pub struct LibraryItem {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LibrarySection {
   /// Which kind.
-  pub kind:  RefKind,
+  pub kind: RefKind,
   /// Its referents.
   pub items: Vec<LibraryItem>,
 }
 
 impl AppState {
   /// Whether the library popover is open.
-  pub fn library_open(&self) -> bool { self.popover == Some(Popover::Library) }
+  pub fn library_open(&self) -> bool {
+    self.popover == Some(Popover::Library)
+  }
 
   /// Open or close the library, closing any other popover.
   pub fn toggle_library(&mut self) {
@@ -256,10 +258,14 @@ impl AppState {
   }
 
   /// The referent whose name is being edited in the library, if any.
-  pub fn library_editing(&self) -> Option<RefKey> { self.library_edit }
+  pub fn library_editing(&self) -> Option<RefKey> {
+    self.library_edit
+  }
 
   /// The library's name field's text.
-  pub fn library_draft(&self) -> &str { &self.library_draft }
+  pub fn library_draft(&self) -> &str {
+    &self.library_draft
+  }
 
   /// Open the library with the cursor in `key`'s name.
   pub fn rename_referent(&mut self, key: RefKey) {
@@ -299,7 +305,9 @@ impl AppState {
 
   /// Add a place or context called "New place" (or "New place 2"…) and
   /// put the cursor in its name.
-  pub fn new_referent(&mut self, kind: RefKind) { self.add_referent(kind); }
+  pub fn new_referent(&mut self, kind: RefKind) {
+    self.add_referent(kind);
+  }
 
   /// Add a place I am at now, or a context that is on now, from the Now
   /// tray, and put the cursor in its name.
@@ -332,18 +340,21 @@ impl AppState {
       match kind {
         RefKind::Place => {
           let place = PlaceId::new();
-          (RefKey::Place(place), Event::PlaceDefined {
-            place,
-            name,
-            within: None,
-          })
+          (
+            RefKey::Place(place),
+            Event::PlaceDefined {
+              place,
+              name,
+              within: None,
+            },
+          )
         }
         RefKind::Context => {
           let context = ContextId::new();
-          (RefKey::Context(context), Event::ContextDefined {
-            context,
-            name,
-          })
+          (
+            RefKey::Context(context),
+            Event::ContextDefined { context, name },
+          )
         }
         RefKind::Resource | RefKind::Schedule => return None,
       }

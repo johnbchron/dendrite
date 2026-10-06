@@ -38,55 +38,55 @@ struct Hit {
 
 /// The Masonry canvas widget.
 pub struct CanvasWidget {
-  scene:         Arc<CanvasScene>,
+  scene: Arc<CanvasScene>,
   /// Whether labels, sizes, placement and routes need recomputing in the
   /// next layout pass: set by a new scene or a font change, and cleared
   /// once done, so resizes and repaints do not redo them.
-  dirty:         bool,
+  dirty: bool,
   /// The world→screen transform.
-  frame:         Frame,
+  frame: Frame,
   /// The scale the view is animating towards; wheel input moves this, and
   /// each animation frame eases the frame's zoom after it.
-  zoom_target:   f64,
+  zoom_target: f64,
   /// Screen point the animated zoom is anchored on (the last wheel position).
-  zoom_anchor:   Point,
+  zoom_anchor: Point,
   /// A requested fit not yet started: it starts on the next animation
   /// frame that has placed boxes to fit.
-  fit_pending:   bool,
+  fit_pending: bool,
   /// The frame an eased fit or reveal is heading for, if one is in flight.
-  glide:         Option<Frame>,
+  glide: Option<Frame>,
   /// A box to reveal once it has been placed (the request can arrive in the
   /// same rebuild as the scene that adds it).
-  reveal:        Option<NodeId>,
+  reveal: Option<NodeId>,
   /// How much of the canvas the chrome covers.
-  insets:        Insets,
+  insets: Insets,
   /// Link mode, while it is armed.
-  link:          Option<LinkMode>,
+  link: Option<LinkMode>,
   /// The box under the pointer, tracked while no button is held.
-  hover:         Option<Hit>,
+  hover: Option<Hit>,
   /// The zoom percentage last reported to the app, so it hears of changes
   /// only.
   reported_zoom: u32,
   /// The press in progress, if any, for click-vs-pan discrimination.
-  press:         Option<Press>,
+  press: Option<Press>,
   /// When set, the next layout fits the whole graph into the viewport. Set
   /// on construction (so the app opens centred) and on a resize (PLAN §5,
   /// §6.3).
-  needs_fit:     bool,
+  needs_fit: bool,
   /// Viewport size from the previous layout pass, so a resize can request
   /// a refit (the existing fit is centred on the old viewport).
-  last_size:     Option<Size>,
+  last_size: Option<Size>,
   /// The palette every colour painted here comes from, pushed in from the
   /// view on rebuild.
-  theme:         &'static Theme,
+  theme: &'static Theme,
   /// Shaped node labels.
-  labels:        Labels,
+  labels: Labels,
   /// Every box in world coordinates, placed in the layout pass from
   /// the scene's arrangement and the measured labels.
-  rects:         HashMap<NodeId, Rect>,
+  rects: HashMap<NodeId, Rect>,
   /// Where each of the scene's edges attaches, index-aligned with
   /// `scene.edges`; routed alongside `rects`.
-  routes:        Vec<Option<Route>>,
+  routes: Vec<Option<Route>>,
 }
 
 impl CanvasWidget {
@@ -97,7 +97,7 @@ impl CanvasWidget {
       dirty: true,
       frame: Frame {
         zoom: ZOOM_RESET,
-        pan:  Vec2::new(60.0, 60.0),
+        pan: Vec2::new(60.0, 60.0),
       },
       zoom_target: ZOOM_RESET,
       zoom_anchor: Point::ORIGIN,
@@ -134,7 +134,9 @@ impl CanvasWidget {
   }
 
   /// Record how much of the canvas the chrome covers.
-  pub(super) fn set_insets(&mut self, insets: Insets) { self.insets = insets; }
+  pub(super) fn set_insets(&mut self, insets: Insets) {
+    self.insets = insets;
+  }
 
   /// Arm, re-aim or disarm link mode.
   pub(super) fn set_link(&mut self, link: Option<LinkMode>) {
@@ -318,7 +320,9 @@ impl Widget for CanvasWidget {
     }
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,
@@ -328,5 +332,7 @@ impl Widget for CanvasWidget {
   ) {
   }
 
-  fn children_ids(&self) -> ChildrenIds { ChildrenIds::new() }
+  fn children_ids(&self) -> ChildrenIds {
+    ChildrenIds::new()
+  }
 }

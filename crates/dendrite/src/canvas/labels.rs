@@ -49,7 +49,7 @@ type Shaped = (String, Option<Category>);
 /// for each kind of formula condition.
 #[derive(Default)]
 pub(super) struct Labels {
-  cache:  HashMap<NodeId, (Shaped, TextLayout<BrushIndex>)>,
+  cache: HashMap<NodeId, (Shaped, TextLayout<BrushIndex>)>,
   badges: HashMap<usize, TextLayout<BrushIndex>>,
   glyphs: HashMap<Category, TextLayout<BrushIndex>>,
 }

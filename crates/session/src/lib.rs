@@ -73,13 +73,13 @@ pub struct Session {
   /// `Send`, so a `Mutex<Session>` is `Send + Sync` and can live in an app
   /// state a UI toolkit requires to be both. Not `Sync`: SQLite's
   /// connection is not, which is what the mutex is there for.
-  backend:  Box<dyn Backend + Send>,
-  graph:    Graph,
+  backend: Box<dyn Backend + Send>,
+  graph: Graph,
   /// Inverse batches, newest last, each with the label of the group it
   /// undoes. Popping one and applying it undoes the most recent group.
-  undo:     Vec<Group>,
+  undo: Vec<Group>,
   /// Batches that re-apply undone groups, newest last, with their labels.
-  redo:     Vec<Group>,
+  redo: Vec<Group>,
   /// Position of the newest event in the log (0 for an empty log).
   last_seq: i64,
   /// Bumped every time the graph changes, so callers can cache anything
@@ -88,7 +88,7 @@ pub struct Session {
   /// The last event of the newest undo group and its position, while that
   /// group can still be amended; cleared by undo and redo, whose events
   /// are history and must never be rewritten.
-  tail:     Option<(i64, Event)>,
+  tail: Option<(i64, Event)>,
 }
 
 impl Session {
@@ -111,16 +111,22 @@ impl Session {
   }
 
   /// The current graph.
-  pub fn graph(&self) -> &Graph { &self.graph }
+  pub fn graph(&self) -> &Graph {
+    &self.graph
+  }
 
   /// A counter that changes whenever [`Session::graph`] does (commit,
   /// amend, undo, redo) and never otherwise. Equal revisions mean an equal
   /// graph.
-  pub fn revision(&self) -> u64 { self.revision }
+  pub fn revision(&self) -> u64 {
+    self.revision
+  }
 
   /// How many events the log holds. It only ever grows: undo appends the
   /// inverse rather than deleting anything.
-  pub fn event_count(&self) -> Result<u64, Error> { self.backend.event_count() }
+  pub fn event_count(&self) -> Result<u64, Error> {
+    self.backend.event_count()
+  }
 
   /// Read a UI preference.
   ///

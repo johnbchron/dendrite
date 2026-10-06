@@ -28,16 +28,18 @@ pub enum QuestChoice {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuestRow {
   /// What choosing it does.
-  pub choice:  QuestChoice,
+  pub choice: QuestChoice,
   /// What it says.
-  pub label:   String,
+  pub label: String,
   /// Whether it is the lens in use now.
   pub current: bool,
 }
 
 impl AppState {
   /// Whether the quest switcher is expanded.
-  pub fn picker_open(&self) -> bool { self.popover == Some(Popover::Quests) }
+  pub fn picker_open(&self) -> bool {
+    self.popover == Some(Popover::Quests)
+  }
 
   /// Expand or collapse the quest switcher.
   pub fn toggle_picker(&mut self) {
@@ -64,15 +66,15 @@ impl AppState {
     let mut rows = Vec::new();
     if query::score(text, "All nodes").is_some() {
       rows.push(QuestRow {
-        choice:  QuestChoice::All,
-        label:   "All nodes".into(),
+        choice: QuestChoice::All,
+        label: "All nodes".into(),
         current: self.lens().is_none(),
       });
     }
     if query::score(text, COMPLETED).is_some() {
       rows.push(QuestRow {
-        choice:  QuestChoice::Completed,
-        label:   COMPLETED.into(),
+        choice: QuestChoice::Completed,
+        label: COMPLETED.into(),
         current: self.completed_lens,
       });
     }
@@ -80,13 +82,13 @@ impl AppState {
     let quests = store.graph().quests().map(|q| (q.name.clone(), q.id));
     let quests = query::rank(text, quests, |(name, _)| name, Ord::cmp);
     rows.extend(quests.into_iter().map(|(name, id)| QuestRow {
-      choice:  QuestChoice::Quest(id),
-      label:   name,
+      choice: QuestChoice::Quest(id),
+      label: name,
       current: self.active_quest == Some(id),
     }));
     rows.push(QuestRow {
-      choice:  QuestChoice::New,
-      label:   if text.is_empty() {
+      choice: QuestChoice::New,
+      label: if text.is_empty() {
         "New quest".into()
       } else {
         format!("New quest \u{201c}{text}\u{201d}")
@@ -97,7 +99,9 @@ impl AppState {
   }
 
   /// The quest switcher's query, for its search box and highlight.
-  pub fn quest_query(&self) -> &Query { &self.quest_query }
+  pub fn quest_query(&self) -> &Query {
+    &self.quest_query
+  }
 
   /// The quest switcher's search field changed.
   pub fn set_quest_text(&mut self, text: String) {

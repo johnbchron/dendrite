@@ -26,7 +26,7 @@ pub(crate) struct Frame {
   /// World→screen scale.
   pub(crate) zoom: f64,
   /// World→screen translation.
-  pub(crate) pan:  Vec2,
+  pub(crate) pan: Vec2,
 }
 
 impl Frame {
@@ -77,7 +77,7 @@ impl Frame {
       && comfortable.contains(Point::new(shown.x1, shown.y1));
     (!inside).then(|| Self {
       zoom: self.zoom,
-      pan:  view.center().to_vec2() - self.zoom * node.center().to_vec2(),
+      pan: view.center().to_vec2() - self.zoom * node.center().to_vec2(),
     })
   }
 
@@ -103,7 +103,7 @@ impl Frame {
     }
     let next = Self {
       zoom: self.zoom * (zoom_gap * ease).exp(),
-      pan:  self.pan + pan_gap * ease,
+      pan: self.pan + pan_gap * ease,
     };
     (next, false)
   }
@@ -115,7 +115,9 @@ mod tests {
 
   use super::*;
 
-  fn frame(zoom: f64, pan: Vec2) -> Frame { Frame { zoom, pan } }
+  fn frame(zoom: f64, pan: Vec2) -> Frame {
+    Frame { zoom, pan }
+  }
 
   /// Culling works in world space: the visible area follows pan and zoom,
   /// with a margin so outlines at the window edge are kept.
@@ -147,10 +149,10 @@ mod tests {
   fn fit_centres_the_graph_in_the_uncovered_area() {
     let viewport = Size::new(1000.0, 800.0);
     let insets = Insets {
-      top:    40.0,
-      right:  320.0,
+      top: 40.0,
+      right: 320.0,
       bottom: 0.0,
-      left:   0.0,
+      left: 0.0,
     };
     let view = insets.uncovered(viewport);
     assert_eq!(view, Rect::new(0.0, 40.0, 680.0, 800.0));
@@ -175,10 +177,10 @@ mod tests {
   #[test]
   fn oversized_insets_leave_an_empty_view() {
     let insets = Insets {
-      top:    0.0,
-      right:  900.0,
+      top: 0.0,
+      right: 900.0,
       bottom: 0.0,
-      left:   200.0,
+      left: 200.0,
     };
     let view = insets.uncovered(Size::new(1000.0, 800.0));
     assert_eq!(view.width(), 0.0);

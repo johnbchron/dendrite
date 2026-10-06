@@ -125,9 +125,9 @@ impl Atom {
   /// formula nodes render from the atom and its referents.
   pub fn node_added(&self) -> Event {
     Event::NodeAdded {
-      node:       self.node_id(),
-      kind:       NodeKind::formula(self.clone()),
-      name:       String::new(),
+      node: self.node_id(),
+      kind: NodeKind::formula(self.clone()),
+      name: String::new(),
       order_hint: 0.0,
     }
   }
@@ -205,11 +205,11 @@ impl Atom {
         Truth::new(holds, None, Explanation::Place { here })
       }
       Atom::Has { resource, at_least } => match graph.resource(*resource) {
-        Some(r) => {
-          Truth::new(r.balance >= *at_least, None, Explanation::Balance {
-            have: r.balance,
-          })
-        }
+        Some(r) => Truth::new(
+          r.balance >= *at_least,
+          None,
+          Explanation::Balance { have: r.balance },
+        ),
         None => Truth::missing(),
       },
       Atom::In { context } => {
@@ -236,7 +236,7 @@ pub struct Truth {
   pub until: Option<Timestamp>,
   /// The facts behind `holds`, for the inspector to phrase alongside the
   /// atom ("Opens Thu 1 Oct", "Needs $50.00, have $32.10").
-  pub why:   Explanation,
+  pub why: Explanation,
 }
 
 impl Truth {
@@ -244,7 +244,9 @@ impl Truth {
     Self { holds, until, why }
   }
 
-  fn missing() -> Self { Self::new(false, None, Explanation::Missing) }
+  fn missing() -> Self {
+    Self::new(false, None, Explanation::Missing)
+  }
 }
 
 /// The facts an atom's truth came from, beyond the atom itself.

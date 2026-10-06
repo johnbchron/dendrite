@@ -35,15 +35,15 @@ pub struct Style {
   pub shadow: Option<(Color, f64, f64)>,
   /// Draw only a hairline along the lower edge instead of a full border:
   /// for a bar spanning the window, whose sides have no edge to show.
-  pub flat:   bool,
+  pub flat: bool,
 }
 
 // --- the widget ---------------------------------------------------------
 
 /// Paints a [`Style`] and lays its child out inside `padding`.
 pub struct SurfaceWidget {
-  child:   WidgetPod<dyn Widget>,
-  style:   Style,
+  child: WidgetPod<dyn Widget>,
+  style: Style,
   padding: f64,
 }
 
@@ -110,7 +110,9 @@ impl Widget for SurfaceWidget {
     }
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,
@@ -138,7 +140,7 @@ pub type Surface<V> = Wrap<SurfaceProps, V>;
 
 /// What a [`Surface`] is built from.
 pub struct SurfaceProps {
-  style:   Style,
+  style: Style,
   padding: f64,
 }
 
@@ -147,8 +149,8 @@ impl<State, Action> Wrapper<State, Action> for SurfaceProps {
 
   fn build(&self, child: NewWidget<dyn Widget>) -> SurfaceWidget {
     SurfaceWidget {
-      child:   child.to_pod(),
-      style:   self.style,
+      child: child.to_pod(),
+      style: self.style,
       padding: self.padding,
     }
   }

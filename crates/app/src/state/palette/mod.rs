@@ -95,15 +95,15 @@ pub enum RowKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaletteRow {
   /// What choosing it does.
-  pub act:    PaletteAct,
+  pub act: PaletteAct,
   /// What it is.
-  pub kind:   RowKind,
+  pub kind: RowKind,
   /// What it says.
-  pub label:  String,
+  pub label: String,
   /// A trailing note: a command's key, the quests claiming a node.
   pub detail: Option<String>,
   /// A node's state, for its dot.
-  pub state:  Option<NodeState>,
+  pub state: Option<NodeState>,
 }
 
 impl PaletteRow {
@@ -143,15 +143,21 @@ impl Recent {
   }
 
   /// The nodes, newest first.
-  fn iter(&self) -> impl Iterator<Item = NodeId> + '_ { self.0.iter().copied() }
+  fn iter(&self) -> impl Iterator<Item = NodeId> + '_ {
+    self.0.iter().copied()
+  }
 }
 
 impl AppState {
   /// Whether the command palette is open.
-  pub fn palette_open(&self) -> bool { self.popover == Some(Popover::Palette) }
+  pub fn palette_open(&self) -> bool {
+    self.popover == Some(Popover::Palette)
+  }
 
   /// The palette's query, for its search box and highlight.
-  pub fn palette_query(&self) -> &Query { &self.palette_query }
+  pub fn palette_query(&self) -> &Query {
+    &self.palette_query
+  }
 
   /// The palette's search field changed.
   pub fn set_palette_text(&mut self, text: String) {
@@ -159,7 +165,9 @@ impl AppState {
   }
 
   /// Whether the palette was opened to search nodes only (with `/`).
-  pub fn palette_nodes_only(&self) -> bool { self.palette_nodes_only }
+  pub fn palette_nodes_only(&self) -> bool {
+    self.palette_nodes_only
+  }
 
   /// Open the palette with an empty query; `nodes_only` limits it to nodes.
   pub fn open_palette(&mut self, nodes_only: bool) {

@@ -8,11 +8,11 @@ use super::*;
 
 fn edge(from: u128, to: u128) -> RenderEdge {
   RenderEdge {
-    id:       EdgeId::from_u128(from * 100 + to),
-    from:     NodeId::from_u128(from),
-    to:       NodeId::from_u128(to),
+    id: EdgeId::from_u128(from * 100 + to),
+    from: NodeId::from_u128(from),
+    to: NodeId::from_u128(to),
     reversed: false,
-    to_copy:  false,
+    to_copy: false,
   }
 }
 
@@ -87,9 +87,9 @@ fn ports_never_leave_the_side() {
 fn curve_meets_the_arrowhead_square_on() {
   let route = Route {
     start: Point::new(0.0, 0.0),
-    end:   Point::new(80.0, 100.0),
-    axis:  Vec2::new(0.0, 1.0),
-    via:   Vec::new(),
+    end: Point::new(80.0, 100.0),
+    axis: Vec2::new(0.0, 1.0),
+    via: Vec::new(),
   };
   let (curve, tip) = route.curve();
   assert_eq!(tip, Point::new(0.0, TIP_GAP));
@@ -118,18 +118,21 @@ fn skipping_edges_run_through_their_channels() {
   let bottom = Rect::new(0.0, 300.0, 150.0, 350.0);
   let rects = boxes(&[(1, top), (2, bottom)]);
   let channels = |id| {
-    HashMap::from([(id, vec![
-      Channel {
-        x:      200.0,
-        top:    100.0,
-        bottom: 150.0,
-      },
-      Channel {
-        x:      210.0,
-        top:    200.0,
-        bottom: 250.0,
-      },
-    ])])
+    HashMap::from([(
+      id,
+      vec![
+        Channel {
+          x: 200.0,
+          top: 100.0,
+          bottom: 150.0,
+        },
+        Channel {
+          x: 210.0,
+          top: 200.0,
+          bottom: 250.0,
+        },
+      ],
+    )])
   };
 
   let down = edge(1, 2);
@@ -137,10 +140,13 @@ fn skipping_edges_run_through_their_channels() {
     Route::for_edges(std::slice::from_ref(&down), &rects, &channels(down.id))
       .remove(0)
       .unwrap();
-  assert_eq!(route.via, vec![
-    (Point::new(200.0, 100.0), Point::new(200.0, 150.0)),
-    (Point::new(210.0, 200.0), Point::new(210.0, 250.0)),
-  ]);
+  assert_eq!(
+    route.via,
+    vec![
+      (Point::new(200.0, 100.0), Point::new(200.0, 150.0)),
+      (Point::new(210.0, 200.0), Point::new(210.0, 250.0)),
+    ]
+  );
   // The straight runs are in the drawn path.
   let (curve, _) = route.curve();
   let lines: Vec<Point> = curve
@@ -151,20 +157,23 @@ fn skipping_edges_run_through_their_channels() {
       _ => None,
     })
     .collect();
-  assert_eq!(lines, vec![
-    Point::new(200.0, 150.0),
-    Point::new(210.0, 250.0)
-  ]);
+  assert_eq!(
+    lines,
+    vec![Point::new(200.0, 150.0), Point::new(210.0, 250.0)]
+  );
 
   let up = edge(2, 1);
   let route =
     Route::for_edges(std::slice::from_ref(&up), &rects, &channels(up.id))
       .remove(0)
       .unwrap();
-  assert_eq!(route.via, vec![
-    (Point::new(210.0, 250.0), Point::new(210.0, 200.0)),
-    (Point::new(200.0, 150.0), Point::new(200.0, 100.0)),
-  ]);
+  assert_eq!(
+    route.via,
+    vec![
+      (Point::new(210.0, 250.0), Point::new(210.0, 200.0)),
+      (Point::new(200.0, 150.0), Point::new(200.0, 100.0)),
+    ]
+  );
 }
 
 /// An edge is kept while any of it (curve, channel, arrowhead) could
@@ -173,9 +182,9 @@ fn skipping_edges_run_through_their_channels() {
 fn route_bounds_cover_the_whole_drawn_edge() {
   let route = Route {
     start: Point::new(0.0, 0.0),
-    end:   Point::new(0.0, 400.0),
-    axis:  Vec2::new(0.0, 1.0),
-    via:   vec![(Point::new(300.0, 100.0), Point::new(300.0, 300.0))],
+    end: Point::new(0.0, 400.0),
+    axis: Vec2::new(0.0, 1.0),
+    via: vec![(Point::new(300.0, 100.0), Point::new(300.0, 300.0))],
   };
   let b = route.bounds();
   let (curve, tip) = route.curve();

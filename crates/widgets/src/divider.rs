@@ -50,9 +50,9 @@ pub struct DividerWidget {
   press_x: Option<f64>,
   /// Total width: the grab area and the layout footprint, deliberately
   /// wider than the hairline it draws.
-  width:   f64,
+  width: f64,
   /// The hairline's colour.
-  color:   Color,
+  color: Color,
 }
 
 impl DividerWidget {
@@ -164,7 +164,9 @@ impl Widget for DividerWidget {
     CursorIcon::ColResize
   }
 
-  fn accessibility_role(&self) -> Role { Role::Splitter }
+  fn accessibility_role(&self) -> Role {
+    Role::Splitter
+  }
 
   fn accessibility(
     &mut self,
@@ -174,7 +176,9 @@ impl Widget for DividerWidget {
   ) {
   }
 
-  fn children_ids(&self) -> ChildrenIds { ChildrenIds::new() }
+  fn children_ids(&self) -> ChildrenIds {
+    ChildrenIds::new()
+  }
 }
 
 // --- the view -----------------------------------------------------------
@@ -182,9 +186,9 @@ impl Widget for DividerWidget {
 /// A Xilem [`View`] hosting the [`DividerWidget`].
 pub struct Divider<F> {
   /// Total width of the grab area.
-  width:     f64,
+  width: f64,
   /// The hairline's colour.
-  color:     Color,
+  color: Color,
   on_action: F,
 }
 

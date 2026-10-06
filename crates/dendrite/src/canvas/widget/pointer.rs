@@ -18,9 +18,9 @@ const CLICK_SLOP: f64 = 4.0;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Press {
   /// Where the press went down.
-  origin:  Point,
+  origin: Point,
   /// Where the pointer was at the last move, for incremental panning.
-  last:    Point,
+  last: Point,
   /// Whether the gesture has moved far enough to be a pan.
   panning: bool,
 }
@@ -37,8 +37,8 @@ impl CanvasWidget {
         let p = ctx.local_position(e.state.position);
         ctx.capture_pointer();
         self.press = Some(Press {
-          origin:  p,
-          last:    p,
+          origin: p,
+          last: p,
           panning: false,
         });
       }
@@ -81,8 +81,8 @@ impl CanvasWidget {
           let p = ctx.local_position(e.state.position);
           let hit = self.hit_test(self.frame.to_world(p));
           ctx.submit_action::<CanvasAction>(CanvasAction::Click {
-            node:  hit.map(|h| h.node),
-            copy:  hit.map(|h| h.copy),
+            node: hit.map(|h| h.node),
+            copy: hit.map(|h| h.copy),
             shift: e.state.modifiers.shift(),
           });
         }

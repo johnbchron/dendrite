@@ -16,7 +16,7 @@ use petgraph::{algo::toposort, graphmap::DiGraphMap};
 /// feedback arcs already flipped) used by the ordering stage.
 pub struct Layering {
   /// Rank (row index, 0 at the top) for every node.
-  pub ranks:     HashMap<NodeId, usize>,
+  pub ranks: HashMap<NodeId, usize>,
   /// DAG edges as `(edge, upper, lower)` — `upper` sits one-or-more ranks
   /// above `lower`. Self-loops are excluded.
   pub dag_edges: Vec<(EdgeId, NodeId, NodeId)>,

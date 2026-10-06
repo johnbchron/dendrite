@@ -51,7 +51,9 @@ pub trait Wrapper<State, Action>: Send + Sync + Sized + 'static {
 }
 
 /// `child`, wrapped in the widget `props` builds.
-pub fn wrap<P, V>(props: P, child: V) -> Wrap<P, V> { Wrap { props, child } }
+pub fn wrap<P, V>(props: P, child: V) -> Wrap<P, V> {
+  Wrap { props, child }
+}
 
 /// The view created by [`wrap`].
 #[must_use = "View values do nothing unless provided to Xilem."]

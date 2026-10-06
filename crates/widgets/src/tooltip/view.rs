@@ -27,8 +27,8 @@ pub type Tooltip<V> = Wrap<TooltipProps, V>;
 
 /// What a [`Tooltip`] is built from.
 pub struct TooltipProps {
-  text:   String,
-  look:   Look,
+  text: String,
+  look: Look,
   anchor: Anchor,
 }
 

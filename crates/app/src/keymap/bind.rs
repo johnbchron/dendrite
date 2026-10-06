@@ -25,7 +25,7 @@ pub struct Flags {
   /// Whether a popover with a search list is open (the palette, the quest
   /// switcher): the arrows and Enter then drive its list, and single
   /// letters are not shortcuts.
-  pub query:     bool,
+  pub query: bool,
 }
 
 /// How the command modifier is written on this platform, for hints.
@@ -44,7 +44,9 @@ const COMMAND_KEY: &str = if cfg!(target_os = "macos") {
 
 /// A shortcut hint for tooltips: `key` with the command modifier, such as
 /// "Ctrl+Z".
-pub fn chord(key: &str) -> String { format!("{COMMAND_KEY}+{key}") }
+pub fn chord(key: &str) -> String {
+  format!("{COMMAND_KEY}+{key}")
+}
 
 impl Binding {
   /// What `key` means given `flags`, if anything. Key releases never mean

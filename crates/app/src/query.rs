@@ -21,7 +21,7 @@ use nucleo_matcher::{
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Query {
   /// What has been typed.
-  pub text:      String,
+  pub text: String,
   /// Index of the highlighted result.
   pub highlight: usize,
 }
@@ -63,7 +63,7 @@ thread_local! {
 struct Engine {
   pattern: Pattern,
   matcher: Matcher,
-  buf:     Vec<char>,
+  buf: Vec<char>,
 }
 
 impl Engine {
@@ -76,7 +76,7 @@ impl Engine {
         nucleo_matcher::pattern::AtomKind::Fuzzy,
       ),
       matcher: Matcher::new(Config::DEFAULT),
-      buf:     Vec::new(),
+      buf: Vec::new(),
     }
   }
 
@@ -128,8 +128,7 @@ pub fn rank<T>(
       .into_iter()
       .filter_map(|t| Some((engine.score(hay(&t))?, t)))
       .collect();
-    scored
-      .sort_by(|a, b| b.0.cmp(&a.0).then_with(|| tie(&a.1, &b.1)));
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| tie(&a.1, &b.1)));
     scored.into_iter().map(|(_, t)| t).collect()
   })
 }
@@ -160,7 +159,7 @@ mod tests {
     assert_eq!(q.highlight, 0);
     // A list that shrank under the highlight clamps it.
     let q = Query {
-      text:      String::new(),
+      text: String::new(),
       highlight: 7,
     };
     assert_eq!(q.highlighted(3), 2);

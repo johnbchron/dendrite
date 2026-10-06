@@ -22,13 +22,15 @@ use crate::wrap::{Wrap, Wrapper, wrap};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Motion {
   /// Offset, in logical pixels, the child starts at.
-  pub from:        Vec2,
+  pub from: Vec2,
   /// Duration in milliseconds.
   pub duration_ms: f64,
 }
 
 /// Ease-out cubic: fast start, gentle landing.
-fn ease_out(t: f64) -> f64 { 1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3) }
+fn ease_out(t: f64) -> f64 {
+  1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
 
 /// The offset `motion` has reached after `elapsed_ms`.
 fn offset_at(motion: Motion, elapsed_ms: f64) -> Vec2 {
@@ -44,8 +46,8 @@ fn offset_at(motion: Motion, elapsed_ms: f64) -> Vec2 {
 
 /// Slides its child into place when added.
 pub struct AppearWidget {
-  child:   WidgetPod<dyn Widget>,
-  motion:  Motion,
+  child: WidgetPod<dyn Widget>,
+  motion: Motion,
   elapsed: f64,
 }
 
@@ -102,7 +104,9 @@ impl Widget for AppearWidget {
   ) {
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,
@@ -120,7 +124,9 @@ impl Widget for AppearWidget {
 // --- the view -----------------------------------------------------------
 
 /// `child`, easing in from `motion.from` when it first appears.
-pub fn appear<V>(motion: Motion, child: V) -> Appear<V> { wrap(motion, child) }
+pub fn appear<V>(motion: Motion, child: V) -> Appear<V> {
+  wrap(motion, child)
+}
 
 /// The view created by [`appear`].
 pub type Appear<V> = Wrap<Motion, V>;
@@ -130,8 +136,8 @@ impl<State, Action> Wrapper<State, Action> for Motion {
 
   fn build(&self, child: NewWidget<dyn Widget>) -> AppearWidget {
     AppearWidget {
-      child:   child.to_pod(),
-      motion:  *self,
+      child: child.to_pod(),
+      motion: *self,
       elapsed: 0.0,
     }
   }
@@ -154,7 +160,7 @@ mod tests {
   #[test]
   fn motion_starts_at_its_offset_and_lands_at_zero() {
     let m = Motion {
-      from:        Vec2::new(16.0, 0.0),
+      from: Vec2::new(16.0, 0.0),
       duration_ms: 160.0,
     };
     assert_eq!(offset_at(m, 0.0), m.from);

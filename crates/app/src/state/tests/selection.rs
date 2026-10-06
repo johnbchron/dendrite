@@ -76,7 +76,7 @@ fn a_cycle_names_its_members() {
     Reason::CycleWith(vec![Named {
       node: ship,
       name: "Ship v1".into(),
-      why:  None,
+      why: None,
     }])
   );
   assert_eq!(info.primary, Primary::Complete { enabled: false });
@@ -135,7 +135,7 @@ fn reason_sentences_count_and_flag_cycles() {
   let peer = vec![Named {
     node: NodeId::from_u128(1),
     name: "Peer".into(),
-    why:  None,
+    why: None,
   }];
   assert!(Reason::CycleWith(peer.clone()).is_alert());
   assert!(!Reason::WaitingOn(peer.clone()).is_alert());

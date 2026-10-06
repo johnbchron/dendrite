@@ -19,7 +19,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomOffer {
   /// The reading of the phrase.
-  pub offer:   Offer,
+  pub offer: Offer,
   /// How many nodes already require this atom: it exists and choosing it
   /// links to it ("At Home — used by 6"). Zero for a new one.
   pub used_by: usize,
@@ -31,7 +31,9 @@ pub(super) const LINK_PICKER_MAX: usize = 6;
 
 impl AppState {
   /// Whether the canvas is armed to pick a requirement target.
-  pub fn is_linking(&self) -> bool { self.linking }
+  pub fn is_linking(&self) -> bool {
+    self.linking
+  }
 
   /// Arm the canvas: node clicks add requirements to the selection rather
   /// than moving the selection. No-op without a selection, and a no-op if

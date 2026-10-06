@@ -16,7 +16,7 @@ pub type Keymap<V, F> = Wrap<KeymapProps<F>, V>;
 
 /// What a [`Keymap`] is built from.
 pub struct KeymapProps<F> {
-  flags:      Flags,
+  flags: Flags,
   on_command: F,
 }
 

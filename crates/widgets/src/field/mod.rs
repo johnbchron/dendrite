@@ -28,7 +28,7 @@ pub enum FieldAction {
   /// The field gained or lost keyboard focus.
   Focus {
     /// Whether the field now has focus.
-    focused:    bool,
+    focused: bool,
     /// Whether a click in the field caused it (rather than the key map).
     by_pointer: bool,
   },
@@ -42,15 +42,15 @@ pub struct Look {
   /// The frame at rest.
   pub border: Color,
   /// The frame, and the ring, while the field has focus.
-  pub focus:  Color,
+  pub focus: Color,
   /// The text, and the caret.
-  pub text:   Color,
+  pub text: Color,
   /// Placeholder text.
-  pub muted:  Color,
+  pub muted: Color,
   /// Corner radius of the frame.
   pub radius: f64,
   /// The face the text is shaped in.
-  pub font:   FontStack<'static>,
+  pub font: FontStack<'static>,
 }
 
 /// Told when the field's text area is mounted and when it goes, so the app

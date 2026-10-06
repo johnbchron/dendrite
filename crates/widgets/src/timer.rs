@@ -36,8 +36,8 @@ pub fn after<F>(key: u64, delay: Duration, on_fire: F) -> After<F> {
 /// The view created by [`after`].
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct After<F> {
-  key:     u64,
-  delay:   Duration,
+  key: u64,
+  delay: Duration,
   on_fire: F,
 }
 

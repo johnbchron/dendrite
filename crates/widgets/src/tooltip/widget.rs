@@ -14,15 +14,15 @@ use masonry::{
 use super::{Anchor, DELAY_MS, GAP, Look, bubble::TooltipBox};
 /// Wraps a control and shows its tooltip on hover.
 pub struct TooltipWidget {
-  child:   WidgetPod<dyn Widget>,
-  text:    String,
-  anchor:  Anchor,
-  look:    Look,
+  child: WidgetPod<dyn Widget>,
+  text: String,
+  anchor: Anchor,
+  look: Look,
   /// How long the pointer has rested here, while it is here and the tooltip
   /// is not yet showing.
   resting: Option<f64>,
   /// The layer showing the tooltip, if it is up.
-  layer:   Option<WidgetId>,
+  layer: Option<WidgetId>,
 }
 
 impl TooltipWidget {
@@ -178,7 +178,9 @@ impl Widget for TooltipWidget {
   ) {
   }
 
-  fn accessibility_role(&self) -> Role { Role::GenericContainer }
+  fn accessibility_role(&self) -> Role {
+    Role::GenericContainer
+  }
 
   fn accessibility(
     &mut self,

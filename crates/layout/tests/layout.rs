@@ -3,7 +3,9 @@
 use base::{Edge, EdgeId, EdgeKind, Graph, NodeId, NodeKind};
 use layout::{Layout, LayoutConfig, Pos, Size, Slot};
 
-fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
+fn nid(n: u128) -> NodeId {
+  NodeId::from_u128(n)
+}
 
 /// Every drawn node's centre, with every box at the default size. The
 /// layout carries no coordinates of its own; the caller places it once it
@@ -197,14 +199,17 @@ fn a_node_sits_over_its_median_requirement() {
   // 0 requires 1 and 2; 1 requires 3, 4 and 5, and 5 requires 6.
   // Centring each row on its own left 1 off the middle of 3..5; lined up,
   // it sits right over the middle one, and 6 right under 5.
-  let g = build(7, &[
-    (10, 0, 1),
-    (11, 0, 2),
-    (12, 1, 3),
-    (13, 1, 4),
-    (14, 1, 5),
-    (15, 5, 6),
-  ]);
+  let g = build(
+    7,
+    &[
+      (10, 0, 1),
+      (11, 0, 2),
+      (12, 1, 3),
+      (13, 1, 4),
+      (14, 1, 5),
+      (15, 5, 6),
+    ],
+  );
   let l = Layout::compute(&g, &LayoutConfig::default());
   let x = |i| pos(&l, nid(i)).unwrap().x;
   let mut below = [x(3), x(4), x(5)];
@@ -422,10 +427,11 @@ mod copies {
   #[test]
   fn row_siblings_in_one_tree_share_a_condition() {
     // 0 requires 1 and 2; both require the condition 3.
-    let g =
-      with_conditions(4, &[(10, 0, 1), (11, 0, 2), (12, 1, 3), (13, 2, 3)], &[
-        3,
-      ]);
+    let g = with_conditions(
+      4,
+      &[(10, 0, 1), (11, 0, 2), (12, 1, 3), (13, 2, 3)],
+      &[3],
+    );
     let l = layout(&g);
     assert_eq!(l.copies.count(nid(3)), 1);
     assert_eq!(drawn(&l, 3), [nid(3)]);

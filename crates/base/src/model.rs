@@ -29,19 +29,21 @@ pub enum NodeKind {
     /// Whether the condition currently holds.
     satisfied: bool,
     /// How the condition's value is determined.
-    source:    ConditionSource,
+    source: ConditionSource,
   },
 }
 
 impl NodeKind {
   /// A freshly-added, not-yet-done task.
-  pub fn task() -> Self { Self::Task { completed: false } }
+  pub fn task() -> Self {
+    Self::Task { completed: false }
+  }
 
   /// A freshly-added, pending, manually-controlled condition.
   pub fn condition() -> Self {
     Self::Condition {
       satisfied: false,
-      source:    ConditionSource::Manual,
+      source: ConditionSource::Manual,
     }
   }
 
@@ -50,7 +52,7 @@ impl NodeKind {
   pub fn formula(atom: Atom) -> Self {
     Self::Condition {
       satisfied: false,
-      source:    ConditionSource::Formula { atom },
+      source: ConditionSource::Formula { atom },
     }
   }
 
@@ -69,7 +71,9 @@ impl NodeKind {
   /// everything that asks the same thing of the world, so it belongs to no
   /// quest of its own; it shows in a lens only when claimed work requires
   /// it.
-  pub fn claimable(&self) -> bool { self.atom().is_none() }
+  pub fn claimable(&self) -> bool {
+    self.atom().is_none()
+  }
 
   /// The stored completion/satisfaction bit: a completed task or a
   /// satisfied manual condition. Always `false` for a formula condition,
@@ -120,11 +124,11 @@ pub enum ConditionSource {
 pub struct Node {
   /// Stable identity; the *only* way to look a node up (names are free-form
   /// and non-unique, PLAN §7.1).
-  pub id:         NodeId,
+  pub id: NodeId,
   /// Free-form display text.
-  pub name:       String,
+  pub name: String,
   /// Task-or-condition payload.
-  pub kind:       NodeKind,
+  pub kind: NodeKind,
   /// User-supplied within-level ordering hint that seeds layout crossing
   /// minimization so a chosen order survives relayout (PLAN §5).
   pub order_hint: f64,
@@ -165,13 +169,13 @@ pub enum EdgeKind {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Edge {
   /// Stable identity, needed for the event log and reordering.
-  pub id:   EdgeId,
+  pub id: EdgeId,
   /// The edge's kind (only [`EdgeKind::Dependency`] exists).
   pub kind: EdgeKind,
   /// The dependent.
   pub from: NodeId,
   /// The requirement.
-  pub to:   NodeId,
+  pub to: NodeId,
 }
 
 impl Edge {
@@ -186,9 +190,9 @@ impl Edge {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Quest {
   /// Stable identity.
-  pub id:     QuestId,
+  pub id: QuestId,
   /// Free-form display name.
-  pub name:   String,
+  pub name: String,
   /// The claim set — membership, not ownership. Kept from the old `roots`
   /// field but reinterpreted (PLAN §2, §7).
   pub claims: std::collections::HashSet<NodeId>,

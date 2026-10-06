@@ -24,12 +24,12 @@ use crate::query;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Offer {
   /// The formula the requirement is on.
-  pub atom:   Atom,
+  pub atom: Atom,
   /// Referents to define before requiring the atom: a new place, say.
   /// Empty when everything the atom points at exists.
   pub define: Vec<Event>,
   /// What the offer says: "At Home", "At Hardware store (new place)".
-  pub label:  String,
+  pub label: String,
 }
 
 /// Every reading of `text` as a formula requirement, best first. `today`
@@ -86,11 +86,14 @@ pub fn offers(text: &str, graph: &Graph, today: Date) -> Vec<Offer> {
       |place| Atom::At { place },
       |name| {
         let place = PlaceId::new();
-        (place, Event::PlaceDefined {
+        (
           place,
-          name,
-          within: None,
-        })
+          Event::PlaceDefined {
+            place,
+            name,
+            within: None,
+          },
+        )
       },
       "place",
       graph,
@@ -271,11 +274,14 @@ fn schedules(words: &[&str], graph: &Graph, today: Date) -> Vec<Offer> {
     |schedule| Atom::Within { schedule },
     |name| {
       let schedule = ScheduleId::new();
-      (schedule, Event::ScheduleDefined {
+      (
         schedule,
-        name,
-        spans: vec![],
-      })
+        Event::ScheduleDefined {
+          schedule,
+          name,
+          spans: vec![],
+        },
+      )
     },
     "schedule",
     graph,
@@ -454,7 +460,7 @@ pub fn span(text: &str, today: Date) -> Option<Span> {
   };
   Some(Span::Once {
     start: Moment::new(day.to_datetime(start)),
-    end:   Moment::new(end_day.to_datetime(end)),
+    end: Moment::new(end_day.to_datetime(end)),
   })
 }
 

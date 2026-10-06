@@ -23,9 +23,9 @@ pub struct Size {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Channel {
   /// Horizontal position.
-  pub x:      f64,
+  pub x: f64,
   /// Top of the row.
-  pub top:    f64,
+  pub top: f64,
   /// Bottom of the row.
   pub bottom: f64,
 }

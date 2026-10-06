@@ -253,7 +253,9 @@ where
 /// Flexible empty space in a row: pushes what follows it to the far end.
 /// (A flex factor on a label only allots it room; the label stays as wide
 /// as its text, so it cannot push anything.)
-pub(super) fn spacer() -> FlexSpacer { FlexSpacer::Flex(1.0) }
+pub(super) fn spacer() -> FlexSpacer {
+  FlexSpacer::Flex(1.0)
+}
 
 /// `view` taking all the room left in a row: a label in it wraps at the
 /// row's edge instead of overflowing it, and anything after it is pushed to

@@ -19,22 +19,28 @@ use crate::formula::{describe, phrase};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Drafts {
   /// The referent's name.
-  name:    String,
+  name: String,
   /// A resource's balance.
   balance: String,
   /// A window to add to a schedule.
-  span:    String,
+  span: String,
 }
 
 impl AppState {
   /// The referent name field's text.
-  pub fn referent_name_draft(&self) -> &str { &self.drafts.name }
+  pub fn referent_name_draft(&self) -> &str {
+    &self.drafts.name
+  }
 
   /// The balance field's text.
-  pub fn balance_draft(&self) -> &str { &self.drafts.balance }
+  pub fn balance_draft(&self) -> &str {
+    &self.drafts.balance
+  }
 
   /// The new-window field's text.
-  pub fn span_draft(&self) -> &str { &self.drafts.span }
+  pub fn span_draft(&self) -> &str {
+    &self.drafts.span
+  }
 
   /// The atom of the selected node, if it is a formula condition.
   fn selected_atom(&self) -> Option<Atom> {
@@ -120,9 +126,10 @@ impl AppState {
         _ => return,
       }
     };
-    self.commit_live(LiveEdit::Balance(resource.to_u128()), vec![
-      Event::ResourceBalanceSet { resource, balance },
-    ]);
+    self.commit_live(
+      LiveEdit::Balance(resource.to_u128()),
+      vec![Event::ResourceBalanceSet { resource, balance }],
+    );
   }
 
   /// Enter in the balance field: close the edit, and tidy the text to the
@@ -133,7 +140,9 @@ impl AppState {
   }
 
   /// The new-window field changed.
-  pub fn set_span_draft(&mut self, text: String) { self.drafts.span = text; }
+  pub fn set_span_draft(&mut self, text: String) {
+    self.drafts.span = text;
+  }
 
   /// Whether the new-window field reads as a window.
   pub fn span_draft_valid(&self) -> bool {

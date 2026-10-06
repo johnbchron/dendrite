@@ -15,14 +15,14 @@ use crate::ids::{ContextId, PlaceId};
 pub struct Facts {
   /// The instant a derivation is computed at. One instant for the whole
   /// derivation, so every atom sees the same time.
-  pub now:        Timestamp,
+  pub now: Timestamp,
   /// The zone floating [`Moment`](super::Moment)s are read in.
-  pub zone:       TimeZone,
+  pub zone: TimeZone,
   /// The places I am at. Listing the innermost is enough: an `At` atom
   /// also holds for every place these lie within.
-  pub places:     HashSet<PlaceId>,
+  pub places: HashSet<PlaceId>,
   /// The active contexts.
-  pub contexts:   HashSet<ContextId>,
+  pub contexts: HashSet<ContextId>,
   /// When my declared free time ends, if I declared it.
   pub free_until: Option<Timestamp>,
 }

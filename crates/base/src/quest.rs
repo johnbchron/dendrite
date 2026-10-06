@@ -22,7 +22,7 @@ use crate::{
 pub struct QuestScope {
   /// Nodes the quest directly claims (and that still exist and are
   /// claimable).
-  pub claimed:   HashSet<NodeId>,
+  pub claimed: HashSet<NodeId>,
   /// Nodes reachable through the requirement closure but not claimed.
   pub pulled_in: HashSet<NodeId>,
 }
@@ -39,7 +39,9 @@ impl QuestScope {
   }
 
   /// Total number of nodes in scope.
-  pub fn len(&self) -> usize { self.claimed.len() + self.pulled_in.len() }
+  pub fn len(&self) -> usize {
+    self.claimed.len() + self.pulled_in.len()
+  }
 
   /// Whether the scope is empty.
   pub fn is_empty(&self) -> bool {

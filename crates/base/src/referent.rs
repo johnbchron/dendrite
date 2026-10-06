@@ -17,9 +17,9 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Place {
   /// Stable identity.
-  pub id:     PlaceId,
+  pub id: PlaceId,
   /// Display name; `At` atoms render with it.
-  pub name:   String,
+  pub name: String,
   /// The place this one lies in. Being here means being there too, which
   /// is how a group ("Errands") holds at any of its members.
   pub within: Option<PlaceId>,
@@ -29,11 +29,11 @@ pub struct Place {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Resource {
   /// Stable identity.
-  pub id:      ResourceId,
+  pub id: ResourceId,
   /// Display name.
-  pub name:    String,
+  pub name: String,
   /// What an [`Amount`] of this counts, for display and parsing.
-  pub unit:    Unit,
+  pub unit: Unit,
   /// How much I declare I have, in the unit's smallest step.
   pub balance: Amount,
 }
@@ -45,7 +45,7 @@ pub enum Unit {
   /// Money, counted in minor units (cents for two `minor_digits`).
   Money {
     /// ISO 4217 code, such as `USD`.
-    currency:     String,
+    currency: String,
     /// Digits after the decimal point.
     minor_digits: u8,
   },
@@ -62,9 +62,9 @@ pub enum Unit {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Schedule {
   /// Stable identity.
-  pub id:    ScheduleId,
+  pub id: ScheduleId,
   /// Display name.
-  pub name:  String,
+  pub name: String,
   /// The windows; the schedule is open during any of them.
   pub spans: Vec<Span>,
 }
@@ -78,18 +78,18 @@ pub enum Span {
     /// When it opens.
     start: Moment,
     /// When it closes.
-    end:   Moment,
+    end: Moment,
   },
   /// On each of `days`, from `start` to `end`. An `end` at or before
   /// `start` wraps past midnight into the next day ("Fri 22:00 – 02:00"),
   /// so `00:00 – 00:00` is the whole day.
   Weekly {
     /// The days a window opens on.
-    days:  WeekdaySet,
+    days: WeekdaySet,
     /// When each window opens.
     start: TimeOfDay,
     /// When each window closes.
-    end:   TimeOfDay,
+    end: TimeOfDay,
   },
 }
 
@@ -97,7 +97,7 @@ pub enum Span {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Context {
   /// Stable identity.
-  pub id:   ContextId,
+  pub id: ContextId,
   /// Display name.
   pub name: String,
 }

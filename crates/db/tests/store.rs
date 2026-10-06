@@ -10,11 +10,17 @@ use base::{
 };
 use rusqlite::Connection;
 
-fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
+fn nid(n: u128) -> NodeId {
+  NodeId::from_u128(n)
+}
 
-fn eid(n: u128) -> EdgeId { EdgeId::from_u128(n) }
+fn eid(n: u128) -> EdgeId {
+  EdgeId::from_u128(n)
+}
 
-fn qid(n: u128) -> QuestId { QuestId::from_u128(n) }
+fn qid(n: u128) -> QuestId {
+  QuestId::from_u128(n)
+}
 
 /// The `DbError` behind a boxed session error. Opening reports SQLite's own
 /// errors; the session only passes them along.
@@ -27,33 +33,33 @@ fn db_error(e: session::Error) -> db::DbError {
 fn sample_batch() -> Vec<Event> {
   vec![
     Event::NodeAdded {
-      node:       nid(1),
-      kind:       NodeKind::task(),
-      name:       "root".into(),
+      node: nid(1),
+      kind: NodeKind::task(),
+      name: "root".into(),
       order_hint: 0.0,
     },
     Event::NodeAdded {
-      node:       nid(2),
-      kind:       NodeKind::task(),
-      name:       "dep".into(),
+      node: nid(2),
+      kind: NodeKind::task(),
+      name: "dep".into(),
       order_hint: 1.0,
     },
     Event::EdgeAdded {
       edge: eid(10),
       kind: EdgeKind::Dependency,
       from: nid(1),
-      to:   nid(2),
+      to: nid(2),
     },
     Event::QuestCreated {
       quest: qid(100),
-      name:  "epic".into(),
+      name: "epic".into(),
     },
     Event::QuestClaimed {
       quest: qid(100),
-      node:  nid(1),
+      node: nid(1),
     },
     Event::TaskCompleted {
-      node:      nid(2),
+      node: nid(2),
       completed: true,
     },
   ]
@@ -98,16 +104,16 @@ fn undo_and_redo_walk_the_graph_while_the_log_only_grows() {
   // Group 1: add a node.
   store
     .commit(vec![Event::NodeAdded {
-      node:       nid(1),
-      kind:       NodeKind::task(),
-      name:       "a".into(),
+      node: nid(1),
+      kind: NodeKind::task(),
+      name: "a".into(),
       order_hint: 0.0,
     }])
     .unwrap();
   // Group 2: complete it.
   store
     .commit(vec![Event::TaskCompleted {
-      node:      nid(1),
+      node: nid(1),
       completed: true,
     }])
     .unwrap();
@@ -467,9 +473,9 @@ fn undo_and_redo_name_the_step_they_would_take() {
 
 fn task(n: u128) -> Event {
   Event::NodeAdded {
-    node:       nid(n),
-    kind:       NodeKind::task(),
-    name:       format!("t{n}"),
+    node: nid(n),
+    kind: NodeKind::task(),
+    name: format!("t{n}"),
     order_hint: 0.0,
   }
 }
@@ -513,8 +519,8 @@ fn formula_batch() -> Vec<Event> {
   let tod = |s: &str| s.parse::<TimeOfDay>().unwrap();
   let mut events = vec![
     Event::PlaceDefined {
-      place:  PlaceId::from_u128(9),
-      name:   "Chicago".into(),
+      place: PlaceId::from_u128(9),
+      name: "Chicago".into(),
       within: None,
     },
     Event::PlaceDefined {
@@ -531,7 +537,7 @@ fn formula_batch() -> Vec<Event> {
       resource,
       name: "Fun budget".into(),
       unit: Unit::Money {
-        currency:     "USD".into(),
+        currency: "USD".into(),
         minor_digits: 2,
       },
       balance: 32_000,
@@ -546,11 +552,11 @@ fn formula_batch() -> Vec<Event> {
     },
     Event::ResourceDefined {
       resource: ResourceId::from_u128(5),
-      name:     "Batteries".into(),
-      unit:     Unit::Count {
+      name: "Batteries".into(),
+      unit: Unit::Count {
         noun: "battery".into(),
       },
-      balance:  3,
+      balance: 3,
     },
     Event::ResourceRemoved {
       resource: ResourceId::from_u128(5),
@@ -565,20 +571,20 @@ fn formula_batch() -> Vec<Event> {
       name: "Business hours".into(),
       spans: vec![
         Span::Weekly {
-          days:  WeekdaySet::WORKDAYS,
+          days: WeekdaySet::WORKDAYS,
           start: tod("09:00"),
-          end:   tod("17:00"),
+          end: tod("17:00"),
         },
         Span::Once {
           start: moment("2026-12-24T09:00"),
-          end:   moment("2026-12-24T12:00"),
+          end: moment("2026-12-24T12:00"),
         },
       ],
     },
     Event::ScheduleDefined {
       schedule: ScheduleId::from_u128(6),
-      name:     "Unused".into(),
-      spans:    vec![],
+      name: "Unused".into(),
+      spans: vec![],
     },
     Event::ScheduleRemoved {
       schedule: ScheduleId::from_u128(6),
@@ -593,7 +599,7 @@ fn formula_batch() -> Vec<Event> {
     },
     Event::ContextDefined {
       context: ContextId::from_u128(7),
-      name:    "Unused".into(),
+      name: "Unused".into(),
     },
     Event::ContextRemoved {
       context: ContextId::from_u128(7),
@@ -625,7 +631,7 @@ fn formula_batch() -> Vec<Event> {
       edge: eid(100 + k as u128),
       kind: EdgeKind::Dependency,
       from: nid(1),
-      to:   atom.node_id(),
+      to: atom.node_id(),
     });
   }
   events

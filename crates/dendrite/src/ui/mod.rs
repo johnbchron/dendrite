@@ -51,7 +51,7 @@ use crate::{
 
 /// How popovers arrive: dropping a few pixels from the bar they hang off.
 const DROP: Motion = Motion {
-  from:        Vec2::new(0.0, -6.0),
+  from: Vec2::new(0.0, -6.0),
   duration_ms: motion::POPOVER_MS,
 };
 
@@ -83,17 +83,17 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   let card = layer(data.selected.is_some().then(|| {
     appear(
       Motion {
-        from:        Vec2::new(space::L, 0.0),
+        from: Vec2::new(space::L, 0.0),
         duration_ms: motion::CARD_MS,
       },
       inspector::card(data),
     )
   }));
   let tray = sized_box(now::tray(data)).padding(Padding {
-    top:    0.0,
-    right:  0.0,
+    top: 0.0,
+    right: 0.0,
     bottom: space::M,
-    left:   space::M,
+    left: space::M,
   });
   let backdrop = layer(data.dismissable_open().then(backdrop));
   let scrim = layer(data.palette_open().then(|| palette::scrim(data.theme())));
@@ -103,26 +103,26 @@ pub fn app_logic(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   }));
   let settings = layer(data.settings_open().then(|| {
     sized_box(appear(DROP, toolbar::settings_popover(data))).padding(Padding {
-      top:    size::TOP_BAR + space::XS,
-      right:  space::M,
+      top: size::TOP_BAR + space::XS,
+      right: space::M,
       bottom: 0.0,
-      left:   0.0,
+      left: 0.0,
     })
   }));
   let library = layer(data.library_open().then(|| {
     sized_box(appear(DROP, library::library(data))).padding(Padding {
-      top:    size::TOP_BAR + space::XS,
-      right:  space::M,
+      top: size::TOP_BAR + space::XS,
+      right: space::M,
       bottom: 0.0,
-      left:   0.0,
+      left: 0.0,
     })
   }));
   let quests = layer(data.picker_open().then(|| {
     sized_box(appear(DROP, lens::switcher(data))).padding(Padding {
-      top:    size::TOP_BAR + space::XS,
-      right:  0.0,
+      top: size::TOP_BAR + space::XS,
+      right: 0.0,
       bottom: 0.0,
-      left:   space::M,
+      left: space::M,
     })
   }));
 
@@ -181,10 +181,10 @@ fn link_banner(
     .gap(space::S.px()),
   ))
   .padding(Padding {
-    top:    size::TOP_BAR + space::S,
-    right:  0.0,
+    top: size::TOP_BAR + space::S,
+    right: 0.0,
     bottom: 0.0,
-    left:   0.0,
+    left: 0.0,
   })
 }
 
@@ -197,7 +197,7 @@ fn toast_view(
   let id = toast.id;
   let card = sized_box(appear(
     Motion {
-      from:        Vec2::new(0.0, 8.0),
+      from: Vec2::new(0.0, 8.0),
       duration_ms: motion::POPOVER_MS,
     },
     surface(

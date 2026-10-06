@@ -15,7 +15,7 @@ use crate::focus::{self, FocusRequests};
 
 /// xilem's driver `D`, focusing requested fields after each action.
 pub struct FocusDriver<D> {
-  inner:    D,
+  inner: D,
   requests: FocusRequests,
 }
 

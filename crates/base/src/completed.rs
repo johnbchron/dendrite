@@ -18,7 +18,7 @@ use crate::{graph::Graph, ids::NodeId};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Completed {
   /// Every node of every completed tree: what the completed view shows.
-  pub trees:   HashSet<NodeId>,
+  pub trees: HashSet<NodeId>,
   /// The nodes of completed trees that no other tree reaches: what every
   /// other view leaves out.
   pub retired: HashSet<NodeId>,

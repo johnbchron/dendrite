@@ -15,9 +15,13 @@ use jiff::{Timestamp, tz::TimeZone};
 
 /// Deterministic node id from a small integer, so tests can talk about
 /// nodes by number without depending on ULID randomness.
-fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
+fn nid(n: u128) -> NodeId {
+  NodeId::from_u128(n)
+}
 
-fn qid(n: u128) -> QuestId { QuestId::from_u128(n) }
+fn qid(n: u128) -> QuestId {
+  QuestId::from_u128(n)
+}
 
 /// Derived state under facts with nothing declared; no formula conditions
 /// here, so the clock is irrelevant.
@@ -47,7 +51,7 @@ fn build(
       format!("c{i}"),
       NodeKind::Condition {
         satisfied: *sat,
-        source:    base::ConditionSource::Manual,
+        source: base::ConditionSource::Manual,
       },
       0.0,
     ));
@@ -84,17 +88,19 @@ fn completed_task_is_not_ready() {
 #[test]
 fn task_is_blocked_until_all_requirements_satisfied() {
   // 1 requires 2 and 3; ready only when both are done.
-  let g = build(&[(1, false), (2, false), (3, false)], &[], &[
-    (10, 1, 2),
-    (11, 1, 3),
-  ]);
+  let g = build(
+    &[(1, false), (2, false), (3, false)],
+    &[],
+    &[(10, 1, 2), (11, 1, 3)],
+  );
   let d = derive(&g);
   assert_eq!(d.state(nid(1)), Some(NodeState::Blocked));
 
-  let g = build(&[(1, false), (2, true), (3, false)], &[], &[
-    (10, 1, 2),
-    (11, 1, 3),
-  ]);
+  let g = build(
+    &[(1, false), (2, true), (3, false)],
+    &[],
+    &[(10, 1, 2), (11, 1, 3)],
+  );
   let d = derive(&g);
   assert_eq!(
     d.state(nid(1)),
@@ -102,10 +108,11 @@ fn task_is_blocked_until_all_requirements_satisfied() {
     "one req still open"
   );
 
-  let g = build(&[(1, false), (2, true), (3, true)], &[], &[
-    (10, 1, 2),
-    (11, 1, 3),
-  ]);
+  let g = build(
+    &[(1, false), (2, true), (3, true)],
+    &[],
+    &[(10, 1, 2), (11, 1, 3)],
+  );
   let d = derive(&g);
   assert_eq!(
     d.state(nid(1)),
@@ -156,10 +163,11 @@ fn cycle_peers_are_the_rest_of_the_component() {
 #[test]
 fn scope_pulls_in_requirement_closure() {
   // quest claims 1; 1 -> 2 -> 3. Scope = {1,2,3}, pulled-in = {2,3}.
-  let mut g = build(&[(1, false), (2, false), (3, false)], &[], &[
-    (10, 1, 2),
-    (11, 2, 3),
-  ]);
+  let mut g = build(
+    &[(1, false), (2, false), (3, false)],
+    &[],
+    &[(10, 1, 2), (11, 2, 3)],
+  );
   let mut quest = Quest::new(qid(100), "epic");
   quest.claims.insert(nid(1));
   g.insert_quest(quest);
@@ -199,9 +207,9 @@ fn a_claim_on_a_formula_condition_is_ignored() {
   let atom = base::Atom::Free { at_least: 60 };
   let formula = atom.node_id();
   g.insert_node(base::Node {
-    id:         formula,
-    name:       String::new(),
-    kind:       NodeKind::formula(atom),
+    id: formula,
+    name: String::new(),
+    kind: NodeKind::formula(atom),
     order_hint: 0.0,
   });
   let mut quest = Quest::new(qid(100), "epic");
@@ -215,10 +223,11 @@ fn a_claim_on_a_formula_condition_is_ignored() {
 #[test]
 fn actionable_is_the_ready_frontier_of_scope() {
   // 1 requires 2 requires 3. Only the deepest incomplete node (3) is ready.
-  let mut g = build(&[(1, false), (2, false), (3, false)], &[], &[
-    (10, 1, 2),
-    (11, 2, 3),
-  ]);
+  let mut g = build(
+    &[(1, false), (2, false), (3, false)],
+    &[],
+    &[(10, 1, 2), (11, 2, 3)],
+  );
   let mut quest = Quest::new(qid(100), "epic");
   quest.claims.insert(nid(1));
   g.insert_quest(quest);
@@ -252,33 +261,33 @@ fn event_apply_then_inverse_round_trips() {
   let mut g = Graph::new();
   let batch = vec![
     Event::NodeAdded {
-      node:       nid(1),
-      kind:       NodeKind::task(),
-      name:       "root".into(),
+      node: nid(1),
+      kind: NodeKind::task(),
+      name: "root".into(),
       order_hint: 0.0,
     },
     Event::NodeAdded {
-      node:       nid(2),
-      kind:       NodeKind::task(),
-      name:       "dep".into(),
+      node: nid(2),
+      kind: NodeKind::task(),
+      name: "dep".into(),
       order_hint: 1.0,
     },
     Event::EdgeAdded {
       edge: base::EdgeId::from_u128(10),
       kind: EdgeKind::Dependency,
       from: nid(1),
-      to:   nid(2),
+      to: nid(2),
     },
     Event::QuestCreated {
       quest: qid(100),
-      name:  "epic".into(),
+      name: "epic".into(),
     },
     Event::QuestClaimed {
       quest: qid(100),
-      node:  nid(1),
+      node: nid(1),
     },
     Event::TaskCompleted {
-      node:      nid(2),
+      node: nid(2),
       completed: true,
     },
   ];
@@ -297,14 +306,17 @@ fn event_apply_then_inverse_round_trips() {
 #[test]
 fn renaming_a_quest_inverts_to_the_previous_name() {
   let mut g = Graph::new();
-  apply_batch(&mut g, &[Event::QuestCreated {
-    quest: qid(100),
-    name:  "epic".into(),
-  }]);
+  apply_batch(
+    &mut g,
+    &[Event::QuestCreated {
+      quest: qid(100),
+      name: "epic".into(),
+    }],
+  );
 
   let rename = Event::QuestRenamed {
     quest: qid(100),
-    name:  "Ship v1".into(),
+    name: "Ship v1".into(),
   };
   let inverse = apply_batch(&mut g, std::slice::from_ref(&rename));
   assert_eq!(g.quest(qid(100)).unwrap().name, "Ship v1");
@@ -317,7 +329,7 @@ fn renaming_a_quest_inverts_to_the_previous_name() {
   // Renaming a quest that is not there is a no-op with no inverse.
   let missing = Event::QuestRenamed {
     quest: qid(999),
-    name:  "ghost".into(),
+    name: "ghost".into(),
   };
   let before = g.clone();
   assert!(missing.inverse(&g).is_empty());
@@ -328,34 +340,37 @@ fn renaming_a_quest_inverts_to_the_previous_name() {
 #[test]
 fn removing_a_node_and_undoing_restores_edges_and_claims() {
   let mut g = Graph::new();
-  apply_batch(&mut g, &[
-    Event::NodeAdded {
-      node:       nid(1),
-      kind:       NodeKind::task(),
-      name:       "a".into(),
-      order_hint: 0.0,
-    },
-    Event::NodeAdded {
-      node:       nid(2),
-      kind:       NodeKind::task(),
-      name:       "b".into(),
-      order_hint: 0.0,
-    },
-    Event::EdgeAdded {
-      edge: base::EdgeId::from_u128(10),
-      kind: EdgeKind::Dependency,
-      from: nid(2),
-      to:   nid(1),
-    },
-    Event::QuestCreated {
-      quest: qid(100),
-      name:  "e".into(),
-    },
-    Event::QuestClaimed {
-      quest: qid(100),
-      node:  nid(1),
-    },
-  ]);
+  apply_batch(
+    &mut g,
+    &[
+      Event::NodeAdded {
+        node: nid(1),
+        kind: NodeKind::task(),
+        name: "a".into(),
+        order_hint: 0.0,
+      },
+      Event::NodeAdded {
+        node: nid(2),
+        kind: NodeKind::task(),
+        name: "b".into(),
+        order_hint: 0.0,
+      },
+      Event::EdgeAdded {
+        edge: base::EdgeId::from_u128(10),
+        kind: EdgeKind::Dependency,
+        from: nid(2),
+        to: nid(1),
+      },
+      Event::QuestCreated {
+        quest: qid(100),
+        name: "e".into(),
+      },
+      Event::QuestClaimed {
+        quest: qid(100),
+        node: nid(1),
+      },
+    ],
+  );
 
   let before = g.clone();
   let inverse = apply_batch(&mut g, &[Event::NodeRemoved { node: nid(1) }]);
@@ -377,7 +392,7 @@ fn events_serialize_as_self_describing_json() {
     edge: base::EdgeId::from_u128(10),
     kind: EdgeKind::Dependency,
     from: nid(1),
-    to:   nid(2),
+    to: nid(2),
   };
   let json = serde_json::to_string(&e).unwrap();
   assert!(json.contains("\"type\":\"edge_added\""), "{json}");
@@ -502,10 +517,11 @@ fn a_tree_is_completed_when_all_its_work_is_done() {
   // 1 -> 2 (done) -> c3 (satisfied), and 1 requires an unmet formula: 1 is
   // not done, so nothing is completed. Finish 1 and the whole tree is,
   // formula and all.
-  let mut g = build(&[(1, false), (2, true)], &[(3, true)], &[
-    (10, 1, 2),
-    (11, 2, 3),
-  ]);
+  let mut g = build(
+    &[(1, false), (2, true)],
+    &[(3, true)],
+    &[(10, 1, 2), (11, 2, 3)],
+  );
   let free = formula(&mut g, 60);
   g.insert_edge(Edge::new(
     base::EdgeId::from_u128(12),
@@ -525,10 +541,11 @@ fn a_tree_is_completed_when_all_its_work_is_done() {
 #[test]
 fn a_node_shared_with_unfinished_work_is_not_retired() {
   // 1 (done) -> 3 (done) <- 2 (not done); 4 is a formula nothing requires.
-  let mut g = build(&[(1, true), (2, false), (3, true)], &[], &[
-    (10, 1, 3),
-    (11, 2, 3),
-  ]);
+  let mut g = build(
+    &[(1, true), (2, false), (3, true)],
+    &[],
+    &[(10, 1, 3), (11, 2, 3)],
+  );
   let orphan = formula(&mut g, 30);
   let c = base::completed(&g);
   assert_eq!(c.trees, HashSet::from([nid(1), nid(3)]));

@@ -26,7 +26,7 @@ pub enum Slot {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Placement {
   /// Centre of every node.
-  pub nodes:    HashMap<NodeId, Pos>,
+  pub nodes: HashMap<NodeId, Pos>,
   /// For every edge that skips ranks, the channels it runs through, top row
   /// first. Edges between adjacent ranks have none.
   pub channels: HashMap<EdgeId, Vec<Channel>>,
@@ -38,10 +38,10 @@ pub struct Placement {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Arrangement {
   /// Slots per rank, top row first, each in left-to-right order.
-  pub rows:  Vec<Vec<Slot>>,
+  pub rows: Vec<Vec<Slot>>,
   /// The independent tree (weakly connected component) of every slot, as an
   /// opaque label: slots share a label exactly when edges connect them.
-  pub tree:  HashMap<Slot, usize>,
+  pub tree: HashMap<Slot, usize>,
   /// Every unit-length segment between slots in adjacent ranks, upper slot
   /// first, which coordinate assignment lines slots up along.
   pub links: Vec<(Slot, Slot)>,
@@ -150,11 +150,11 @@ struct Column {
   /// The tree's slots, per row.
   rows: Vec<Vec<Slot>>,
   /// Each slot's centre x, at an arbitrary offset.
-  xs:   HashMap<Slot, f64>,
+  xs: HashMap<Slot, f64>,
   /// The left edge of the leftmost box, at the same offset.
-  lo:   f64,
+  lo: f64,
   /// The right edge of the rightmost box, at the same offset.
-  hi:   f64,
+  hi: f64,
 }
 
 impl Column {
@@ -177,7 +177,9 @@ impl Column {
   }
 
   /// How wide the column's boxes span.
-  fn width(&self) -> f64 { (self.hi - self.lo).max(0.0) }
+  fn width(&self) -> f64 {
+    (self.hi - self.lo).max(0.0)
+  }
 
   /// Record every slot's position with the column's left edge at `left`,
   /// each row in its `bands` entry.
@@ -192,10 +194,13 @@ impl Column {
         let x = left + self.xs[slot] - self.lo;
         match *slot {
           Slot::Node(n) => {
-            placement.nodes.insert(n, Pos {
-              x,
-              y: top + height / 2.0,
-            });
+            placement.nodes.insert(
+              n,
+              Pos {
+                x,
+                y: top + height / 2.0,
+              },
+            );
           }
           // Rows are walked top-down, so each edge's channels come out top
           // row first.

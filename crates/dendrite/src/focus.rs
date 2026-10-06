@@ -21,7 +21,9 @@ fn fields() -> MutexGuard<'static, HashMap<Key, WidgetId>> {
 }
 
 /// Record that `key` is the text area `id`.
-pub fn register(key: Key, id: WidgetId) { fields().insert(key, id); }
+pub fn register(key: Key, id: WidgetId) {
+  fields().insert(key, id);
+}
 
 /// Forget `key`, if it still names `id`. A field being torn down after its
 /// replacement registered leaves the replacement in place.
@@ -33,4 +35,6 @@ pub fn unregister(key: Key, id: WidgetId) {
 }
 
 /// The text area registered under `key`, if one is mounted.
-pub fn lookup(key: Key) -> Option<WidgetId> { fields().get(&key).copied() }
+pub fn lookup(key: Key) -> Option<WidgetId> {
+  fields().get(&key).copied()
+}

@@ -64,22 +64,20 @@ fn the_quest_switcher_filters_and_chooses_by_keyboard() {
       .map(|r| r.label)
       .collect::<Vec<_>>()
   };
-  assert_eq!(labels(&state), [
-    "All nodes",
-    "Completed",
-    "v1 Launch",
-    "New quest"
-  ]);
+  assert_eq!(
+    labels(&state),
+    ["All nodes", "Completed", "v1 Launch", "New quest"]
+  );
   assert!(state.quest_rows()[0].current, "the global view is current");
 
   for c in ["l", "a", "u"] {
     let text = format!("{}{c}", state.quest_query().text);
     state.set_quest_text(text);
   }
-  assert_eq!(labels(&state), [
-    "v1 Launch",
-    "New quest \u{201c}lau\u{201d}"
-  ]);
+  assert_eq!(
+    labels(&state),
+    ["v1 Launch", "New quest \u{201c}lau\u{201d}"]
+  );
   state.run(Command::Accept);
   assert!(!state.picker_open(), "choosing closes the switcher");
   assert_eq!(state.active_quest_summary().unwrap().0, "v1 Launch");

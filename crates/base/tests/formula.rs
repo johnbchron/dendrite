@@ -17,18 +17,30 @@ use jiff::{
 
 // --- helpers ------------------------------------------------------------
 
-fn nid(n: u128) -> NodeId { NodeId::from_u128(n) }
+fn nid(n: u128) -> NodeId {
+  NodeId::from_u128(n)
+}
 
-fn eid(n: u128) -> EdgeId { EdgeId::from_u128(n) }
+fn eid(n: u128) -> EdgeId {
+  EdgeId::from_u128(n)
+}
 
-fn moment(s: &str) -> Moment { s.parse().unwrap() }
+fn moment(s: &str) -> Moment {
+  s.parse().unwrap()
+}
 
-fn tod(s: &str) -> TimeOfDay { s.parse().unwrap() }
+fn tod(s: &str) -> TimeOfDay {
+  s.parse().unwrap()
+}
 
-fn chicago() -> TimeZone { TimeZone::get("America/Chicago").unwrap() }
+fn chicago() -> TimeZone {
+  TimeZone::get("America/Chicago").unwrap()
+}
 
 /// The instant a civil time names in `zone`.
-fn at(zone: &TimeZone, s: &str) -> Timestamp { moment(s).instant(zone) }
+fn at(zone: &TimeZone, s: &str) -> Timestamp {
+  moment(s).instant(zone)
+}
 
 fn facts(now: Timestamp, zone: &TimeZone) -> Facts {
   Facts::new(now, zone.clone())
@@ -39,29 +51,37 @@ fn apply(graph: &mut Graph, events: &[Event]) -> Vec<Event> {
 }
 
 fn add_task(graph: &mut Graph, n: u128) {
-  apply(graph, &[Event::NodeAdded {
-    node:       nid(n),
-    kind:       NodeKind::task(),
-    name:       format!("t{n}"),
-    order_hint: 0.0,
-  }]);
+  apply(
+    graph,
+    &[Event::NodeAdded {
+      node: nid(n),
+      kind: NodeKind::task(),
+      name: format!("t{n}"),
+      order_hint: 0.0,
+    }],
+  );
 }
 
-fn after(s: &str) -> Atom { Atom::After { at: moment(s) } }
+fn after(s: &str) -> Atom {
+  Atom::After { at: moment(s) }
+}
 
 /// A graph holding one weekly schedule, and the atom that points at it.
 fn weekly(days: WeekdaySet, start: &str, end: &str) -> (Graph, Atom) {
   let schedule = ScheduleId::from_u128(1);
   let mut g = Graph::new();
-  apply(&mut g, &[Event::ScheduleDefined {
-    schedule,
-    name: "window".into(),
-    spans: vec![Span::Weekly {
-      days,
-      start: tod(start),
-      end: tod(end),
+  apply(
+    &mut g,
+    &[Event::ScheduleDefined {
+      schedule,
+      name: "window".into(),
+      spans: vec![Span::Weekly {
+        days,
+        start: tod(start),
+        end: tod(end),
+      }],
     }],
-  }]);
+  );
   (g, Atom::Within { schedule })
 }
 
@@ -101,9 +121,9 @@ fn formula_nodes_serialize_as_self_describing_json() {
   assert_eq!(e, back);
 
   let span = Span::Weekly {
-    days:  WeekdaySet::WEEKEND,
+    days: WeekdaySet::WEEKEND,
     start: tod("22:00"),
-    end:   tod("02:00"),
+    end: tod("02:00"),
   };
   let json = serde_json::to_string(&span).unwrap();
   assert_eq!(
@@ -174,10 +194,10 @@ fn requiring_an_existing_atom_links_to_it() {
   add_task(&mut g, 2);
 
   let first = at_home.require(&g, nid(1), eid(10));
-  assert!(matches!(first[..], [
-    Event::NodeAdded { .. },
-    Event::EdgeAdded { .. }
-  ]));
+  assert!(matches!(
+    first[..],
+    [Event::NodeAdded { .. }, Event::EdgeAdded { .. }]
+  ));
   apply(&mut g, &first);
 
   let second = at_home.require(&g, nid(2), eid(11));
@@ -201,12 +221,15 @@ fn re_adding_a_formula_node_is_idempotent() {
   let atom = after("2026-10-01");
   let mut g = Graph::new();
   apply(&mut g, &[atom.node_added()]);
-  apply(&mut g, &[Event::EdgeAdded {
-    edge: eid(10),
-    kind: base::EdgeKind::Dependency,
-    from: nid(1),
-    to:   atom.node_id(),
-  }]);
+  apply(
+    &mut g,
+    &[Event::EdgeAdded {
+      edge: eid(10),
+      kind: base::EdgeKind::Dependency,
+      from: nid(1),
+      to: atom.node_id(),
+    }],
+  );
   let before = g.clone();
 
   // A replica, or a redo, adding the same atom again changes nothing, and
@@ -238,7 +261,7 @@ fn formula_nodes_ignore_clicks() {
   assert!(!g.is_satisfied(atom.node_id()));
 
   let set = Event::ConditionSet {
-    node:      atom.node_id(),
+    node: atom.node_id(),
     satisfied: true,
   };
   let undo = apply(&mut g, &[set]);
@@ -256,65 +279,65 @@ fn referent_events_undo_exactly() {
   let online = ContextId::from_u128(5);
   let define = vec![
     Event::PlaceDefined {
-      place:  city,
-      name:   "Chicago".into(),
+      place: city,
+      name: "Chicago".into(),
       within: None,
     },
     Event::PlaceDefined {
-      place:  home,
-      name:   "Home".into(),
+      place: home,
+      name: "Home".into(),
       within: Some(city),
     },
     Event::ResourceDefined {
       resource: cash,
-      name:     "Fun budget".into(),
-      unit:     Unit::Money {
-        currency:     "USD".into(),
+      name: "Fun budget".into(),
+      unit: Unit::Money {
+        currency: "USD".into(),
         minor_digits: 2,
       },
-      balance:  32_000,
+      balance: 32_000,
     },
     Event::ScheduleDefined {
       schedule: hours,
-      name:     "Business hours".into(),
-      spans:    vec![Span::Weekly {
-        days:  WeekdaySet::WORKDAYS,
+      name: "Business hours".into(),
+      spans: vec![Span::Weekly {
+        days: WeekdaySet::WORKDAYS,
         start: tod("09:00"),
-        end:   tod("17:00"),
+        end: tod("17:00"),
       }],
     },
     Event::ContextDefined {
       context: online,
-      name:    "Online".into(),
+      name: "Online".into(),
     },
   ];
   let edit = vec![
     Event::PlaceChanged {
-      place:  home,
-      name:   "New home".into(),
+      place: home,
+      name: "New home".into(),
       within: None,
     },
     Event::ResourceBalanceSet {
       resource: cash,
-      balance:  1_000,
+      balance: 1_000,
     },
     Event::ResourceRenamed {
       resource: cash,
-      name:     "Cash".into(),
+      name: "Cash".into(),
     },
     Event::ScheduleChanged {
       schedule: hours,
-      name:     "Hours".into(),
-      spans:    vec![],
+      name: "Hours".into(),
+      spans: vec![],
     },
     Event::ContextRenamed {
       context: online,
-      name:    "Connected".into(),
+      name: "Connected".into(),
     },
     // Redefining replaces; undo restores the earlier definition.
     Event::ContextDefined {
       context: online,
-      name:    "Wired".into(),
+      name: "Wired".into(),
     },
   ];
   let remove = vec![
@@ -352,7 +375,7 @@ fn live_referent_edits_supersede_their_predecessor() {
   assert!(set(32).supersedes(&set(3)));
   assert!(!set(32).supersedes(&Event::ResourceBalanceSet {
     resource: ResourceId::from_u128(2),
-    balance:  3,
+    balance: 3,
   }));
 }
 
@@ -450,20 +473,23 @@ fn once_spans_and_adjacent_windows_merge() {
   let zone = TimeZone::UTC;
   let schedule = ScheduleId::from_u128(1);
   let mut g = Graph::new();
-  apply(&mut g, &[Event::ScheduleDefined {
-    schedule,
-    name: "Conference".into(),
-    spans: vec![
-      Span::Once {
-        start: moment("2027-05-03T09:00"),
-        end:   moment("2027-05-04T00:00"),
-      },
-      Span::Once {
-        start: moment("2027-05-04T00:00"),
-        end:   moment("2027-05-05T17:00"),
-      },
-    ],
-  }]);
+  apply(
+    &mut g,
+    &[Event::ScheduleDefined {
+      schedule,
+      name: "Conference".into(),
+      spans: vec![
+        Span::Once {
+          start: moment("2027-05-03T09:00"),
+          end: moment("2027-05-04T00:00"),
+        },
+        Span::Once {
+          start: moment("2027-05-04T00:00"),
+          end: moment("2027-05-05T17:00"),
+        },
+      ],
+    }],
+  );
   let atom = Atom::Within { schedule };
 
   // A one-off window a year out is still found: nothing repeats.
@@ -488,40 +514,49 @@ fn places_nest_upward() {
     PlaceId::from_u128(3),
   );
   let mut g = Graph::new();
-  apply(&mut g, &[
-    Event::PlaceDefined {
-      place:  errands,
-      name:   "Errands".into(),
-      within: None,
-    },
-    Event::PlaceDefined {
-      place:  hardware,
-      name:   "Hardware store".into(),
-      within: Some(errands),
-    },
-    Event::PlaceDefined {
-      place:  home,
-      name:   "Home".into(),
-      within: None,
-    },
-  ]);
+  apply(
+    &mut g,
+    &[
+      Event::PlaceDefined {
+        place: errands,
+        name: "Errands".into(),
+        within: None,
+      },
+      Event::PlaceDefined {
+        place: hardware,
+        name: "Hardware store".into(),
+        within: Some(errands),
+      },
+      Event::PlaceDefined {
+        place: home,
+        name: "Home".into(),
+        within: None,
+      },
+    ],
+  );
   let mut f = facts(Timestamp::UNIX_EPOCH, &TimeZone::UTC);
   f.places.insert(hardware);
 
   let t = Atom::At { place: errands }.eval(&g, &f);
   assert!(t.holds);
-  assert_eq!(t.why, Explanation::Place {
-    here: vec![hardware],
-  });
+  assert_eq!(
+    t.why,
+    Explanation::Place {
+      here: vec![hardware],
+    }
+  );
   assert!(Atom::At { place: hardware }.eval(&g, &f).holds);
   assert!(!Atom::At { place: home }.eval(&g, &f).holds);
 
   // A `within` loop neither hangs nor invents membership.
-  apply(&mut g, &[Event::PlaceChanged {
-    place:  errands,
-    name:   "Errands".into(),
-    within: Some(hardware),
-  }]);
+  apply(
+    &mut g,
+    &[Event::PlaceChanged {
+      place: errands,
+      name: "Errands".into(),
+      within: Some(hardware),
+    }],
+  );
   assert!(!Atom::At { place: home }.eval(&g, &f).holds);
 }
 
@@ -530,21 +565,24 @@ fn resources_contexts_and_missing_referents() {
   let cash = ResourceId::from_u128(1);
   let online = ContextId::from_u128(2);
   let mut g = Graph::new();
-  apply(&mut g, &[
-    Event::ResourceDefined {
-      resource: cash,
-      name:     "Cash".into(),
-      unit:     Unit::Money {
-        currency:     "USD".into(),
-        minor_digits: 2,
+  apply(
+    &mut g,
+    &[
+      Event::ResourceDefined {
+        resource: cash,
+        name: "Cash".into(),
+        unit: Unit::Money {
+          currency: "USD".into(),
+          minor_digits: 2,
+        },
+        balance: 3_210,
       },
-      balance:  3_210,
-    },
-    Event::ContextDefined {
-      context: online,
-      name:    "Online".into(),
-    },
-  ]);
+      Event::ContextDefined {
+        context: online,
+        name: "Online".into(),
+      },
+    ],
+  );
   let mut f = facts(Timestamp::UNIX_EPOCH, &TimeZone::UTC);
   let needs = |at_least| Atom::Has {
     resource: cash,
@@ -660,12 +698,15 @@ fn formula_conditions_are_sinks() {
   apply(&mut g, &events);
   // An edge out of a formula node, which the UI never offers, would close
   // a loop; derivation ignores it.
-  apply(&mut g, &[Event::EdgeAdded {
-    edge: eid(11),
-    kind: base::EdgeKind::Dependency,
-    from: f,
-    to:   nid(1),
-  }]);
+  apply(
+    &mut g,
+    &[Event::EdgeAdded {
+      edge: eid(11),
+      kind: base::EdgeKind::Dependency,
+      from: f,
+      to: nid(1),
+    }],
+  );
   assert!(cyclic_nodes(&g).is_empty());
   assert!(base::cycle_peers(&g, nid(1)).is_empty());
 
@@ -737,12 +778,12 @@ mod props {
   fn arb_weekly() -> impl Strategy<Value = Span> {
     (0u8..128, 0i8..24, 0i8..60, 0i8..24, 0i8..60).prop_map(
       |(days, sh, sm, eh, em)| Span::Weekly {
-        days:  (0..7)
+        days: (0..7)
           .filter(|i| days & (1 << i) != 0)
           .map(|i| Weekday::from_monday_zero_offset(i).unwrap())
           .collect(),
         start: TimeOfDay::new(sh, sm).unwrap(),
-        end:   TimeOfDay::new(eh, em).unwrap(),
+        end: TimeOfDay::new(eh, em).unwrap(),
       },
     )
   }
@@ -999,34 +1040,46 @@ fn pruning_removes_orphans_and_unused_referents_and_undoes() {
     name: name.into(),
   };
   let mut g = Graph::new();
-  apply(&mut g, &[
-    place(errands, "Errands", None),
-    place(store, "Hardware store", Some(errands)),
-    place(city, "Chicago", None),
-    place(home, "Home", Some(city)),
-    resource(cash, "Cash"),
-    resource(spare, "Spare"),
-    Event::ScheduleDefined {
-      schedule: hours,
-      name:     "Hours".into(),
-      spans:    vec![],
-    },
-    context(online, "Online"),
-    context(phone, "Phone"),
-  ]);
+  apply(
+    &mut g,
+    &[
+      place(errands, "Errands", None),
+      place(store, "Hardware store", Some(errands)),
+      place(city, "Chicago", None),
+      place(home, "Home", Some(city)),
+      resource(cash, "Cash"),
+      resource(spare, "Spare"),
+      Event::ScheduleDefined {
+        schedule: hours,
+        name: "Hours".into(),
+        spans: vec![],
+      },
+      context(online, "Online"),
+      context(phone, "Phone"),
+    ],
+  );
   add_task(&mut g, 1);
   // Required: At(Errands), Has(Cash). Standing alone: In(Phone), After.
-  let required = [Atom::At { place: errands }, Atom::Has {
-    resource: cash,
-    at_least: 30,
-  }];
+  let required = [
+    Atom::At { place: errands },
+    Atom::Has {
+      resource: cash,
+      at_least: 30,
+    },
+  ];
   for (i, atom) in required.iter().enumerate() {
-    apply(&mut g, &[atom.node_added(), Event::EdgeAdded {
-      edge: eid(i as u128 + 1),
-      kind: base::EdgeKind::Dependency,
-      from: nid(1),
-      to:   atom.node_id(),
-    }]);
+    apply(
+      &mut g,
+      &[
+        atom.node_added(),
+        Event::EdgeAdded {
+          edge: eid(i as u128 + 1),
+          kind: base::EdgeKind::Dependency,
+          from: nid(1),
+          to: atom.node_id(),
+        },
+      ],
+    );
   }
   let lonely = [Atom::In { context: phone }, after("2026-10-01")];
   for atom in &lonely {

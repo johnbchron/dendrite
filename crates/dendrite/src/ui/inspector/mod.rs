@@ -86,10 +86,10 @@ pub(super) fn card(data: &mut AppState) -> impl WidgetView<AppState> + use<> {
   ))
   .expand_height()
   .padding(Padding {
-    top:    size::TOP_BAR + space::M,
-    right:  space::M,
+    top: size::TOP_BAR + space::M,
+    right: space::M,
     bottom: space::M,
-    left:   0.0,
+    left: 0.0,
   })
 }
 

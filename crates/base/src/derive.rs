@@ -45,19 +45,19 @@ pub enum NodeState {
 #[derive(Clone, Debug, Default)]
 pub struct Derived {
   /// Each node's status; [`NodeState::Cyclic`] marks the cycle members.
-  states:    HashMap<NodeId, NodeState>,
+  states: HashMap<NodeId, NodeState>,
   /// Nodes that are immediately executable: not done, not cyclic, all
   /// requirement targets satisfied. Both Ready tasks and Pending manual
   /// conditions whose requirements are met land here; formula conditions
   /// never do.
-  ready:     HashSet<NodeId>,
+  ready: HashSet<NodeId>,
   /// Nodes that count as satisfied for gating: completed tasks, satisfied
   /// manual conditions, and formula conditions whose atom holds.
   satisfied: HashSet<NodeId>,
   /// Each formula condition's evaluation.
-  truths:    HashMap<NodeId, Truth>,
+  truths: HashMap<NodeId, Truth>,
   /// The earliest [`Truth::until`] over all formula conditions.
-  horizon:   Option<Timestamp>,
+  horizon: Option<Timestamp>,
 }
 
 impl Derived {
@@ -128,10 +128,14 @@ impl Derived {
   }
 
   /// Whether `node` is immediately executable.
-  pub fn is_ready(&self, node: NodeId) -> bool { self.ready.contains(&node) }
+  pub fn is_ready(&self, node: NodeId) -> bool {
+    self.ready.contains(&node)
+  }
 
   /// All immediately-executable nodes.
-  pub fn ready_nodes(&self) -> &HashSet<NodeId> { &self.ready }
+  pub fn ready_nodes(&self) -> &HashSet<NodeId> {
+    &self.ready
+  }
 
   /// Whether `node` counts as satisfied for gating the work that requires
   /// it: a completed task, a satisfied manual condition, or a formula
@@ -141,12 +145,16 @@ impl Derived {
   }
 
   /// A formula condition's evaluation, for the inspector's "why".
-  pub fn truth(&self, node: NodeId) -> Option<&Truth> { self.truths.get(&node) }
+  pub fn truth(&self, node: NodeId) -> Option<&Truth> {
+    self.truths.get(&node)
+  }
 
   /// The earliest instant at which some formula condition could change by
   /// time alone: recompute then. `None` when only a declared fact can
   /// change one.
-  pub fn horizon(&self) -> Option<Timestamp> { self.horizon }
+  pub fn horizon(&self) -> Option<Timestamp> {
+    self.horizon
+  }
 }
 
 /// Detect every node that participates in a cycle of the requirement graph.

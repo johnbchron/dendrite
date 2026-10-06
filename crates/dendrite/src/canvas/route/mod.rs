@@ -29,14 +29,14 @@ pub(super) struct Route {
   /// On the border of the `from` node, where the arrowhead's tip goes.
   pub(super) start: Point,
   /// On the border of the `to` node.
-  pub(super) end:   Point,
+  pub(super) end: Point,
   /// Unit direction the edge leaves `start` and arrives at `end` along:
   /// down or up between rows, sideways within one.
-  pub(super) axis:  Vec2,
+  pub(super) axis: Vec2,
   /// For an edge that skips rows, the straight run it makes through each
   /// skipped row, as `(entry, exit)` in travel order. Following these keeps
   /// the edge in the gap the layout reserved instead of crossing nodes.
-  pub(super) via:   Vec<(Point, Point)>,
+  pub(super) via: Vec<(Point, Point)>,
 }
 
 /// The side of a box an edge attaches to.
@@ -51,9 +51,9 @@ enum Side {
 /// One edge's claim on a side of a node, before it is given a point there.
 struct Port {
   /// Where the edge heads next, along the side, which orders the ports.
-  along:    f64,
+  along: f64,
   /// The edge's index.
-  edge:     usize,
+  edge: usize,
   /// Whether the edge starts here (else it ends here).
   is_start: bool,
 }
@@ -94,13 +94,13 @@ impl Route {
       let next = via.first().map_or(b.center(), |v| v.0);
       let prev = via.last().map_or(a.center(), |v| v.1);
       ports.entry((edge.from, from_side)).or_default().push(Port {
-        along:    along(next),
-        edge:     i,
+        along: along(next),
+        edge: i,
         is_start: true,
       });
       ports.entry((edge.to, to_side)).or_default().push(Port {
-        along:    along(prev),
-        edge:     i,
+        along: along(prev),
+        edge: i,
         is_start: false,
       });
       sides.push(Some(axis));
@@ -130,9 +130,9 @@ impl Route {
       .map(|(i, axis)| {
         Some(Route {
           start: starts[i]?,
-          end:   ends[i]?,
-          axis:  (*axis)?,
-          via:   vias[i].clone(),
+          end: ends[i]?,
+          axis: (*axis)?,
+          via: vias[i].clone(),
         })
       })
       .collect()

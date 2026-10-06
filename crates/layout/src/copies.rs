@@ -30,9 +30,9 @@ pub struct Copies {
   /// Every extra copy, to the node it draws.
   node_of: HashMap<NodeId, NodeId>,
   /// How many times each duplicated node is drawn.
-  counts:  HashMap<NodeId, usize>,
+  counts: HashMap<NodeId, usize>,
   /// Every edge redirected to an extra copy, to that copy.
-  ends:    HashMap<EdgeId, NodeId>,
+  ends: HashMap<EdgeId, NodeId>,
 }
 
 impl Copies {

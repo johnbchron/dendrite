@@ -7,7 +7,9 @@ use crate::{focus::FieldKey, formula::describe};
 
 impl AppState {
   /// Add a new task: see `add_node`.
-  pub fn add_task(&mut self) { self.add_node(NodeKind::task(), "New task"); }
+  pub fn add_task(&mut self) {
+    self.add_node(NodeKind::task(), "New task");
+  }
 
   /// Add a new condition: see `add_node`.
   pub fn add_condition(&mut self) {
@@ -31,7 +33,7 @@ impl AppState {
         edge: EdgeId::new(),
         kind: EdgeKind::Dependency,
         from: parent,
-        to:   id,
+        to: id,
       });
     }
     self.commit(events);
@@ -73,11 +75,11 @@ impl AppState {
       };
       match &node.kind {
         NodeKind::Task { completed } => Event::TaskCompleted {
-          node:      id,
+          node: id,
           completed: !completed,
         },
         NodeKind::Condition { satisfied, .. } => Event::ConditionSet {
-          node:      id,
+          node: id,
           satisfied: !satisfied,
         },
       }
@@ -103,10 +105,10 @@ impl AppState {
     if unchanged {
       return;
     }
-    self.commit_live(LiveEdit::NodeName(id), vec![Event::NodeRenamed {
-      node: id,
-      name,
-    }]);
+    self.commit_live(
+      LiveEdit::NodeName(id),
+      vec![Event::NodeRenamed { node: id, name }],
+    );
   }
 
   /// Enter in the name field: close the live edit, so further typing is a
@@ -179,16 +181,24 @@ impl AppState {
   }
 
   /// Whether an undo is available.
-  pub fn can_undo(&self) -> bool { self.lock().can_undo() }
+  pub fn can_undo(&self) -> bool {
+    self.lock().can_undo()
+  }
 
   /// Whether a redo is available.
-  pub fn can_redo(&self) -> bool { self.lock().can_redo() }
+  pub fn can_redo(&self) -> bool {
+    self.lock().can_redo()
+  }
 
   /// What undo would reverse ("rename"), if anything.
-  pub fn undo_label(&self) -> Option<&'static str> { self.lock().undo_label() }
+  pub fn undo_label(&self) -> Option<&'static str> {
+    self.lock().undo_label()
+  }
 
   /// What redo would re-apply, if anything.
-  pub fn redo_label(&self) -> Option<&'static str> { self.lock().redo_label() }
+  pub fn redo_label(&self) -> Option<&'static str> {
+    self.lock().redo_label()
+  }
 
   /// Undo the last committed group.
   pub fn undo(&mut self) {

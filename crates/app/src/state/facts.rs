@@ -33,8 +33,8 @@ const FREE_UNTIL: &str = "facts.free_until";
 /// time ends.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Declared {
-  place:      Option<PlaceId>,
-  contexts:   BTreeSet<ContextId>,
+  place: Option<PlaceId>,
+  contexts: BTreeSet<ContextId>,
   free_until: Option<Timestamp>,
 }
 
@@ -44,8 +44,8 @@ impl Declared {
   pub(super) fn load(store: &Session) -> Self {
     let get = |key| store.setting(key).ok().flatten().unwrap_or_default();
     Self {
-      place:      get(PLACE).parse().ok(),
-      contexts:   get(CONTEXTS)
+      place: get(PLACE).parse().ok(),
+      contexts: get(CONTEXTS)
         .split(',')
         .filter_map(|c| c.parse().ok())
         .collect(),
@@ -93,10 +93,14 @@ impl AppState {
   /// A counter that changes whenever the facts derived state was computed
   /// from may have: a declared fact changed, or time moved past the
   /// horizon.
-  pub fn facts_revision(&self) -> u64 { self.facts_revision }
+  pub fn facts_revision(&self) -> u64 {
+    self.facts_revision
+  }
 
   /// Where I declared I am.
-  pub fn place(&self) -> Option<PlaceId> { self.declared.place }
+  pub fn place(&self) -> Option<PlaceId> {
+    self.declared.place
+  }
 
   /// The contexts I declared active.
   pub fn active_contexts(&self) -> &BTreeSet<ContextId> {
@@ -104,7 +108,9 @@ impl AppState {
   }
 
   /// When I declared my free time ends.
-  pub fn free_until(&self) -> Option<Timestamp> { self.declared.free_until }
+  pub fn free_until(&self) -> Option<Timestamp> {
+    self.declared.free_until
+  }
 
   /// Declare where I am (`None`: nowhere I have named).
   pub fn set_place(&mut self, place: Option<PlaceId>) {
@@ -160,7 +166,9 @@ impl AppState {
   }
 
   /// The free time field changed.
-  pub fn set_free_text(&mut self, text: String) { self.free_draft = text; }
+  pub fn set_free_text(&mut self, text: String) {
+    self.free_draft = text;
+  }
 
   /// Enter in the free time field: "15:30" or "3pm" is free until then,
   /// "1h" is free for that long. The field clears once it is understood.
@@ -209,7 +217,9 @@ impl AppState {
   }
 
   /// Whether the Now tray's place picker is showing.
-  pub fn place_picker_open(&self) -> bool { self.place_picker }
+  pub fn place_picker_open(&self) -> bool {
+    self.place_picker
+  }
 
   /// Show or hide the place picker, opening the tray to show it (C).
   pub fn toggle_place_picker(&mut self) {

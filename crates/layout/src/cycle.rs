@@ -49,7 +49,7 @@ pub fn feedback_arcs(graph: &Graph) -> HashSet<EdgeId> {
   // Explicit-stack DFS. Each frame tracks how far through its successor list
   // it has progressed, so recursion never touches the call stack.
   struct Frame {
-    node:   NodeId,
+    node: NodeId,
     cursor: usize,
   }
 
@@ -59,7 +59,7 @@ pub fn feedback_arcs(graph: &Graph) -> HashSet<EdgeId> {
     }
     color.insert(start, Color::Gray);
     let mut stack = vec![Frame {
-      node:   start,
+      node: start,
       cursor: 0,
     }];
 
@@ -73,7 +73,7 @@ pub fn feedback_arcs(graph: &Graph) -> HashSet<EdgeId> {
           Color::White => {
             color.insert(to, Color::Gray);
             stack.push(Frame {
-              node:   to,
+              node: to,
               cursor: 0,
             });
           }

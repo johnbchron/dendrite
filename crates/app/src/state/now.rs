@@ -87,13 +87,13 @@ impl NowGroup {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SoonItem {
   /// The task.
-  pub node:  NodeId,
+  pub node: NodeId,
   /// Its name.
-  pub name:  String,
+  pub name: String,
   /// The earliest it can open: when its last time requirement flips.
   pub opens: Timestamp,
   /// That, from now: "in 2 h".
-  pub when:  String,
+  pub when: String,
 }
 
 impl AppState {
@@ -158,8 +158,12 @@ impl AppState {
   }
 
   /// Whether the Now tray is open.
-  pub fn now_open(&self) -> bool { self.now_open }
+  pub fn now_open(&self) -> bool {
+    self.now_open
+  }
 
   /// Open or close the Now tray.
-  pub fn toggle_now(&mut self) { self.now_open = !self.now_open; }
+  pub fn toggle_now(&mut self) {
+    self.now_open = !self.now_open;
+  }
 }

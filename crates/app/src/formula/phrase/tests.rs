@@ -57,7 +57,9 @@ fn dates_and_times() {
   assert_eq!(after("after"), None);
 }
 
-fn at_midnight(y: i16, mo: i8, d: i8) -> Moment { at(y, mo, d, 0, 0) }
+fn at_midnight(y: i16, mo: i8, d: i8) -> Moment {
+  at(y, mo, d, 0, 0)
+}
 
 #[test]
 fn free_time() {
@@ -81,8 +83,8 @@ fn free_time() {
 fn places_match_by_name_or_are_offered_new() {
   let home = PlaceId::from_u128(1);
   let g = graph(&[Event::PlaceDefined {
-    place:  home,
-    name:   "Home".into(),
+    place: home,
+    name: "Home".into(),
     within: None,
   }]);
   let found = offers("at home", &g, TODAY);
@@ -111,12 +113,13 @@ fn schedules() {
   let hours = ScheduleId::from_u128(1);
   let g = graph(&[Event::ScheduleDefined {
     schedule: hours,
-    name:     "Business hours".into(),
-    spans:    vec![],
+    name: "Business hours".into(),
+    spans: vec![],
   }]);
-  assert_eq!(atoms("during business hours", &g)[0], Atom::Within {
-    schedule: hours,
-  });
+  assert_eq!(
+    atoms("during business hours", &g)[0],
+    Atom::Within { schedule: hours }
+  );
   assert_eq!(atoms("business", &g)[0], Atom::Within { schedule: hours });
 
   // The two everyone agrees on are made with their windows.
@@ -148,41 +151,50 @@ fn resources_by_unit_and_amount() {
   let g = graph(&[
     Event::ResourceDefined {
       resource: fun,
-      name:     "Fun budget".into(),
-      unit:     Unit::Money {
-        currency:     "USD".into(),
+      name: "Fun budget".into(),
+      unit: Unit::Money {
+        currency: "USD".into(),
         minor_digits: 2,
       },
-      balance:  0,
+      balance: 0,
     },
     Event::ResourceDefined {
       resource: cells,
-      name:     "Batteries".into(),
-      unit:     Unit::Count {
+      name: "Batteries".into(),
+      unit: Unit::Count {
         noun: "battery".into(),
       },
-      balance:  0,
+      balance: 0,
     },
   ]);
   let first = |text| offers(text, &g, TODAY).into_iter().next();
 
   let fifty = first("$50").unwrap();
-  assert_eq!(fifty.atom, Atom::Has {
-    resource: fun,
-    at_least: 5_000,
-  });
+  assert_eq!(
+    fifty.atom,
+    Atom::Has {
+      resource: fun,
+      at_least: 5_000,
+    }
+  );
   assert_eq!(fifty.label, "Has $50.00 in Fun budget");
-  assert_eq!(first("have $12.5").unwrap().atom, Atom::Has {
-    resource: fun,
-    at_least: 1_250,
-  });
+  assert_eq!(
+    first("have $12.5").unwrap().atom,
+    Atom::Has {
+      resource: fun,
+      at_least: 1_250,
+    }
+  );
   assert!(first("$1.234").is_none_or(|o| !matches!(o.atom, Atom::Has { .. })));
 
   let three = first("3 batteries").unwrap();
-  assert_eq!(three.atom, Atom::Has {
-    resource: cells,
-    at_least: 3,
-  });
+  assert_eq!(
+    three.atom,
+    Atom::Has {
+      resource: cells,
+      at_least: 3,
+    }
+  );
   assert_eq!(three.label, "Has 3 batteries");
 
   // Money in a currency no resource holds, and a noun nothing counts,
@@ -203,7 +215,7 @@ fn contexts_match_any_phrase_and_with_makes_one() {
   let online = ContextId::from_u128(1);
   let g = graph(&[Event::ContextDefined {
     context: online,
-    name:    "Online".into(),
+    name: "Online".into(),
   }]);
   let found = offers("online", &g, TODAY);
   assert_eq!(found.len(), 1);
@@ -256,14 +268,14 @@ fn schedule_windows() {
     span("dec 24 9am-12pm", TODAY),
     Some(Span::Once {
       start: at(2026, 12, 24, 9, 0),
-      end:   at(2026, 12, 24, 12, 0),
+      end: at(2026, 12, 24, 12, 0),
     })
   );
   assert_eq!(
     span("dec 31 22:00-01:00", TODAY),
     Some(Span::Once {
       start: at(2026, 12, 31, 22, 0),
-      end:   at(2027, 1, 1, 1, 0),
+      end: at(2027, 1, 1, 1, 0),
     })
   );
   assert_eq!(span("weekdays", TODAY), None);
@@ -273,7 +285,7 @@ fn schedule_windows() {
 #[test]
 fn balances_in_a_unit() {
   let usd = Unit::Money {
-    currency:     "USD".into(),
+    currency: "USD".into(),
     minor_digits: 2,
   };
   assert_eq!(amount("320", &usd), Some(32_000));

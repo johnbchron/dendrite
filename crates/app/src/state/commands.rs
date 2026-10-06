@@ -8,7 +8,7 @@ impl AppState {
   pub fn key_flags(&self) -> Flags {
     Flags {
       selection: self.selected.is_some(),
-      query:     self.picker_open() || self.palette_open(),
+      query: self.picker_open() || self.palette_open(),
     }
   }
 

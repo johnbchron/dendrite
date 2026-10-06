@@ -98,13 +98,13 @@ pub fn tooltip<V>(
   tooltip::tooltip(
     label,
     tooltip::Look {
-      ground:    theme.surface_raised,
-      border:    theme.rule,
-      text:      theme.text,
-      radius:    radius::CONTROL,
+      ground: theme.surface_raised,
+      border: theme.rule,
+      text: theme.text,
+      radius: radius::CONTROL,
       text_size: text::SECONDARY,
-      padding:   Padding::from_vh(space::XS, space::S),
-      font:      crate::font::STACK,
+      padding: Padding::from_vh(space::XS, space::S),
+      font: crate::font::STACK,
     },
     anchor,
     child,
@@ -125,11 +125,11 @@ where
     field::Look {
       ground: theme.sunken,
       border: theme.rule,
-      focus:  theme.focus,
-      text:   theme.text,
-      muted:  theme.muted,
+      focus: theme.focus,
+      text: theme.text,
+      muted: theme.muted,
       radius: radius::CONTROL,
-      font:   crate::font::STACK,
+      font: crate::font::STACK,
     },
     text::BODY,
     on_changed,
@@ -141,9 +141,13 @@ where
 struct Registered(FieldKey);
 
 impl field::Mount for Registered {
-  fn mounted(&self, id: WidgetId) { crate::focus::register(self.0, id); }
+  fn mounted(&self, id: WidgetId) {
+    crate::focus::register(self.0, id);
+  }
 
-  fn unmounted(&self, id: WidgetId) { crate::focus::unregister(self.0, id); }
+  fn unmounted(&self, id: WidgetId) {
+    crate::focus::unregister(self.0, id);
+  }
 }
 
 /// Naming a field so the key map can focus it.
@@ -153,5 +157,7 @@ pub trait FocusKey {
 }
 
 impl<State, Action> FocusKey for field::Field<State, Action> {
-  fn focus_key(self, key: FieldKey) -> Self { self.mount(Registered(key)) }
+  fn focus_key(self, key: FieldKey) -> Self {
+    self.mount(Registered(key))
+  }
 }

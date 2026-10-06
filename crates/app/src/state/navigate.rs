@@ -11,7 +11,7 @@ use crate::{camera::CameraRequest, keymap::Direction};
 /// The drawn nodes by row and column, bends left out.
 struct Grid {
   /// Row and column of every drawn node.
-  at:   HashMap<NodeId, (usize, usize)>,
+  at: HashMap<NodeId, (usize, usize)>,
   /// Each row's nodes, left to right.
   rows: Vec<Vec<NodeId>>,
 }

@@ -23,61 +23,61 @@ mod palettes;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
   /// Stable key used to persist the choice. Never shown to the user.
-  pub id:   &'static str,
+  pub id: &'static str,
   /// Display name, shown in the palette picker.
   pub name: &'static str,
 
   /// Canvas ground.
-  pub bg:     Color,
+  pub bg: Color,
   /// Ordinary edges and their arrowheads.
-  pub edge:   Color,
+  pub edge: Color,
   /// Edges the cycle-cut reversed.
-  pub cycle:  Color,
+  pub cycle: Color,
   /// Node labels on the canvas, and body text in the panel.
-  pub text:   Color,
+  pub text: Color,
   /// Selection, the Ready state, and interactive hints.
   pub accent: Color,
 
   /// `(fill, border)` for a completed task or satisfied condition.
-  pub done:    (Color, Color),
+  pub done: (Color, Color),
   /// `(fill, border)` for a Ready node.
-  pub ready:   (Color, Color),
+  pub ready: (Color, Color),
   /// `(fill, border)` for a Blocked node.
   pub blocked: (Color, Color),
   /// `(fill, border)` for a Pending condition.
   pub pending: (Color, Color),
   /// `(fill, border)` for a node caught in a cycle.
-  pub cyclic:  (Color, Color),
+  pub cyclic: (Color, Color),
 
   /// Fields, framed button groups and other insets on a surface.
   pub sunken: Color,
   /// Hairlines.
-  pub rule:   Color,
+  pub rule: Color,
   /// Secondary text.
-  pub muted:  Color,
+  pub muted: Color,
 
   /// Cards and bars that sit over the canvas: the top bar, the inspector,
   /// the Now tray.
-  pub surface:        Color,
+  pub surface: Color,
   /// Popovers and the command palette, one step above `surface`.
   pub surface_raised: Color,
   /// Translucent wash over the canvas behind a modal overlay.
-  pub scrim:          Color,
+  pub scrim: Color,
   /// Keyboard-focus ring on focusable controls.
-  pub focus:          Color,
+  pub focus: Color,
   /// Drop shadow under floating surfaces (usually translucent).
-  pub shadow:         Color,
+  pub shadow: Color,
   /// Text and icons drawn on an `accent` fill (the primary button).
-  pub on_accent:      Color,
+  pub on_accent: Color,
 
   /// Chip ground for Ready.
-  pub chip_ready:   Color,
+  pub chip_ready: Color,
   /// Chip ground for completed/satisfied.
-  pub chip_done:    Color,
+  pub chip_done: Color,
   /// Chip ground for blocked/pending.
   pub chip_blocked: Color,
   /// Chip ground for cyclic.
-  pub chip_cyclic:  Color,
+  pub chip_cyclic: Color,
 }
 
 impl Theme {
@@ -122,7 +122,9 @@ impl Theme {
 
   /// Dim a fill for pulled-in (unclaimed) nodes in a quest scope. Alpha
   /// rather than a fixed colour, so every palette dims toward its own ground.
-  pub fn dim(c: Color) -> Color { c.multiply_alpha(0.5) }
+  pub fn dim(c: Color) -> Color {
+    c.multiply_alpha(0.5)
+  }
 }
 
 #[cfg(test)]

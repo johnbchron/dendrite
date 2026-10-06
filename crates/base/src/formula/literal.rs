@@ -45,15 +45,21 @@ impl Moment {
   }
 
   /// Midnight at the start of `date`.
-  pub fn on(date: Date) -> Self { Self(date.to_datetime(Time::midnight())) }
+  pub fn on(date: Date) -> Self {
+    Self(date.to_datetime(Time::midnight()))
+  }
 
   /// The civil date-time.
-  pub fn civil(self) -> DateTime { self.0 }
+  pub fn civil(self) -> DateTime {
+    self.0
+  }
 
   /// The instant this moment names in `zone`. A civil time skipped by a
   /// DST gap reads as the instant just after the gap; one repeated by a
   /// fold reads as its first occurrence.
-  pub fn instant(self, zone: &TimeZone) -> Timestamp { instant(self.0, zone) }
+  pub fn instant(self, zone: &TimeZone) -> Timestamp {
+    instant(self.0, zone)
+  }
 
   /// Fixed-width encoding for [`Atom::canonical_bytes`](super::Atom).
   pub(crate) fn canonical_bytes(self) -> [u8; 6] {
@@ -127,7 +133,9 @@ impl TimeOfDay {
   }
 
   /// The civil time.
-  pub fn civil(self) -> Time { self.0 }
+  pub fn civil(self) -> Time {
+    self.0
+  }
 }
 
 impl fmt::Display for TimeOfDay {
@@ -176,10 +184,14 @@ impl WeekdaySet {
   pub const WORKDAYS: Self = Self(0b001_1111);
 
   /// Whether `day` is in the set.
-  pub fn contains(self, day: Weekday) -> bool { self.0 & bit(day) != 0 }
+  pub fn contains(self, day: Weekday) -> bool {
+    self.0 & bit(day) != 0
+  }
 
   /// Whether the set has no days.
-  pub fn is_empty(self) -> bool { self.0 & Self::EVERY_DAY.0 == 0 }
+  pub fn is_empty(self) -> bool {
+    self.0 & Self::EVERY_DAY.0 == 0
+  }
 }
 
 impl FromIterator<Weekday> for WeekdaySet {
@@ -197,7 +209,9 @@ impl fmt::Debug for WeekdaySet {
   }
 }
 
-fn bit(day: Weekday) -> u8 { 1 << day.to_monday_zero_offset() }
+fn bit(day: Weekday) -> u8 {
+  1 << day.to_monday_zero_offset()
+}
 
 /// A literal that is not in its canonical form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]

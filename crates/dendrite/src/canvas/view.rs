@@ -16,15 +16,15 @@ use crate::theme::Theme;
 /// [`CanvasScene`] into the widget; the widget's [`CanvasAction`]s are routed
 /// to `on_action`.
 pub struct Canvas<F> {
-  scene:     Arc<CanvasScene>,
+  scene: Arc<CanvasScene>,
   /// The palette the widget paints with.
-  theme:     &'static Theme,
+  theme: &'static Theme,
   /// The latest camera request; acted on when its epoch changes.
-  camera:    Camera,
+  camera: Camera,
   /// How much of the canvas the chrome covers.
-  insets:    Insets,
+  insets: Insets,
   /// Link mode, while it is armed.
-  link:      Option<LinkMode>,
+  link: Option<LinkMode>,
   on_action: F,
 }
 

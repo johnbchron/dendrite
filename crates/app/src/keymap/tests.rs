@@ -20,25 +20,29 @@ use super::bind::PRIMARY as CMD;
 
 const SELECTED: Flags = Flags {
   selection: true,
-  query:     false,
+  query: false,
 };
 const QUERY: Flags = Flags {
   selection: true,
-  query:     true,
+  query: true,
 };
 
 fn character(s: &str, m: Modifiers) -> KeyboardEvent {
   down(Key::Character(s.into()), Code::Unidentified, m)
 }
 
-fn plain(s: &str) -> KeyboardEvent { character(s, Modifiers::empty()) }
+fn plain(s: &str) -> KeyboardEvent {
+  character(s, Modifiers::empty())
+}
 
 /// `s` held with the command modifier, on physical key `code`.
 fn chord(s: &str, code: Code) -> KeyboardEvent {
   down(Key::Character(s.into()), code, CMD)
 }
 
-fn run(c: Command) -> Option<Binding> { Some(Binding::Run(c)) }
+fn run(c: Command) -> Option<Binding> {
+  Some(Binding::Run(c))
+}
 
 /// Every key, under every set of flags, and what it should mean.
 #[test]

@@ -98,14 +98,14 @@ impl SourceKind {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SourceDraft {
   /// The kind chosen.
-  pub kind:   SourceKind,
+  pub kind: SourceKind,
   /// For a date: before it rather than after it.
   pub before: bool,
   /// What is typed: the date, the amount, the free time, a new referent's
   /// name, or a manual condition's name.
-  pub text:   String,
+  pub text: String,
   /// The existing referent chosen, by raw id.
-  pub pick:   Option<u128>,
+  pub pick: Option<u128>,
 }
 
 /// What applying the form turns the condition into.
@@ -138,7 +138,9 @@ impl AppState {
   }
 
   /// The open "Satisfied by" form, if any.
-  pub fn source_draft(&self) -> Option<&SourceDraft> { self.source.as_ref() }
+  pub fn source_draft(&self) -> Option<&SourceDraft> {
+    self.source.as_ref()
+  }
 
   /// Open the form for `kind`, filled in from the condition when it is
   /// already of that kind, so applying it unchanged changes nothing.
@@ -199,7 +201,9 @@ impl AppState {
   }
 
   /// Close the form without changing anything.
-  pub fn cancel_source(&mut self) { self.source = None; }
+  pub fn cancel_source(&mut self) {
+    self.source = None;
+  }
 
   /// The form's text field changed. Typing a new name for a referent
   /// un-chooses the one picked; an amount keeps it.
@@ -333,11 +337,14 @@ impl AppState {
           }
           Found::New(name) => {
             let place = PlaceId::new();
-            Ok(offer(atom(place), vec![Event::PlaceDefined {
-              place,
-              name,
-              within: None,
-            }]))
+            Ok(offer(
+              atom(place),
+              vec![Event::PlaceDefined {
+                place,
+                name,
+                within: None,
+              }],
+            ))
           }
           Found::Nothing => Err("Pick a place, or name a new one."),
         }
@@ -355,11 +362,14 @@ impl AppState {
           }
           Found::New(name) => {
             let schedule = ScheduleId::new();
-            Ok(offer(atom(schedule), vec![Event::ScheduleDefined {
-              schedule,
-              name,
-              spans: vec![],
-            }]))
+            Ok(offer(
+              atom(schedule),
+              vec![Event::ScheduleDefined {
+                schedule,
+                name,
+                spans: vec![],
+              }],
+            ))
           }
           Found::Nothing => Err("Pick a schedule, or name a new one."),
         }
@@ -377,10 +387,10 @@ impl AppState {
           }
           Found::New(name) => {
             let context = ContextId::new();
-            Ok(offer(atom(context), vec![Event::ContextDefined {
-              context,
-              name,
-            }]))
+            Ok(offer(
+              atom(context),
+              vec![Event::ContextDefined { context, name }],
+            ))
           }
           Found::Nothing => Err("Pick a context, or name a new one."),
         }
@@ -510,7 +520,7 @@ fn moved_links(
         edge: EdgeId::new(),
         kind: EdgeKind::Dependency,
         from: edge.from,
-        to:   new,
+        to: new,
       });
     }
   }

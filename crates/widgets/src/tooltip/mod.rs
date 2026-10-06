@@ -39,17 +39,17 @@ pub enum Anchor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Look {
   /// The bubble's ground.
-  pub ground:    Color,
+  pub ground: Color,
   /// Its 1px border.
-  pub border:    Color,
+  pub border: Color,
   /// The label.
-  pub text:      Color,
+  pub text: Color,
   /// Corner radius.
-  pub radius:    f64,
+  pub radius: f64,
   /// Label size, in logical pixels.
   pub text_size: f32,
   /// Space between the label and the bubble's edge.
-  pub padding:   Padding,
+  pub padding: Padding,
   /// The face the label is shaped in.
-  pub font:      FontStack<'static>,
+  pub font: FontStack<'static>,
 }

@@ -23,7 +23,7 @@ impl AppState {
     let unnamed = name.trim().is_empty();
     self.commit(vec![Event::QuestCreated {
       quest: id,
-      name:  if unnamed { "New quest".into() } else { name },
+      name: if unnamed { "New quest".into() } else { name },
     }]);
     if unnamed {
       self.rename_quest(id);
@@ -75,7 +75,9 @@ impl AppState {
   }
 
   /// Whether the completed lens is on.
-  pub fn completed_lens(&self) -> bool { self.completed_lens }
+  pub fn completed_lens(&self) -> bool {
+    self.completed_lens
+  }
 
   /// The lens in use, or `None` for the main view.
   pub(super) fn lens(&self) -> Option<Lens> {
@@ -118,10 +120,10 @@ impl AppState {
     if unchanged {
       return;
     }
-    self.commit_live(LiveEdit::QuestName(id), vec![Event::QuestRenamed {
-      quest: id,
-      name,
-    }]);
+    self.commit_live(
+      LiveEdit::QuestName(id),
+      vec![Event::QuestRenamed { quest: id, name }],
+    );
   }
 
   /// Enter in the quest rename field: the counterpart of
@@ -133,10 +135,14 @@ impl AppState {
 
   /// Whether the inspector's list of quests to add the selection to is
   /// showing.
-  pub fn quests_open(&self) -> bool { self.quests_open }
+  pub fn quests_open(&self) -> bool {
+    self.quests_open
+  }
 
   /// Show or hide the inspector's list of quests to add the selection to.
-  pub fn toggle_quests(&mut self) { self.quests_open = !self.quests_open; }
+  pub fn toggle_quests(&mut self) {
+    self.quests_open = !self.quests_open;
+  }
 
   /// The selected node, if a quest could claim it (it is not a formula
   /// condition).

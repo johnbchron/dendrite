@@ -22,13 +22,19 @@ impl ManualClock {
     Self(Arc::new(Mutex::new(s.parse().unwrap())))
   }
 
-  fn set(&self, s: &str) { *self.0.lock().unwrap() = s.parse().unwrap(); }
+  fn set(&self, s: &str) {
+    *self.0.lock().unwrap() = s.parse().unwrap();
+  }
 }
 
 impl Clock for ManualClock {
-  fn now(&self) -> Timestamp { *self.0.lock().unwrap() }
+  fn now(&self) -> Timestamp {
+    *self.0.lock().unwrap()
+  }
 
-  fn zone(&self) -> TimeZone { TimeZone::UTC }
+  fn zone(&self) -> TimeZone {
+    TimeZone::UTC
+  }
 }
 
 fn opens() -> Atom {
@@ -43,9 +49,9 @@ fn bank_state() -> (AppState, ManualClock, NodeId) {
   let mut store = demo_store();
   let bank = NodeId::new();
   let mut events = vec![Event::NodeAdded {
-    node:       bank,
-    kind:       NodeKind::task(),
-    name:       "Call the bank".into(),
+    node: bank,
+    kind: NodeKind::task(),
+    name: "Call the bank".into(),
     order_hint: 0.0,
   }];
   events.extend(opens().require(store.graph(), bank, EdgeId::new()));
@@ -132,7 +138,7 @@ fn the_inspector_reads_formulas_through_derived_state() {
     Reason::WaitingOn(vec![Named {
       node: condition,
       name: "After Thu 1 Oct 09:00".into(),
-      why:  Some("Opens Thu 1 Oct 09:00, in 2 days.".into()),
+      why: Some("Opens Thu 1 Oct 09:00, in 2 days.".into()),
     }])
   );
   assert_eq!(info.requirements[0].name, "After Thu 1 Oct 09:00");
@@ -166,13 +172,13 @@ fn declared_facts_gate_readiness_and_are_kept_in_preferences() {
   };
   let mut events = vec![
     Event::PlaceDefined {
-      place:  home,
-      name:   "Home".into(),
+      place: home,
+      name: "Home".into(),
       within: None,
     },
     Event::ContextDefined {
       context: online,
-      name:    "Online".into(),
+      name: "Online".into(),
     },
     task(nails, "Hang the shelf"),
     task(email, "Send the email"),
@@ -311,7 +317,9 @@ fn at_home_twice() -> (AppState, NodeId, NodeId) {
   (state, shelf, plants)
 }
 
-fn home(state: &AppState) -> PlaceId { state.place_choices()[0].0 }
+fn home(state: &AppState) -> PlaceId {
+  state.place_choices()[0].0
+}
 
 #[test]
 fn at_home_on_two_tasks_draws_two_copies_and_the_context_bar_readies_both() {
@@ -356,10 +364,13 @@ fn a_formula_conditions_primary_action_changes_its_fact() {
   state.select(Some(Atom::At { place: home }.node_id()));
 
   let info = state.selected_info().unwrap();
-  assert_eq!(info.primary, Primary::Here {
-    place: home,
-    here:  false,
-  });
+  assert_eq!(
+    info.primary,
+    Primary::Here {
+      place: home,
+      here: false,
+    }
+  );
   assert_eq!(info.primary.label(), "I'm here");
   assert!(matches!(
     info.formula.unwrap().referent,

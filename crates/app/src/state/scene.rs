@@ -19,7 +19,7 @@ struct View {
   visible: HashSet<NodeId>,
   /// The nodes shown at full strength; the rest of `visible` is dimmed.
   /// `None` when nothing is.
-  full:    Option<HashSet<NodeId>>,
+  full: Option<HashSet<NodeId>>,
 }
 
 impl View {
@@ -33,22 +33,24 @@ impl View {
         let s = base::scope(graph, q);
         Self {
           visible: s.all().filter(live).collect(),
-          full:    Some(s.claimed),
+          full: Some(s.claimed),
         }
       }
       Some(Lens::Completed) => Self {
         visible: completed.trees.clone(),
-        full:    None,
+        full: None,
       },
       None => Self {
         visible: graph.nodes().map(|n| n.id).filter(live).collect(),
-        full:    None,
+        full: None,
       },
     }
   }
 
   /// Whether `node` is drawn.
-  fn shows(&self, node: NodeId) -> bool { self.visible.contains(&node) }
+  fn shows(&self, node: NodeId) -> bool {
+    self.visible.contains(&node)
+  }
 
   /// Whether `node` is only pulled into the quest's scope, not claimed.
   fn dims(&self, node: NodeId) -> bool {
@@ -119,16 +121,16 @@ impl AppState {
       .filter_map(|drawn| {
         let node = graph.node(lay.copies.node(drawn))?;
         Some(RenderNode {
-          id:       drawn,
-          node:     node.id,
-          copies:   lay.copies.count(node.id),
-          label:    describe::node_name(graph, node, today),
-          kind:     node.kind.clone(),
-          glyph:    node.kind.atom().map(Category::of),
-          state:    derived.state(node.id).unwrap_or(NodeState::Blocked),
+          id: drawn,
+          node: node.id,
+          copies: lay.copies.count(node.id),
+          label: describe::node_name(graph, node, today),
+          kind: node.kind.clone(),
+          glyph: node.kind.atom().map(Category::of),
+          state: derived.state(node.id).unwrap_or(NodeState::Blocked),
           selected: self.selected == Some(node.id),
-          dimmed:   view.dims(node.id),
-          quest:    membership(node),
+          dimmed: view.dims(node.id),
+          quest: membership(node),
         })
       })
       .collect();
@@ -137,11 +139,11 @@ impl AppState {
       .edges()
       .filter(|edge| view.shows(edge.from) && view.shows(edge.to))
       .map(|edge| RenderEdge {
-        id:       edge.id,
-        from:     edge.from,
-        to:       lay.copies.end(edge),
+        id: edge.id,
+        from: edge.from,
+        to: lay.copies.end(edge),
         reversed: lay.is_reversed(edge.id),
-        to_copy:  lay.copies.count(edge.to) > 1,
+        to_copy: lay.copies.count(edge.to) > 1,
       })
       .collect();
 

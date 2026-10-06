@@ -14,11 +14,11 @@ use crate::{camera::CameraRequest, formula::describe, scene::Category};
 /// the [`EdgeId`] so a row can delete the edge it stands for.
 pub struct EdgeRow {
   /// The edge this row stands for.
-  pub edge:  EdgeId,
+  pub edge: EdgeId,
   /// The node at the *other* end of the edge.
   pub other: NodeId,
   /// Its name.
-  pub name:  String,
+  pub name: String,
   /// Its derived state.
   pub state: NodeState,
 }
@@ -29,25 +29,25 @@ pub struct EdgeRow {
 /// graph.
 pub struct SelectedInfo {
   /// Human-readable derived state.
-  pub state:        NodeState,
+  pub state: NodeState,
   /// Whether the node is a task (vs. a condition).
-  pub is_task:      bool,
+  pub is_task: bool,
   /// Why the node is in its state.
-  pub reason:       Reason,
+  pub reason: Reason,
   /// The one action the inspector leads with.
-  pub primary:      Primary,
+  pub primary: Primary,
   /// Every quest that claims the node, by name.
-  pub quests:       Vec<(QuestId, String)>,
+  pub quests: Vec<(QuestId, String)>,
   /// Whether the active quest claims the node; `None` in the global view.
-  pub claimed:      Option<bool>,
+  pub claimed: Option<bool>,
   /// Edges to the things this node requires.
   pub requirements: Vec<EdgeRow>,
   /// Edges from the things that require this node — the other direction,
   /// which answers "what does finishing this unblock?".
-  pub dependents:   Vec<EdgeRow>,
+  pub dependents: Vec<EdgeRow>,
   /// For a formula condition, what stands in for its name, and the
   /// referent its atom points at, to edit in place.
-  pub formula:      Option<FormulaInfo>,
+  pub formula: Option<FormulaInfo>,
 }
 
 /// A formula condition, as the inspector shows it: a label derived from
@@ -55,9 +55,9 @@ pub struct SelectedInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormulaInfo {
   /// The atom's label: "At Home".
-  pub title:    String,
+  pub title: String,
   /// What it is about, for its glyph.
-  pub glyph:    Category,
+  pub glyph: Category,
   /// The referent to edit, if the atom has one.
   pub referent: ReferentInfo,
 }
@@ -70,7 +70,7 @@ pub enum ReferentInfo {
   /// A place, and whether I am there.
   Place {
     /// Which place.
-    id:   PlaceId,
+    id: PlaceId,
     /// Its name.
     name: String,
     /// Whether I declared I am there (or somewhere within it).
@@ -79,29 +79,29 @@ pub enum ReferentInfo {
   /// A resource and its balance.
   Resource {
     /// Which resource.
-    id:      ResourceId,
+    id: ResourceId,
     /// Its name.
-    name:    String,
+    name: String,
     /// How much I have, in words ("$320.00").
     balance: String,
   },
   /// A schedule and its windows.
   Schedule {
     /// Which schedule.
-    id:    ScheduleId,
+    id: ScheduleId,
     /// Its name.
-    name:  String,
+    name: String,
     /// Each window, in words.
     spans: Vec<String>,
   },
   /// A context, and whether it is on.
   Context {
     /// Which context.
-    id:   ContextId,
+    id: ContextId,
     /// Its name.
     name: String,
     /// Whether I declared it active.
-    on:   bool,
+    on: bool,
   },
   /// Declared free time.
   Free {
@@ -137,7 +137,7 @@ pub struct Named {
   /// Its name.
   pub name: String,
   /// Why it holds or not, for a formula condition.
-  pub why:  Option<String>,
+  pub why: Option<String>,
 }
 
 /// Why the selected node is in its state, for the inspector's reason line.
@@ -182,14 +182,14 @@ pub enum Primary {
     /// The place.
     place: PlaceId,
     /// Whether I am there now.
-    here:  bool,
+    here: bool,
   },
   /// Turn a context on or off.
   Toggle {
     /// The context.
     context: ContextId,
     /// Whether it is on now.
-    on:      bool,
+    on: bool,
   },
   /// Go to the balance field.
   SetBalance,
@@ -252,7 +252,7 @@ impl Reason {
           graph.node(n).map(|node| Named {
             node: n,
             name: describe::node_name(graph, node, today),
-            why:  why(n),
+            why: why(n),
           })
         })
         .collect();
@@ -312,7 +312,9 @@ impl Reason {
   }
 
   /// Whether the reason is a problem to fix (a cycle), not just a state.
-  pub fn is_alert(&self) -> bool { matches!(self, Reason::CycleWith(_)) }
+  pub fn is_alert(&self) -> bool {
+    matches!(self, Reason::CycleWith(_))
+  }
 
   /// The other nodes that are the reason, by name, if any.
   pub fn nodes(&self) -> &[Named] {
@@ -421,8 +423,8 @@ impl AppState {
       .map(|q| quests.iter().any(|(claimer, _)| *claimer == q));
 
     let formula = node.kind.atom().map(|atom| FormulaInfo {
-      title:    describe::atom_label(graph, atom, today),
-      glyph:    Category::of(atom),
+      title: describe::atom_label(graph, atom, today),
+      glyph: Category::of(atom),
       referent: self.referent_info(graph, atom),
     });
     let primary = match &formula {
@@ -453,7 +455,7 @@ impl AppState {
         graph
           .place(*place)
           .map_or(missing, |p| ReferentInfo::Place {
-            id:   p.id,
+            id: p.id,
             name: p.name.clone(),
             here: self.place().is_some_and(|at| graph.is_within(at, p.id)),
           })
@@ -462,8 +464,8 @@ impl AppState {
         graph
           .resource(*resource)
           .map_or(missing, |r| ReferentInfo::Resource {
-            id:      r.id,
-            name:    r.name.clone(),
+            id: r.id,
+            name: r.name.clone(),
             balance: describe::amount(r, r.balance),
           })
       }
@@ -471,8 +473,8 @@ impl AppState {
         graph
           .schedule(*schedule)
           .map_or(missing, |s| ReferentInfo::Schedule {
-            id:    s.id,
-            name:  s.name.clone(),
+            id: s.id,
+            name: s.name.clone(),
             spans: s.spans.iter().map(|sp| describe::span(sp, today)).collect(),
           })
       }
@@ -480,9 +482,9 @@ impl AppState {
         graph
           .context(*context)
           .map_or(missing, |c| ReferentInfo::Context {
-            id:   c.id,
+            id: c.id,
             name: c.name.clone(),
-            on:   self.active_contexts().contains(&c.id),
+            on: self.active_contexts().contains(&c.id),
           })
       }
       Atom::Free { .. } => ReferentInfo::Free {

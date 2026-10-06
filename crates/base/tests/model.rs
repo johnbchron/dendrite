@@ -559,3 +559,53 @@ fn a_cycle_nothing_requires_is_never_completed() {
   let g = build(&[(1, true), (2, true)], &[], &[(10, 1, 2), (11, 2, 1)]);
   assert_eq!(base::completed(&g), base::Completed::default());
 }
+
+// --- order hints ----------------------------------------------------------
+
+/// Tasks with the given `(id, order_hint)`s, and edges as in [`build`].
+fn hinted(nodes: &[(u128, f64)], edges: &[(u128, u128, u128)]) -> Graph {
+  let mut g = build(&[], &[], &[]);
+  for &(i, hint) in nodes {
+    g.insert_node(base::Node::new(
+      nid(i),
+      format!("t{i}"),
+      NodeKind::task(),
+      hint,
+    ));
+  }
+  for (e, from, to) in edges {
+    g.insert_edge(Edge::new(
+      base::EdgeId::from_u128(*e),
+      EdgeKind::Dependency,
+      nid(*from),
+      nid(*to),
+    ));
+  }
+  g
+}
+
+#[test]
+fn a_new_root_is_hinted_after_everything() {
+  assert_eq!(Graph::new().hint_after(None), 0.0);
+  let g = hinted(&[(1, 4.0), (2, 9.0), (3, 2.0)], &[]);
+  assert_eq!(g.hint_after(None), 10.0);
+}
+
+#[test]
+fn a_new_requirement_is_hinted_after_its_siblings() {
+  // 1 requires 2 and 3; 4 is unrelated but sorts after them.
+  let g = hinted(
+    &[(1, 0.0), (2, 1.0), (3, 2.0), (4, 3.0)],
+    &[(10, 1, 2), (11, 1, 3)],
+  );
+  assert_eq!(g.hint_after(Some(nid(1))), 2.5, "between 3 and 4");
+  // With nothing after the siblings, a whole step past them.
+  let g = hinted(&[(1, 0.0), (2, 1.0)], &[(10, 1, 2)]);
+  assert_eq!(g.hint_after(Some(nid(1))), 2.0);
+}
+
+#[test]
+fn a_first_requirement_is_hinted_after_its_parent() {
+  let g = hinted(&[(1, 0.0), (2, 1.0)], &[]);
+  assert_eq!(g.hint_after(Some(nid(1))), 0.5);
+}

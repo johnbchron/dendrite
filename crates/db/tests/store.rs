@@ -626,7 +626,7 @@ fn formula_batch() -> Vec<Event> {
     Atom::In { context },
   ];
   for (k, atom) in atoms.iter().enumerate() {
-    events.push(atom.node_added());
+    events.push(atom.node_added(0.0));
     events.push(Event::EdgeAdded {
       edge: eid(100 + k as u128),
       kind: EdgeKind::Dependency,
@@ -720,7 +720,7 @@ fn re_adding_an_existing_atom_is_idempotent_through_the_log() {
   let before = store.graph().clone();
 
   // What a replica, or a stale gesture, might log: the same atom again.
-  store.commit(vec![at_home().node_added()]).unwrap();
+  store.commit(vec![at_home().node_added(0.0)]).unwrap();
   assert_eq!(store.graph(), &before);
   store.undo().unwrap();
   assert_eq!(store.graph(), &before, "undoing the re-add keeps the node");

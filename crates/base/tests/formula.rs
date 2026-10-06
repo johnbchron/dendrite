@@ -109,7 +109,7 @@ fn literals_have_one_spelling() {
 
 #[test]
 fn formula_nodes_serialize_as_self_describing_json() {
-  let e = after("2026-10-01T09:00").node_added();
+  let e = after("2026-10-01T09:00").node_added(0.0);
   let json = serde_json::to_string(&e).unwrap();
   assert!(
     json.contains(
@@ -220,7 +220,7 @@ fn requiring_an_existing_atom_links_to_it() {
 fn re_adding_a_formula_node_is_idempotent() {
   let atom = after("2026-10-01");
   let mut g = Graph::new();
-  apply(&mut g, &[atom.node_added()]);
+  apply(&mut g, &[atom.node_added(0.0)]);
   apply(
     &mut g,
     &[Event::EdgeAdded {
@@ -234,7 +234,7 @@ fn re_adding_a_formula_node_is_idempotent() {
 
   // A replica, or a redo, adding the same atom again changes nothing, and
   // undoing that add must not delete the node either.
-  let mut renamed = atom.node_added();
+  let mut renamed = atom.node_added(0.0);
   if let Event::NodeAdded { name, .. } = &mut renamed {
     *name = "a different label".into();
   }
@@ -249,7 +249,7 @@ fn formula_nodes_ignore_clicks() {
   let mut g = Graph::new();
 
   // A stored bit set in the event is dropped: the atom decides.
-  let mut added = atom.node_added();
+  let mut added = atom.node_added(0.0);
   if let Event::NodeAdded {
     kind: NodeKind::Condition { satisfied, .. },
     ..
@@ -1071,7 +1071,7 @@ fn pruning_removes_orphans_and_unused_referents_and_undoes() {
     apply(
       &mut g,
       &[
-        atom.node_added(),
+        atom.node_added(0.0),
         Event::EdgeAdded {
           edge: eid(i as u128 + 1),
           kind: base::EdgeKind::Dependency,
@@ -1083,7 +1083,7 @@ fn pruning_removes_orphans_and_unused_referents_and_undoes() {
   }
   let lonely = [Atom::In { context: phone }, after("2026-10-01")];
   for atom in &lonely {
-    apply(&mut g, &[atom.node_added()]);
+    apply(&mut g, &[atom.node_added(0.0)]);
   }
   let before = g.clone();
 

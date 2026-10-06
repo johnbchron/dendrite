@@ -121,14 +121,15 @@ impl Atom {
     NodeId::from_u128(u128::from_le_bytes(low) & ((1 << 80) - 1))
   }
 
-  /// A fresh formula condition node holding this atom. Its name is empty:
-  /// formula nodes render from the atom and its referents.
-  pub fn node_added(&self) -> Event {
+  /// A fresh formula condition node holding this atom, seeded at
+  /// `order_hint` in layout. Its name is empty: formula nodes render from
+  /// the atom and its referents.
+  pub fn node_added(&self, order_hint: f64) -> Event {
     Event::NodeAdded {
       node: self.node_id(),
       kind: NodeKind::formula(self.clone()),
       name: String::new(),
-      order_hint: 0.0,
+      order_hint,
     }
   }
 
@@ -145,7 +146,7 @@ impl Atom {
     let to = self.node_id();
     let mut events = Vec::with_capacity(2);
     if graph.node(to).is_none() {
-      events.push(self.node_added());
+      events.push(self.node_added(graph.hint_after(Some(from))));
     }
     events.push(Event::EdgeAdded {
       edge,

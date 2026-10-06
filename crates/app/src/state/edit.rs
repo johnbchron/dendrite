@@ -21,7 +21,7 @@ impl AppState {
   /// connected (below the selection) rather than as a tree of its own.
   fn add_node(&mut self, kind: NodeKind, name: &str) {
     let id = NodeId::new();
-    let hint = self.lock().graph().node_count() as f64;
+    let hint = self.lock().graph().hint_after(self.selected);
     let mut events = vec![Event::NodeAdded {
       node: id,
       kind,

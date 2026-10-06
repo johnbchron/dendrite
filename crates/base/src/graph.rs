@@ -89,6 +89,35 @@ impl Graph {
     self.nodes.len()
   }
 
+  /// An order hint for a node about to be added, so that layout seeds it
+  /// where it belongs instead of at the end of its row (PLAN §6.3).
+  ///
+  /// Given the `parent` that will require it, the hint sorts just after
+  /// everything the parent already requires (or just after the parent
+  /// itself, when it requires nothing yet) and before any other node that
+  /// sorted after them. With no parent, it sorts after every node. Hints
+  /// are halved into the gap, so after enough insertions at one spot two
+  /// can tie; layout then breaks the tie by id, which still puts the newer
+  /// node after.
+  pub fn hint_after(&self, parent: Option<NodeId>) -> f64 {
+    let hints = || self.nodes.values().map(|n| n.order_hint);
+    let after = parent.and_then(|p| {
+      let siblings = self
+        .requirements_of(p)
+        .filter_map(|e| self.node(e.to))
+        .map(|n| n.order_hint)
+        .reduce(f64::max);
+      siblings.or_else(|| self.node(p).map(|n| n.order_hint))
+    });
+    let Some(lo) = after else {
+      return hints().reduce(f64::max).map_or(0.0, |max| max + 1.0);
+    };
+    match hints().filter(|&h| h > lo).reduce(f64::min) {
+      Some(hi) => lo + (hi - lo) / 2.0,
+      None => lo + 1.0,
+    }
+  }
+
   /// The edges leaving `node` — the things it requires (`from == node`).
   pub fn requirements_of(&self, node: NodeId) -> impl Iterator<Item = &Edge> {
     self

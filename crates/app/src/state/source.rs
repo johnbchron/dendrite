@@ -465,7 +465,7 @@ impl AppState {
           }
           let mut events = Vec::new();
           if graph.node(new).is_none() {
-            events.push(offer.atom.node_added());
+            events.push(offer.atom.node_added(node.order_hint));
           }
           events.extend(offer.define);
           (new, events, "make automatic")

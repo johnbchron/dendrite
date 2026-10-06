@@ -364,7 +364,7 @@ mod props {
           .collect();
         for pair in nodes.windows(2) {
           let (a, b) = (pair[0], pair[1]);
-          // Trees take columns of their own, in order of first appearance.
+          // Trees take columns of their own.
           let tree = |n| l.arrangement.tree[&Slot::Node(n)];
           if tree(a) != tree(b) {
             continue;
@@ -491,4 +491,30 @@ mod copies {
     assert_eq!(layout(&gated).copies.count(nid(2)), 1);
     assert_eq!(placed(&layout(&gated)).len(), 4);
   }
+}
+
+#[test]
+fn trees_keep_columns_by_their_lowest_hint() {
+  // Tree A: 0 (hint 2) requires 1 (hint 0). Tree B: 2 (hint 1) requires
+  // 3 (hint 3). B's root sorts first in the top row, but A holds the lowest
+  // hint, so A takes the left column.
+  let mut g = Graph::new();
+  for (i, hint) in [(0, 2.0), (1, 0.0), (2, 1.0), (3, 3.0)] {
+    g.insert_node(base::Node::new(nid(i), "n", NodeKind::task(), hint));
+  }
+  for (e, from, to) in [(10, 0, 1), (11, 2, 3)] {
+    g.insert_edge(Edge::new(
+      EdgeId::from_u128(e),
+      EdgeKind::Dependency,
+      nid(from),
+      nid(to),
+    ));
+  }
+  let l = Layout::compute(&g, &LayoutConfig::default());
+  assert_eq!(
+    l.arrangement.rows[0],
+    [Slot::Node(nid(2)), Slot::Node(nid(0))]
+  );
+  assert!(pos(&l, nid(0)).unwrap().x < pos(&l, nid(2)).unwrap().x);
+  assert!(pos(&l, nid(1)).unwrap().x < pos(&l, nid(3)).unwrap().x);
 }

@@ -39,8 +39,9 @@ pub struct Placement {
 pub struct Arrangement {
   /// Slots per rank, top row first, each in left-to-right order.
   pub rows: Vec<Vec<Slot>>,
-  /// The independent tree (weakly connected component) of every slot, as an
-  /// opaque label: slots share a label exactly when edges connect them.
+  /// The independent tree (weakly connected component) of every slot, as
+  /// the column the tree takes, counting from the left: slots share a
+  /// column exactly when edges connect them.
   pub tree: HashMap<Slot, usize>,
   /// Every unit-length segment between slots in adjacent ranks, upper slot
   /// first, which coordinate assignment lines slots up along.
@@ -54,8 +55,8 @@ impl Arrangement {
   /// Each row is as tall as its tallest node, with nodes centred on the
   /// row's midline, and rows are `y_gap` apart; rows line up across trees.
   /// Each tree takes a column of its own, trees are `tree_gap` apart (left
-  /// to right in order of first appearance, reading the rows top-down), and
-  /// the whole is centred on x = 0. Within a column, slots keep their order
+  /// to right in the order of [`Self::tree`]), and the whole is centred on
+  /// x = 0. Within a column, slots keep their order
   /// at least `x_gap` apart, lined up with their neighbours in the rows
   /// either side by [`coord::assign`]; a bend is `bend_width` wide.
   pub fn place(
@@ -85,17 +86,16 @@ impl Arrangement {
     placement
   }
 
-  /// Every tree's label, in order of first appearance. The barycenter sweeps
-  /// put related nodes near each other, so this keeps the arrangement's
-  /// reading order.
+  /// Every tree's label, in column order.
   fn trees(&self) -> Vec<usize> {
-    let mut trees: Vec<usize> = Vec::new();
-    for slot in self.rows.iter().flatten() {
-      let t = self.tree_of(*slot);
-      if !trees.contains(&t) {
-        trees.push(t);
-      }
-    }
+    let mut trees: Vec<usize> = self
+      .rows
+      .iter()
+      .flatten()
+      .map(|s| self.tree_of(*s))
+      .collect();
+    trees.sort_unstable();
+    trees.dedup();
     trees
   }
 

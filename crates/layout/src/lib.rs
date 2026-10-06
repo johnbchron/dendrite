@@ -16,9 +16,11 @@
 //! 4. coordinate assignment — each rank a row as tall as its tallest node.
 //!    Every independent tree (weakly connected component) gets a column of its
 //!    own, with a wider gap between trees than between siblings, so separate
-//!    trees never interleave. Within its column, [`coord`] (Brandes–Köpf) lines
-//!    each node up with the median of its neighbours, so nodes sit over what
-//!    they depend on and long edges run straight.
+//!    trees never interleave. Columns are ordered by a key [`tree`] keeps
+//!    stable across edits, not by where the sweeps left each tree. Within
+//!    its column, [`coord`] (Brandes–Köpf) lines each node up with the
+//!    median of its neighbours, so nodes sit over what they depend on and
+//!    long edges run straight.
 //!
 //! Steps 1–3 depend only on the graph and produce an [`Arrangement`]; step 4
 //! ([`Arrangement::place`]) also needs every node's size. They are separate

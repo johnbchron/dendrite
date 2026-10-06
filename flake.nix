@@ -1,6 +1,9 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # only its C toolchain: glibc 2.34 sets the floor for dendrite-portable
+    # (RHEL 9, Ubuntu 22.04, Debian 12 and newer)
+    nixpkgs-glibc.url = "github:NixOS/nixpkgs/nixos-22.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -12,17 +15,21 @@
     };
   };
 
-  outputs = { nixpkgs, rust-overlay, devshell, flake-utils, crane, ... }: let
+  outputs = { nixpkgs, nixpkgs-glibc, rust-overlay, devshell, flake-utils, crane, ... }: let
     # define dendrite in an overlay
     overlay = final: prev: let
       prev' = prev.extend (import rust-overlay);
     in {
       dendrite = prev'.callPackage ./package.nix { inherit crane; };
+      dendrite-portable = prev'.callPackage ./package.nix {
+        inherit crane;
+        portable-cc = (import nixpkgs-glibc { inherit (prev.stdenv.hostPlatform) system; }).stdenv.cc;
+      };
     };
     
     per-system = flake-utils.lib.eachDefaultSystem (system: let
       # dendrite from flake nixpkgs
-      dendrite = (import nixpkgs { inherit system; overlays = [ overlay ]; }).dendrite;
+      inherit (import nixpkgs { inherit system; overlays = [ overlay ]; }) dendrite dendrite-portable;
       
       # pkgs for devshell
       pkgs = import nixpkgs {
@@ -82,8 +89,10 @@
       packages = {
         inherit dendrite;
         default = dendrite;
-      };
-      checks = { inherit dendrite; };
+      } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux { inherit dendrite-portable; };
+      checks = {
+        inherit dendrite;
+      } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux { inherit dendrite-portable; };
       devShells.default = if pkgs.stdenv.hostPlatform.isLinux then linux-devshell else darwin-devshell;
     });
   in {

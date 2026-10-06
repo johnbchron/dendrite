@@ -12,6 +12,7 @@
 
 use std::collections::HashSet;
 
+use crate::NodeKind;
 use crate::{graph::Graph, ids::NodeId};
 
 /// Which nodes the completed trees hold, and which of those only they hold.
@@ -36,7 +37,7 @@ pub fn completed(graph: &Graph) -> Completed {
     let mut work = tree
       .iter()
       .filter_map(|n| graph.node(*n))
-      .filter(|n| n.kind.atom().is_none())
+      .filter(|n| matches!(n.kind, NodeKind::Task { .. }))
       .peekable();
     let done = work.peek().is_some() && work.all(|n| n.kind.is_satisfied());
     if done { &mut trees } else { &mut live }.extend(tree);
